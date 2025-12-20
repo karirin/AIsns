@@ -1,6 +1,20 @@
 import Foundation
 import SwiftUI
 
+enum Gender: String, CaseIterable, Codable {
+    case male = "男性"
+    case female = "女性"
+    case other = "その他"
+    
+    var icon: String {
+        switch self {
+        case .male: return "♂"
+        case .female: return "♀"
+        case .other: return "●"
+        }
+    }
+}
+
 enum PersonalityType: String, CaseIterable, Codable {
     case kind = "優しい"
     case tsundere = "ツンデレ"
@@ -70,7 +84,10 @@ enum WorldSetting: String, CaseIterable, Codable {
 struct OshiCharacter: Identifiable, Codable {
     let id: UUID
     var name: String
+    var gender: Gender?  // 新規追加
     var personality: PersonalityType
+    var speechCharacteristics: String  // 新規追加: 話し方の特徴
+    var userCallingName: String  // 新規追加: ユーザーへの呼び方
     var speechStyle: SpeechStyle
     var relationshipDistance: RelationshipDistance
     var worldSetting: WorldSetting
@@ -81,8 +98,14 @@ struct OshiCharacter: Identifiable, Codable {
     var totalInteractions: Int
     var lastInteractionDate: Date?
     
-    // 親密度に応じた呼び方
+    // 親密度に応じた呼び方（既存のロジックは保持）
     var callingName: String {
+        // カスタム呼び方が設定されていればそれを使用
+        if !userCallingName.isEmpty {
+            return userCallingName
+        }
+        
+        // デフォルトの親密度に応じた呼び方
         if intimacyLevel < 20 {
             return "\(name)さん"
         } else if intimacyLevel < 50 {
@@ -94,13 +117,18 @@ struct OshiCharacter: Identifiable, Codable {
         }
     }
     
-    init(id: UUID = UUID(), name: String, personality: PersonalityType, 
-         speechStyle: SpeechStyle, relationshipDistance: RelationshipDistance,
-         worldSetting: WorldSetting, ngTopics: [String] = [], 
+    init(id: UUID = UUID(), name: String, gender: Gender? = nil,
+         personality: PersonalityType, speechCharacteristics: String = "",
+         userCallingName: String = "", speechStyle: SpeechStyle,
+         relationshipDistance: RelationshipDistance,
+         worldSetting: WorldSetting, ngTopics: [String] = [],
          avatarColor: String = "#FF6B9D") {
         self.id = id
         self.name = name
+        self.gender = gender
         self.personality = personality
+        self.speechCharacteristics = speechCharacteristics
+        self.userCallingName = userCallingName
         self.speechStyle = speechStyle
         self.relationshipDistance = relationshipDistance
         self.worldSetting = worldSetting

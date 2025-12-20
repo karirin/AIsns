@@ -5,7 +5,10 @@ struct OshiCreationView: View {
     @ObservedObject var viewModel: OshiViewModel
     
     @State private var name = ""
+    @State private var gender: Gender? = nil
     @State private var personality: PersonalityType = .kind
+    @State private var speechCharacteristics = ""
+    @State private var userCallingName = ""
     @State private var speechStyle: SpeechStyle = .casual
     @State private var relationshipDistance: RelationshipDistance = .bestFriend
     @State private var worldSetting: WorldSetting = .idol
@@ -13,7 +16,7 @@ struct OshiCreationView: View {
     @State private var selectedColor: Color = .pink
     
     let availableColors: [Color] = [
-        .pink, .purple, .blue, .cyan, .green, 
+        .pink, .purple, .blue, .cyan, .green,
         .yellow, .orange, .red, .indigo
     ]
     
@@ -35,7 +38,7 @@ struct OshiCreationView: View {
                                         Circle()
                                             .stroke(Color.white, lineWidth: selectedColor == color ? 3 : 0)
                                     )
-                                    .shadow(color: selectedColor == color ? color.opacity(0.5) : .clear, 
+                                    .shadow(color: selectedColor == color ? color.opacity(0.5) : .clear,
                                            radius: 8)
                                     .onTapGesture {
                                         withAnimation(.spring()) {
@@ -58,6 +61,35 @@ struct OshiCreationView: View {
                             .font(.body)
                     }
                     
+                    // 性別選択
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("性別（任意）")
+                            .font(.headline)
+                        
+                        HStack(spacing: 12) {
+                            ForEach([Gender.male, Gender.female, Gender.other], id: \.self) { genderOption in
+                                SelectionCard(
+                                    title: "\(genderOption.icon) \(genderOption.rawValue)",
+                                    isSelected: gender == genderOption
+                                ) {
+                                    withAnimation(.spring()) {
+                                        gender = genderOption
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if gender != nil {
+                            Button("未設定にする") {
+                                withAnimation(.spring()) {
+                                    gender = nil
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        }
+                    }
+                    
                     // 性格選択
                     VStack(alignment: .leading, spacing: 12) {
                         Text("性格")
@@ -73,6 +105,28 @@ struct OshiCreationView: View {
                                 }
                             }
                         }
+                    }
+                    
+                    // 話し方の特徴
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("話し方の特徴（任意）")
+                            .font(.headline)
+                        Text("例: 柔らかい口調で話す、語尾に「にゃ」をつける")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("話し方の特徴を入力", text: $speechCharacteristics)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    // ユーザーへの呼び方
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("あなたへの呼び方（任意）")
+                            .font(.headline)
+                        Text("例: あなた、きみ、〇〇さん")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("呼び方を入力", text: $userCallingName)
+                            .textFieldStyle(.roundedBorder)
                     }
                     
                     // 口調選択
@@ -176,7 +230,10 @@ struct OshiCreationView: View {
         
         let oshi = OshiCharacter(
             name: name,
+            gender: gender,
             personality: personality,
+            speechCharacteristics: speechCharacteristics,
+            userCallingName: userCallingName,
             speechStyle: speechStyle,
             relationshipDistance: relationshipDistance,
             worldSetting: worldSetting,
@@ -237,7 +294,7 @@ extension Color {
         let r = Float(components?[0] ?? 0)
         let g = Float(components?[1] ?? 0)
         let b = Float(components?[2] ?? 0)
-        return String(format: "#%02lX%02lX%02lX", 
+        return String(format: "#%02lX%02lX%02lX",
                      lroundf(r * 255), lroundf(g * 255), lroundf(b * 255))
     }
     

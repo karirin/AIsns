@@ -17,10 +17,12 @@ class FirebaseDatabaseManager {
     func saveOshi(_ oshi: OshiCharacter) async throws {
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshi.id.uuidString)")
         
-        let oshiData: [String: Any] = [
+        var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
             "personality": oshi.personality.rawValue,
+            "speechCharacteristics": oshi.speechCharacteristics,
+            "userCallingName": oshi.userCallingName,
             "speechStyle": oshi.speechStyle.rawValue,
             "relationshipDistance": oshi.relationshipDistance.rawValue,
             "worldSetting": oshi.worldSetting.rawValue,
@@ -31,6 +33,11 @@ class FirebaseDatabaseManager {
             "totalInteractions": oshi.totalInteractions,
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0
         ]
+        
+        // 性別がnilでない場合のみ保存
+        if let gender = oshi.gender {
+            oshiData["gender"] = gender.rawValue
+        }
         
         try await oshiRef.setValue(oshiData)
     }
@@ -254,6 +261,12 @@ class FirebaseDatabaseManager {
             return nil
         }
         
+        // 新しいフィールドの読み込み（オプショナル）
+        let genderRaw = data["gender"] as? String
+        let gender = genderRaw.flatMap { Gender(rawValue: $0) }
+        let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
+        let userCallingName = data["userCallingName"] as? String ?? ""
+        
         let ngTopics = data["ngTopics"] as? [String] ?? []
         let intimacyLevel = data["intimacyLevel"] as? Int ?? 0
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
@@ -262,7 +275,10 @@ class FirebaseDatabaseManager {
         var oshi = OshiCharacter(
             id: id,
             name: name,
+            gender: gender,
             personality: personality,
+            speechCharacteristics: speechCharacteristics,
+            userCallingName: userCallingName,
             speechStyle: speechStyle,
             relationshipDistance: relationshipDistance,
             worldSetting: worldSetting,

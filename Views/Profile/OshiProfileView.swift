@@ -1,11 +1,3 @@
-//
-//  OshiProfileView 2.swift
-//  AIsns
-//
-//  Created by Apple on 2025/12/20.
-//
-
-
 import SwiftUI
 
 struct OshiProfileView: View {
@@ -172,17 +164,17 @@ struct OshiProfileView: View {
                     
                     VStack(spacing: 12) {
                         // 性別
-//                        if let gender = oshi.gender {
-//                            ModernProfileRow(
-//                                icon: "person.fill",
-//                                iconColor: .purple,
-//                                title: "性別",
-//                                value: gender.rawValue
-//                            )
-//                            
-//                            Divider()
-//                                .padding(.leading, 40)
-//                        }
+                        if let gender = oshi.gender {
+                            ModernProfileRow(
+                                icon: "person.fill",
+                                iconColor: .purple,
+                                title: "性別",
+                                value: gender.rawValue
+                            )
+                            
+                            Divider()
+                                .padding(.leading, 40)
+                        }
                         
                         // 性格
                         ModernProfileRow(
@@ -196,7 +188,30 @@ struct OshiProfileView: View {
                             .padding(.leading, 40)
                         
                         // 話し方の特徴
-
+                        if !oshi.speechCharacteristics.isEmpty {
+                            ModernProfileRow(
+                                icon: "bubble.left.fill",
+                                iconColor: .green,
+                                title: "話し方の特徴",
+                                value: oshi.speechCharacteristics
+                            )
+                            
+                            Divider()
+                                .padding(.leading, 40)
+                        }
+                        
+                        // ユーザーへの呼び方
+                        if !oshi.userCallingName.isEmpty {
+                            ModernProfileRow(
+                                icon: "person.crop.circle.fill",
+                                iconColor: .pink,
+                                title: "あなたへの呼び方",
+                                value: oshi.userCallingName
+                            )
+                            
+                            Divider()
+                                .padding(.leading, 40)
+                        }
                         
                         // 口調
                         ModernProfileRow(
@@ -208,8 +223,6 @@ struct OshiProfileView: View {
                         
                         Divider()
                             .padding(.leading, 40)
-                        
-          
                         
                         // 距離感
                         ModernProfileRow(
@@ -300,7 +313,7 @@ struct OshiProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingEditView) {
             NavigationStack {
-//                OshiProfileEditView(oshi: oshi, viewModel: viewModel)
+                OshiProfileEditView(oshi: oshi, viewModel: viewModel)
             }
         }
         .alert("推しを削除しますか?", isPresented: $showingDeleteAlert) {
@@ -414,11 +427,14 @@ struct ModernProfileRow: View {
         OshiProfileView(
             oshi: OshiCharacter(
                 name: "さくら",
+                gender: .female,
                 personality: .cool,
+                speechCharacteristics: "柔らかくて優しい口調",
+                userCallingName: "あなた",
                 speechStyle: .casual,
                 relationshipDistance: .bestFriend,
                 worldSetting: .student,
-                avatarColor: "FF69B4"
+                avatarColor: "#FF69B4"
             ),
             viewModel: OshiViewModel()
         )
