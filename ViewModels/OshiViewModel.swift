@@ -15,6 +15,70 @@ class OshiViewModel: ObservableObject {
         startAutoPosting()
     }
     
+    // 追加：OshiViewModel の中に追記
+
+    convenience init(mock: Bool) {
+        self.init(skipLoadAndTimers: true)
+        guard mock else { return }
+
+        var oshi1 = OshiCharacter(
+            name: "レン",
+            personality: .cool,
+            speechStyle: .casual,
+            relationshipDistance: .lover,
+            worldSetting: .fantasy,
+            avatarColor: "#4F46E5"
+        )
+        oshi1.intimacyLevel = 12
+
+        var oshi2 = OshiCharacter(
+            name: "ユイ",
+            personality: .cool,
+            speechStyle: .polite,
+            relationshipDistance: .bestFriend,
+            worldSetting: .fantasy,
+            avatarColor: "#EC4899"
+        )
+        oshi2.intimacyLevel = 7
+
+        self.oshiList = [oshi1, oshi2]
+
+        // チャットルーム（各推しに紐づく）
+        var room1 = ChatRoom(oshiId: oshi1.id)
+        var room2 = ChatRoom(oshiId: oshi2.id)
+
+        // メッセージ（room.messages.last が表示に効く）
+        room1.addMessage(Message(content: "おはよ！今日もえらい！", isFromUser: false, oshiId: oshi1.id))
+        room1.addMessage(Message(content: "ありがとう！", isFromUser: true))
+
+        room2.addMessage(Message(content: "今日なにしてた？", isFromUser: false, oshiId: oshi2.id))
+
+        // 未読バッジ確認用
+        // （ChatRoom に unreadCount を直接触れるならここで設定、無理なら addMessage の実装側で増える想定）
+        // room1.unreadCount = 2
+
+        self.chatRooms = [room1, room2]
+
+        // 並び替え用に lastMessageDate を更新する実装ならここは不要（addMessageで更新されるならOK）
+    }
+
+    // 追加：OshiViewModel の中に追記
+
+    private convenience init(skipLoadAndTimers: Bool) {
+        self.init()
+        if skipLoadAndTimers {
+            autoPostTimer?.invalidate()
+            autoPostTimer = nil
+            cancellables.removeAll()
+
+            // init() 内で loadData/startAutoPosting が走るので、ここで上書きして実質無効化
+            self.oshiList = []
+            self.posts = []
+            self.chatRooms = []
+        }
+    }
+
+    
     // MARK: - 推し管理
     
     func addOshi(_ oshi: OshiCharacter) {

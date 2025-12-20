@@ -22,6 +22,7 @@ struct ChatListView: View {
             }
             .listStyle(.plain)
             .navigationTitle("チャット")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -111,67 +112,6 @@ struct ChatDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // ヘッダー（推しプロフィール）
-            VStack(spacing: 12) {
-                Circle()
-                    .fill(Color(hex: oshi.avatarColor).gradient)
-                    .frame(width: 80, height: 80)
-                    .overlay(
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    )
-                    .shadow(color: Color(hex: oshi.avatarColor).opacity(0.3), radius: 10, y: 5)
-                
-                VStack(spacing: 4) {
-                    Text(oshi.name)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text("@\(oshi.name.lowercased())")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    // 親密度レベル表示
-                    HStack(spacing: 4) {
-                        Image(systemName: "heart.fill")
-                            .font(.caption)
-                            .foregroundColor(.pink)
-                        Text("親密度 Lv.\(oshi.intimacyLevel)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 2)
-                }
-                
-                // プロフィールを見るボタン
-                NavigationLink(destination: OshiProfileView(oshi: oshi, viewModel: viewModel)) {
-                    Text("プロフィールを見る")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                        )
-                }
-                .padding(.top, 4)
-            }
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity)
-            .background(Color(.systemBackground))
-            
-            Divider()
-            
-            // 日付セパレーター
-            Text("今日")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.vertical, 12)
-            
             // メッセージエリア
             ScrollViewReader { proxy in
                 ScrollView {
@@ -327,5 +267,5 @@ struct MessageBubble: View {
 }
 
 #Preview {
-    ChatListView(viewModel: OshiViewModel())
+    ChatListView(viewModel: OshiViewModel(mock: true))
 }

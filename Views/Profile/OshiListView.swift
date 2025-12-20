@@ -41,20 +41,20 @@ struct OshiListView: View {
                     }
                     .padding()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(viewModel.oshiList) { oshi in
-                                NavigationLink(destination: OshiProfileView(oshi: oshi, viewModel: viewModel)) {
-                                    OshiCard(oshi: oshi)
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                    List {
+                        ForEach(viewModel.oshiList) { oshi in
+                            NavigationLink(destination: OshiProfileView(oshi: oshi, viewModel: viewModel)) {
+                                OshiCard(oshi: oshi)
                             }
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.visible)
                         }
-                        .padding()
                     }
+                    .listStyle(.plain)
                 }
             }
-            .navigationTitle("推し一覧")
+            .navigationTitle("フォロワー")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingCreationSheet = true }) {
@@ -73,76 +73,41 @@ struct OshiCard: View {
     let oshi: OshiCharacter
     
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             // アバター
             Circle()
                 .fill(Color(hex: oshi.avatarColor).gradient)
-                .frame(width: 70, height: 70)
+                .frame(width: 50, height: 50)
                 .overlay(
                     Text(String(oshi.name.prefix(1)))
-                        .font(.title)
+                        .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                 )
-                .shadow(color: Color(hex: oshi.avatarColor).opacity(0.3), radius: 8, y: 4)
             
-            VStack(alignment: .leading, spacing: 6) {
-                Text(oshi.name)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
+            VStack(alignment: .leading, spacing: 4) {
+                // 名前と性格アイコン
                 HStack(spacing: 4) {
+                    Text(oshi.name)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                    
                     Text(oshi.personality.emoji)
-                    Text(oshi.personality.rawValue)
-                    Text("•")
-                    Text(oshi.worldSetting.icon)
-                    Text(oshi.worldSetting.rawValue)
+                        .font(.caption)
                 }
-                .font(.subheadline)
-                .foregroundColor(.secondary)
                 
-                // 親密度バー
-                HStack(spacing: 8) {
-                    Image(systemName: "heart.fill")
-                        .font(.caption)
-                        .foregroundColor(.pink)
-                    
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(.systemGray6))
-                                .frame(height: 6)
-                            
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.pink, .purple],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: geometry.size.width * CGFloat(oshi.intimacyLevel) / 100, 
-                                      height: 6)
-                        }
-                    }
-                    .frame(height: 6)
-                    
-                    Text("Lv.\(oshi.intimacyLevel)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 40, alignment: .trailing)
-                }
+                // プロフィール情報
+                Text("\(oshi.personality.rawValue) • \(oshi.worldSetting.rawValue)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
             }
             
             Spacer()
-            
-            Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
         }
-        .padding()
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
         .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.05), radius: 5, y: 2)
     }
 }
 
