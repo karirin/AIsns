@@ -1,14 +1,13 @@
 import SwiftUI
-//import FirebaseCore
+import FirebaseCore
 
 @main
 struct OshiSNSApp: App {
     
     init() {
-        // Firebase初期化
-//        FirebaseConfig.shared.configure()
+        FirebaseApp.configure()
     }
-    
+
     var body: some Scene {
         WindowGroup {
             MainTabView()

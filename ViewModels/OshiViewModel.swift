@@ -1,26 +1,30 @@
 import Foundation
 import Combine
 
+@MainActor
 class OshiViewModel: ObservableObject {
     @Published var oshiList: [OshiCharacter] = []
     @Published var posts: [Post] = []
     @Published var chatRooms: [ChatRoom] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
     
     private let aiService = AIService.shared
+    private let dbManager = FirebaseDatabaseManager.shared
     private var cancellables = Set<AnyCancellable>()
     private var autoPostTimer: Timer?
     
     init() {
-        loadData()
+        Task {
+            await loadData()
+        }
         startAutoPosting()
     }
     
-    // 追加：OshiViewModel の中に追記
-
     convenience init(mock: Bool) {
         self.init(skipLoadAndTimers: true)
         guard mock else { return }
-
+        
         var oshi1 = OshiCharacter(
             name: "レン",
             personality: .cool,
@@ -30,7 +34,7 @@ class OshiViewModel: ObservableObject {
             avatarColor: "#4F46E5"
         )
         oshi1.intimacyLevel = 12
-
+        
         var oshi2 = OshiCharacter(
             name: "ユイ",
             personality: .cool,
@@ -40,74 +44,121 @@ class OshiViewModel: ObservableObject {
             avatarColor: "#EC4899"
         )
         oshi2.intimacyLevel = 7
-
+        
         self.oshiList = [oshi1, oshi2]
-
-        // チャットルーム（各推しに紐づく）
+        
         var room1 = ChatRoom(oshiId: oshi1.id)
         var room2 = ChatRoom(oshiId: oshi2.id)
-
-        // メッセージ（room.messages.last が表示に効く）
+        
         room1.addMessage(Message(content: "おはよ！今日もえらい！", isFromUser: false, oshiId: oshi1.id))
         room1.addMessage(Message(content: "ありがとう！", isFromUser: true))
-
+        
         room2.addMessage(Message(content: "今日なにしてた？", isFromUser: false, oshiId: oshi2.id))
-
-        // 未読バッジ確認用
-        // （ChatRoom に unreadCount を直接触れるならここで設定、無理なら addMessage の実装側で増える想定）
-        // room1.unreadCount = 2
-
+        
         self.chatRooms = [room1, room2]
-
-        // 並び替え用に lastMessageDate を更新する実装ならここは不要（addMessageで更新されるならOK）
     }
-
-    // 追加：OshiViewModel の中に追記
-
+    
     private convenience init(skipLoadAndTimers: Bool) {
         self.init()
         if skipLoadAndTimers {
             autoPostTimer?.invalidate()
             autoPostTimer = nil
             cancellables.removeAll()
-
-            // init() 内で loadData/startAutoPosting が走るので、ここで上書きして実質無効化
+            
             self.oshiList = []
             self.posts = []
             self.chatRooms = []
         }
     }
-
+    
+    // MARK: - Data Loading
+    
+    func loadData() async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            async let oshiListTask = dbManager.loadOshiList()
+            async let postsTask = dbManager.loadPosts(limit: 50)
+            async let chatRoomsTask = dbManager.loadChatRooms()
+            
+            let (loadedOshi, loadedPosts, loadedRooms) = try await (oshiListTask, postsTask, chatRoomsTask)
+            
+            oshiList = loadedOshi
+            posts = loadedPosts
+            chatRooms = loadedRooms
+            
+            print("✅ データ読み込み成功: 推し\(oshiList.count)人, 投稿\(posts.count)件")
+            
+        } catch {
+            errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
+            print("❌ データ読み込みエラー: \(error)")
+        }
+        
+        isLoading = false
+    }
     
     // MARK: - 推し管理
     
     func addOshi(_ oshi: OshiCharacter) {
-        var newOshi = oshi
-        newOshi.intimacyLevel = 0
-        oshiList.append(newOshi)
-        
-        // チャットルーム作成
-        let chatRoom = ChatRoom(oshiId: newOshi.id)
-        chatRooms.append(chatRoom)
-        
-        saveData()
-        
-        // 初回メッセージ
-        sendInitialGreeting(to: newOshi)
+        Task {
+            do {
+                var newOshi = oshi
+                newOshi.intimacyLevel = 0
+                
+                oshiList.append(newOshi)
+                
+                // Firebaseに保存
+                try await dbManager.saveOshi(newOshi)
+                
+                // チャットルーム作成
+                let chatRoom = ChatRoom(oshiId: newOshi.id)
+                chatRooms.append(chatRoom)
+                try await dbManager.saveChatRoom(chatRoom)
+                
+                // 初回メッセージ（OpenAI使用）
+                await sendInitialGreeting(to: newOshi)
+                
+                print("✅ 推し追加成功: \(newOshi.name)")
+                
+            } catch {
+                errorMessage = "推しの追加に失敗しました: \(error.localizedDescription)"
+                print("❌ 推し追加エラー: \(error)")
+            }
+        }
     }
     
     func updateOshi(_ oshi: OshiCharacter) {
-        if let index = oshiList.firstIndex(where: { $0.id == oshi.id }) {
-            oshiList[index] = oshi
-            saveData()
+        Task {
+            do {
+                if let index = oshiList.firstIndex(where: { $0.id == oshi.id }) {
+                    oshiList[index] = oshi
+                    try await dbManager.saveOshi(oshi)
+                    print("✅ 推し更新成功: \(oshi.name)")
+                }
+            } catch {
+                errorMessage = "推しの更新に失敗しました: \(error.localizedDescription)"
+                print("❌ 推し更新エラー: \(error)")
+            }
         }
     }
     
     func deleteOshi(_ oshi: OshiCharacter) {
-        oshiList.removeAll { $0.id == oshi.id }
-        chatRooms.removeAll { $0.oshiId == oshi.id }
-        posts.removeAll { $0.authorId == oshi.id }
-        saveData()
+        Task {
+            do {
+                oshiList.removeAll { $0.id == oshi.id }
+                chatRooms.removeAll { $0.oshiId == oshi.id }
+                posts.removeAll { $0.authorId == oshi.id }
+                
+                try await dbManager.deleteOshi(oshi.id)
+                
+                print("✅ 推し削除成功: \(oshi.name)")
+                
+            } catch {
+                errorMessage = "推しの削除に失敗しました: \(error.localizedDescription)"
+                print("❌ 推し削除エラー: \(error)")
+            }
+        }
     }
     
     // MARK: - タイムライン
@@ -116,15 +167,22 @@ class OshiViewModel: ObservableObject {
         let post = Post(authorName: "あなた", content: content, isUserPost: true)
         posts.insert(post, at: 0)
         
-        // すべての推しが反応
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 1...3)) {
-            self.generateReactionsForPost(post)
+        Task {
+            do {
+                try await dbManager.savePost(post)
+                
+                // すべての推しが反応（遅延実行）
+                try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
+                await generateReactionsForPost(post)
+                
+            } catch {
+                errorMessage = "投稿の保存に失敗しました: \(error.localizedDescription)"
+                print("❌ 投稿保存エラー: \(error)")
+            }
         }
-        
-        saveData()
     }
     
-    private func generateReactionsForPost(_ post: Post) {
+    private func generateReactionsForPost(_ post: Post) async {
         guard let postIndex = posts.firstIndex(where: { $0.id == post.id }) else { return }
         
         let mood = aiService.analyzeMood(from: post.content)
@@ -134,34 +192,60 @@ class OshiViewModel: ObservableObject {
             let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
             posts[postIndex].reactions.append(reaction)
             
-            // コメント（ランダムに80%の確率）
+            // コメント（80%の確率）
             if Double.random(in: 0...1) < 0.8 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 2...5)) {
-                    let commentText = self.aiService.generateComment(for: post, by: oshi, userMood: mood)
+                do {
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 2_000_000_000...5_000_000_000))
+                    
+                    // OpenAI APIでコメント生成
+                    let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood)
                     let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
                     
-                    if let idx = self.posts.firstIndex(where: { $0.id == post.id }) {
-                        self.posts[idx].comments.append(comment)
+                    if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                        posts[idx].comments.append(comment)
                         
                         // 親密度アップ
-                        if let oshiIdx = self.oshiList.firstIndex(where: { $0.id == oshi.id }) {
-                            self.oshiList[oshiIdx].increaseIntimacy(by: 2)
+                        if let oshiIdx = oshiList.firstIndex(where: { $0.id == oshi.id }) {
+                            oshiList[oshiIdx].increaseIntimacy(by: 2)
+                            try await dbManager.saveOshi(oshiList[oshiIdx])
                         }
+                        
+                        // 投稿を更新
+                        try await dbManager.updatePost(posts[idx])
                     }
-                    self.saveData()
+                    
+                } catch {
+                    print("❌ コメント生成エラー: \(error)")
                 }
             }
         }
         
-        saveData()
+        // 投稿を保存
+        do {
+            try await dbManager.updatePost(posts[postIndex])
+        } catch {
+            print("❌ 投稿更新エラー: \(error)")
+        }
     }
     
     func createOshiPost(by oshi: OshiCharacter) {
-        let content = aiService.generateOshiPost(by: oshi)
-        let post = Post(authorId: oshi.id, authorName: oshi.name, 
-                       content: content, isUserPost: false)
-        posts.insert(post, at: 0)
-        saveData()
+        Task {
+            do {
+                // OpenAI APIで投稿生成
+                let content = try await aiService.generateOshiPost(by: oshi)
+                let post = Post(authorId: oshi.id, authorName: oshi.name,
+                               content: content, isUserPost: false)
+                posts.insert(post, at: 0)
+                
+                try await dbManager.savePost(post)
+                
+                print("✅ 推しの投稿作成成功: \(oshi.name)")
+                
+            } catch {
+                errorMessage = "推しの投稿作成に失敗しました: \(error.localizedDescription)"
+                print("❌ 推しの投稿作成エラー: \(error)")
+            }
+        }
     }
     
     func reactToOshiPost(_ post: Post) {
@@ -169,9 +253,14 @@ class OshiViewModel: ObservableObject {
               let oshiId = post.authorId,
               let oshiIndex = oshiList.firstIndex(where: { $0.id == oshiId }) else { return }
         
-        // 親密度アップ
-        oshiList[oshiIndex].increaseIntimacy(by: 1)
-        saveData()
+        Task {
+            do {
+                oshiList[oshiIndex].increaseIntimacy(by: 1)
+                try await dbManager.saveOshi(oshiList[oshiIndex])
+            } catch {
+                print("❌ 親密度更新エラー: \(error)")
+            }
+        }
     }
     
     // MARK: - チャット
@@ -180,56 +269,87 @@ class OshiViewModel: ObservableObject {
         guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshiId }),
               let oshi = oshiList.first(where: { $0.id == oshiId }) else { return }
         
-        // ユーザーメッセージ
         let userMessage = Message(content: content, isFromUser: true)
         chatRooms[roomIndex].addMessage(userMessage)
         
-        // 親密度アップ
-        if let oshiIndex = oshiList.firstIndex(where: { $0.id == oshiId }) {
-            oshiList[oshiIndex].increaseIntimacy(by: 3)
-        }
-        
-        saveData()
-        
-        // AI返信（1-3秒後）
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 1...3)) {
-            let reply = self.aiService.generateChatReply(
-                for: content, 
-                by: oshi, 
-                conversationHistory: self.chatRooms[roomIndex].messages
-            )
-            
-            let aiMessage = Message(content: reply, isFromUser: false, oshiId: oshiId)
-            self.chatRooms[roomIndex].addMessage(aiMessage)
-            self.saveData()
+        Task {
+            do {
+                // メッセージを保存
+                try await dbManager.addMessage(to: oshiId, message: userMessage)
+                
+                // 親密度アップ
+                if let oshiIndex = oshiList.firstIndex(where: { $0.id == oshiId }) {
+                    oshiList[oshiIndex].increaseIntimacy(by: 3)
+                    try await dbManager.saveOshi(oshiList[oshiIndex])
+                }
+                
+                // AI返信（1-3秒後）
+                try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
+                
+                // OpenAI APIで返信生成
+                let reply = try await aiService.generateChatReply(
+                    for: content,
+                    by: oshi,
+                    conversationHistory: chatRooms[roomIndex].messages
+                )
+                
+                let aiMessage = Message(content: reply, isFromUser: false, oshiId: oshiId)
+                chatRooms[roomIndex].addMessage(aiMessage)
+                
+                try await dbManager.addMessage(to: oshiId, message: aiMessage)
+                
+                print("✅ チャット返信成功")
+                
+            } catch {
+                errorMessage = "メッセージの送信に失敗しました: \(error.localizedDescription)"
+                print("❌ メッセージ送信エラー: \(error)")
+            }
         }
     }
     
     func markChatAsRead(oshiId: UUID) {
         if let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshiId }) {
             chatRooms[roomIndex].markAllAsRead()
-            saveData()
+            
+            Task {
+                do {
+                    try await dbManager.markChatAsRead(oshiId: oshiId)
+                } catch {
+                    print("❌ 既読更新エラー: \(error)")
+                }
+            }
         }
     }
     
-    private func sendInitialGreeting(to oshi: OshiCharacter) {
+    private func sendInitialGreeting(to oshi: OshiCharacter) async {
         guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { return }
         
-        var greeting = ""
-        switch oshi.relationshipDistance {
-        case .lover:
-            greeting = "よろしくね！これから一緒に過ごせるの楽しみ"
-        case .bestFriend:
-            greeting = "よろしく！仲良くしようね"
-        case .fanAndIdol:
-            greeting = "応援ありがとう！これからもよろしくね"
+        do {
+            var greeting = ""
+            switch oshi.relationshipDistance {
+            case .lover:
+                greeting = "よろしくね！これから一緒に過ごせるの楽しみ"
+            case .bestFriend:
+                greeting = "よろしく！仲良くしようね"
+            case .fanAndIdol:
+                greeting = "応援ありがとう！これからもよろしくね"
+            }
+            
+            // OpenAI APIで挨拶生成
+            let aiGreeting = try await aiService.generateChatReply(
+                for: greeting,
+                by: oshi,
+                conversationHistory: []
+            )
+            
+            let message = Message(content: aiGreeting, isFromUser: false, oshiId: oshi.id)
+            chatRooms[roomIndex].addMessage(message)
+            
+            try await dbManager.addMessage(to: oshi.id, message: message)
+            
+        } catch {
+            print("❌ 初回挨拶エラー: \(error)")
         }
-        
-        greeting = aiService.generateChatReply(for: greeting, by: oshi, conversationHistory: [])
-        
-        let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
-        chatRooms[roomIndex].addMessage(message)
-        saveData()
     }
     
     // MARK: - 自動投稿
@@ -237,14 +357,15 @@ class OshiViewModel: ObservableObject {
     private func startAutoPosting() {
         // 30分ごとに推しがランダムに投稿
         autoPostTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
-            self?.randomOshiPost()
+            Task { @MainActor in
+                await self?.randomOshiPost()
+            }
         }
     }
     
-    private func randomOshiPost() {
+    private func randomOshiPost() async {
         guard !oshiList.isEmpty else { return }
         
-        // ランダムに1人選んで投稿
         if let randomOshi = oshiList.randomElement() {
             createOshiPost(by: randomOshi)
         }
@@ -255,58 +376,39 @@ class OshiViewModel: ObservableObject {
     func checkProactiveMessages() {
         let hour = Calendar.current.component(.hour, from: Date())
         
-        for oshi in oshiList where oshi.intimacyLevel >= 70 {
-            guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { continue }
-            
-            // 朝（7-9時）おはようメッセージ
-            if hour >= 7 && hour < 9 {
-                let lastMessage = chatRooms[roomIndex].messages.last
-                let isToday = Calendar.current.isDateInToday(lastMessage?.timestamp ?? Date.distantPast)
+        Task {
+            for oshi in oshiList where oshi.intimacyLevel >= 70 {
+                guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { continue }
                 
-                if !isToday {
-                    let greeting = aiService.generateGreeting(type: .morning, by: oshi)
-                    let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
-                    chatRooms[roomIndex].addMessage(message)
+                // 朝（7-9時）おはようメッセージ
+                if hour >= 7 && hour < 9 {
+                    let lastMessage = chatRooms[roomIndex].messages.last
+                    let isToday = Calendar.current.isDateInToday(lastMessage?.timestamp ?? Date.distantPast)
+                    
+                    if !isToday {
+                        do {
+                            let greeting = try await aiService.generateGreeting(type: .morning, by: oshi)
+                            let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
+                            chatRooms[roomIndex].addMessage(message)
+                            try await dbManager.addMessage(to: oshi.id, message: message)
+                        } catch {
+                            print("❌ 朝の挨拶エラー: \(error)")
+                        }
+                    }
+                }
+                
+                // 夜（22-23時）おやすみメッセージ
+                if hour >= 22 && hour < 23 {
+                    do {
+                        let nightMessage = try await aiService.generateGreeting(type: .night, by: oshi)
+                        let message = Message(content: nightMessage, isFromUser: false, oshiId: oshi.id)
+                        chatRooms[roomIndex].addMessage(message)
+                        try await dbManager.addMessage(to: oshi.id, message: message)
+                    } catch {
+                        print("❌ 夜の挨拶エラー: \(error)")
+                    }
                 }
             }
-            
-            // 夜（22-23時）おやすみメッセージ
-            if hour >= 22 && hour < 23 {
-                let nightMessage = aiService.generateGreeting(type: .night, by: oshi)
-                let message = Message(content: nightMessage, isFromUser: false, oshiId: oshi.id)
-                chatRooms[roomIndex].addMessage(message)
-            }
-        }
-        
-        saveData()
-    }
-    
-    // MARK: - データ永続化
-    
-    private func saveData() {
-        if let encoded = try? JSONEncoder().encode(oshiList) {
-            UserDefaults.standard.set(encoded, forKey: "oshiList")
-        }
-        if let encoded = try? JSONEncoder().encode(posts) {
-            UserDefaults.standard.set(encoded, forKey: "posts")
-        }
-        if let encoded = try? JSONEncoder().encode(chatRooms) {
-            UserDefaults.standard.set(encoded, forKey: "chatRooms")
-        }
-    }
-    
-    private func loadData() {
-        if let data = UserDefaults.standard.data(forKey: "oshiList"),
-           let decoded = try? JSONDecoder().decode([OshiCharacter].self, from: data) {
-            oshiList = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: "posts"),
-           let decoded = try? JSONDecoder().decode([Post].self, from: data) {
-            posts = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: "chatRooms"),
-           let decoded = try? JSONDecoder().decode([ChatRoom].self, from: data) {
-            chatRooms = decoded
         }
     }
 }

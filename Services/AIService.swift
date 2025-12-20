@@ -2,32 +2,88 @@ import Foundation
 
 class AIService {
     static let shared = AIService()
+    private let openAI = OpenAIService.shared
     
-    // 投稿に対するコメント生成
-    func generateComment(for post: Post, by oshi: OshiCharacter, userMood: UserMood) -> String {
-        let baseResponse = getBaseResponse(personality: oshi.personality, mood: userMood, content: post.content)
-        return applyStyle(baseResponse, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+    // 投稿に対するコメント生成（OpenAI使用）
+    func generateComment(for post: Post, by oshi: OshiCharacter, userMood: UserMood) async throws -> String {
+        let prompt = openAI.createCommentPrompt(
+            character: oshi,
+            postContent: post.content,
+            userMood: userMood
+        )
+        
+        do {
+            let response = try await openAI.generateText(prompt: prompt)
+            return applyStyle(response, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+        } catch {
+            print("OpenAI Error: \(error)")
+            // フォールバック: ローカル生成
+            let baseResponse = getBaseResponse(personality: oshi.personality, mood: userMood, content: post.content)
+            return applyStyle(baseResponse, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+        }
     }
     
-    // チャットメッセージ生成
+    // チャットメッセージ生成（OpenAI使用）
     func generateChatReply(for userMessage: String, by oshi: OshiCharacter, 
-                           conversationHistory: [Message]) -> String {
-        let context = analyzeConversationContext(conversationHistory)
-        let baseReply = generateContextualReply(message: userMessage, oshi: oshi, context: context)
-        return applyStyle(baseReply, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+                           conversationHistory: [Message]) async throws -> String {
+        let prompt = openAI.createCharacterPrompt(
+            character: oshi,
+            userMessage: userMessage,
+            conversationHistory: conversationHistory
+        )
+        
+        do {
+            let response = try await openAI.generateText(prompt: prompt)
+            return response
+        } catch {
+            print("OpenAI Error: \(error)")
+            // フォールバック: ローカル生成
+            let context = analyzeConversationContext(conversationHistory)
+            let baseReply = generateContextualReply(message: userMessage, oshi: oshi, context: context)
+            return applyStyle(baseReply, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+        }
     }
     
-    // 推しからの自発的投稿生成
-    func generateOshiPost(by oshi: OshiCharacter) -> String {
-        let posts = getOshiDailyPosts(worldSetting: oshi.worldSetting, personality: oshi.personality)
-        let selected = posts.randomElement() ?? "今日もいい天気だね"
-        return applyStyle(selected, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+    // 推しからの自発的投稿生成（OpenAI使用）
+    func generateOshiPost(by oshi: OshiCharacter) async throws -> String {
+        let prompt = openAI.createOshiPostPrompt(character: oshi)
+        
+        do {
+            let response = try await openAI.generateText(prompt: prompt)
+            return response
+        } catch {
+            print("OpenAI Error: \(error)")
+            // フォールバック: ローカル生成
+            let posts = getOshiDailyPosts(worldSetting: oshi.worldSetting, personality: oshi.personality)
+            let selected = posts.randomElement() ?? "今日もいい天気だね"
+            return applyStyle(selected, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+        }
     }
     
-    // おはよう/おやすみメッセージ
-    func generateGreeting(type: GreetingType, by oshi: OshiCharacter) -> String {
-        let base = type == .morning ? getMorningGreeting(oshi: oshi) : getNightGreeting(oshi: oshi)
-        return applyStyle(base, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+    // おはよう/おやすみメッセージ（OpenAI使用）
+    func generateGreeting(type: GreetingType, by oshi: OshiCharacter) async throws -> String {
+        let greetingType = type == .morning ? "朝の挨拶" : "おやすみの挨拶"
+        
+        let prompt = """
+        あなたは\(oshi.name)として、\(greetingType)をします。
+        
+        【キャラクター設定】
+        - 性格: \(oshi.personality.rawValue)
+        - 口調: \(oshi.speechStyle.rawValue)
+        - 親密度: \(oshi.intimacyLevel)/100
+        
+        性格と口調に合った自然な\(greetingType)を30文字以内で返してください。
+        """
+        
+        do {
+            let response = try await openAI.generateText(prompt: prompt)
+            return response
+        } catch {
+            print("OpenAI Error: \(error)")
+            // フォールバック: ローカル生成
+            let base = type == .morning ? getMorningGreeting(oshi: oshi) : getNightGreeting(oshi: oshi)
+            return applyStyle(base, style: oshi.speechStyle, intimacy: oshi.intimacyLevel)
+        }
     }
     
     // ユーザーの気分を投稿から分析
@@ -61,7 +117,7 @@ class AIService {
         return .normal
     }
     
-    // MARK: - Private Methods
+    // MARK: - Private Methods (フォールバック用)
     
     private func getBaseResponse(personality: PersonalityType, mood: UserMood, content: String) -> String {
         switch (personality, mood) {
@@ -125,13 +181,14 @@ class AIService {
             result = result.replacingOccurrences(of: "ね", with: "ですね")
                           .replacingOccurrences(of: "よ", with: "ですよ")
         case .casual:
-            // 既にカジュアル
             break
         case .dialect:
             result = result.replacingOccurrences(of: "ね", with: "ねぇ")
                           .replacingOccurrences(of: "だよ", with: "やで")
         case .character:
-            result = result + "なのだ"
+            if !result.hasSuffix("なのだ") {
+                result = result + "なのだ"
+            }
         }
         
         return result
@@ -141,7 +198,6 @@ class AIService {
                                         context: ConversationContext) -> String {
         let mood = analyzeMood(from: message)
         
-        // 挨拶への応答
         if message.contains("おはよ") {
             return getMorningGreeting(oshi: oshi)
         }
@@ -149,7 +205,6 @@ class AIService {
             return getNightGreeting(oshi: oshi)
         }
         
-        // 通常の会話
         return getBaseResponse(personality: oshi.personality, mood: mood, content: message)
     }
     
