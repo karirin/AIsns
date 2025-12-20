@@ -83,6 +83,23 @@ class OpenAIService {
         return openAIResponse.choices.first?.message.content ?? ""
     }
     
+    func createInitialGreetingPrompt(character: OshiCharacter) -> String {
+         let prompt = """
+         あなたは\(character.name)として、初めて会ったユーザーに挨拶をします。
+         
+         【キャラクター設定】
+         - 性格: \(character.personality.rawValue)
+         - 口調: \(character.speechStyle.rawValue)
+         - 関係性: \(character.relationshipDistance.rawValue)
+         - 世界観: \(character.worldSetting.rawValue)
+         
+         自己紹介を含めた、親しみやすい初回の挨拶を50文字以内で返してください。
+         キャラクターの性格と口調を忠実に再現してください。
+         """
+         
+         return prompt
+     }
+    
     // キャラクター設定を含むプロンプト生成
     func createCharacterPrompt(
         character: OshiCharacter,

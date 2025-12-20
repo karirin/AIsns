@@ -1,3 +1,5 @@
+// ViewModels/OshiViewModel.swift
+
 import Foundation
 import Combine
 
@@ -197,7 +199,7 @@ class OshiViewModel: ObservableObject {
                 do {
                     try await Task.sleep(nanoseconds: UInt64.random(in: 2_000_000_000...5_000_000_000))
                     
-                    // OpenAI APIでコメント生成
+                    // OpenAI APIでコメント生成（フォールバックなし）
                     let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood)
                     let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
                     
@@ -215,7 +217,8 @@ class OshiViewModel: ObservableObject {
                     }
                     
                 } catch {
-                    print("❌ コメント生成エラー: \(error)")
+                    print("❌ \(oshi.name)のコメント生成失敗: \(error.localizedDescription)")
+                    // エラー時はコメントをスキップ（固定メッセージは送らない）
                 }
             }
         }
@@ -286,7 +289,7 @@ class OshiViewModel: ObservableObject {
                 // AI返信（1-3秒後）
                 try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
                 
-                // OpenAI APIで返信生成
+                // OpenAI APIで返信生成（フォールバックなし）
                 let reply = try await aiService.generateChatReply(
                     for: content,
                     by: oshi,
@@ -301,8 +304,10 @@ class OshiViewModel: ObservableObject {
                 print("✅ チャット返信成功")
                 
             } catch {
-                errorMessage = "メッセージの送信に失敗しました: \(error.localizedDescription)"
-                print("❌ メッセージ送信エラー: \(error)")
+                errorMessage = "メッセージの送信に失敗しました。APIキーを確認してください。"
+                print("❌ メッセージ送信エラー: \(error.localizedDescription)")
+                
+                // エラーメッセージを表示するだけで、固定メッセージは送らない
             }
         }
     }
@@ -325,30 +330,19 @@ class OshiViewModel: ObservableObject {
         guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { return }
         
         do {
-            var greeting = ""
-            switch oshi.relationshipDistance {
-            case .lover:
-                greeting = "よろしくね！これから一緒に過ごせるの楽しみ"
-            case .bestFriend:
-                greeting = "よろしく！仲良くしようね"
-            case .fanAndIdol:
-                greeting = "応援ありがとう！これからもよろしくね"
-            }
-            
-            // OpenAI APIで挨拶生成
-            let aiGreeting = try await aiService.generateChatReply(
-                for: greeting,
-                by: oshi,
-                conversationHistory: []
-            )
+            // AIServiceを使って初回挨拶を生成
+            let aiGreeting = try await aiService.generateInitialGreeting(for: oshi)
             
             let message = Message(content: aiGreeting, isFromUser: false, oshiId: oshi.id)
             chatRooms[roomIndex].addMessage(message)
             
             try await dbManager.addMessage(to: oshi.id, message: message)
             
+            print("✅ 初回挨拶成功: \(oshi.name)")
+            
         } catch {
-            print("❌ 初回挨拶エラー: \(error)")
+            print("❌ 初回挨拶エラー: \(error.localizedDescription)")
+            // エラー時は挨拶をスキップ
         }
     }
     
@@ -392,7 +386,8 @@ class OshiViewModel: ObservableObject {
                             chatRooms[roomIndex].addMessage(message)
                             try await dbManager.addMessage(to: oshi.id, message: message)
                         } catch {
-                            print("❌ 朝の挨拶エラー: \(error)")
+                            print("❌ \(oshi.name)の朝の挨拶エラー: \(error.localizedDescription)")
+                            // エラー時は挨拶をスキップ
                         }
                     }
                 }
@@ -405,7 +400,8 @@ class OshiViewModel: ObservableObject {
                         chatRooms[roomIndex].addMessage(message)
                         try await dbManager.addMessage(to: oshi.id, message: message)
                     } catch {
-                        print("❌ 夜の挨拶エラー: \(error)")
+                        print("❌ \(oshi.name)の夜の挨拶エラー: \(error.localizedDescription)")
+                        // エラー時は挨拶をスキップ
                     }
                 }
             }
