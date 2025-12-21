@@ -21,10 +21,10 @@ class FirebaseDatabaseManager {
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
-            "personality": oshi.personality.rawValue,
+            "personalityText": oshi.personalityText,
             "speechCharacteristics": oshi.speechCharacteristics,
             "userCallingName": oshi.userCallingName,
-            "speechStyle": oshi.speechStyle.rawValue,
+            "speechStyleText": oshi.speechStyleText,
             "createdAt": oshi.createdAt.timeIntervalSince1970,
             "totalInteractions": oshi.totalInteractions,
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0
@@ -379,10 +379,8 @@ class FirebaseDatabaseManager {
         guard let idString = data["id"] as? String,
               let id = UUID(uuidString: idString),
               let name = data["name"] as? String,
-              let personalityRaw = data["personality"] as? String,
-              let personality = PersonalityType(rawValue: personalityRaw),
-              let speechStyleRaw = data["speechStyle"] as? String,
-              let speechStyle = SpeechStyle(rawValue: speechStyleRaw),
+              let personalityText = data["personalityText"] as? String,
+              let speechStyleText = data["speechStyleText"] as? String,
               let createdAtTimestamp = data["createdAt"] as? TimeInterval else {
             return nil
         }
@@ -395,17 +393,19 @@ class FirebaseDatabaseManager {
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
-        
+
+        // 変更後
         var oshi = OshiCharacter(
             id: id,
             name: name,
             gender: gender,
-            personality: personality,
+            personalityText: personalityText,
             speechCharacteristics: speechCharacteristics,
             userCallingName: userCallingName,
-            speechStyle: speechStyle,
+            speechStyleText: speechStyleText,
             avatarImageURL: avatarImageURL
         )
+
         
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil

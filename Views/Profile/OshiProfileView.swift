@@ -173,7 +173,8 @@ struct OshiProfileView: View {
                         // 性格
                         ProfileRowButton(
                             label: "性格",
-                            value: "\(oshi.personality.emoji) \(oshi.personality.rawValue)",
+                            value: oshi.personalityText.isEmpty ? "追加" : oshi.personalityText,
+                            valueColor: oshi.personalityText.isEmpty ? .secondary : .primary,
                             showChevron: true
                         ) {
                             showingEditView = true
@@ -211,7 +212,8 @@ struct OshiProfileView: View {
                         // 口調
                         ProfileRowButton(
                             label: "口調",
-                            value: oshi.speechStyle.rawValue,
+                            value: oshi.speechStyleText.isEmpty ? "追加" : oshi.speechStyleText,
+                            valueColor: oshi.speechStyleText.isEmpty ? .secondary : .primary,
                             showChevron: true
                         ) {
                             showingEditView = true
@@ -372,10 +374,10 @@ struct ProfileRowButton: View {
             oshi: OshiCharacter(
                 name: "UI Pocket",
                 gender: .female,
-                personality: .cool,
+                personalityText: "クール",
                 speechCharacteristics: "柔らかくて優しい口調",
                 userCallingName: "あなた",
-                speechStyle: .casual
+                speechStyleText: "タメ口"
             ),
             viewModel: OshiViewModel()
         )

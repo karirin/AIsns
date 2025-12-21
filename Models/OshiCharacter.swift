@@ -53,10 +53,10 @@ struct OshiCharacter: Identifiable, Codable {
     let id: UUID
     var name: String
     var gender: Gender?
-    var personality: PersonalityType
+    var personalityText: String
     var speechCharacteristics: String
     var userCallingName: String
-    var speechStyle: SpeechStyle
+    var speechStyleText: String
     var createdAt: Date
     var totalInteractions: Int
     var lastInteractionDate: Date?
@@ -84,10 +84,10 @@ struct OshiCharacter: Identifiable, Codable {
         id: UUID = UUID(),
         name: String,
         gender: Gender? = nil,
-        personality: PersonalityType,
+        personalityText: String = "",
         speechCharacteristics: String = "",
         userCallingName: String = "",
-        speechStyle: SpeechStyle,
+        speechStyleText: String = "",
         avatarImageURL: String? = nil, // ← これを追加
         createdAt: Date = Date(),
         totalInteractions: Int = 0,
@@ -96,10 +96,10 @@ struct OshiCharacter: Identifiable, Codable {
         self.id = id
         self.name = name
         self.gender = gender
-        self.personality = personality
+        self.personalityText = personalityText
         self.speechCharacteristics = speechCharacteristics
         self.userCallingName = userCallingName
-        self.speechStyle = speechStyle
+        self.speechStyleText = speechStyleText
         self.avatarImageURL = avatarImageURL // ← これを追加
         self.createdAt = createdAt
         self.totalInteractions = totalInteractions

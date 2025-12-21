@@ -29,10 +29,10 @@ struct OshiProfileEditView: View {
 
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
-        _personalityText = State(initialValue: oshi.personality.rawValue)
+        _personalityText = State(initialValue: oshi.personalityText)
         _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
         _userCallingName = State(initialValue: oshi.userCallingName)
-        _speechStyleText = State(initialValue: oshi.speechStyle.rawValue)
+        _speechStyleText = State(initialValue: oshi.speechStyleText)
 
 
         _avatarImage = State(initialValue: nil)
@@ -312,9 +312,9 @@ struct OshiProfileEditView: View {
             
             // 性格: カスタムテキストまたは既存の列挙型から選択
             if let matchedPersonality = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
-                updatedOshi.personality = matchedPersonality
+                updatedOshi.personalityText = personalityText
             } else {
-                updatedOshi.personality = .kind  // 仮のデフォルト
+                updatedOshi.speechStyleText = speechStyleText // 仮のデフォルト
             }
             
             updatedOshi.speechCharacteristics = speechCharacteristics
@@ -322,9 +322,9 @@ struct OshiProfileEditView: View {
             
             // 口調: カスタムテキストまたは既存の列挙型から選択
             if let matchedStyle = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
-                updatedOshi.speechStyle = matchedStyle
+                updatedOshi.speechStyleText = speechStyleText
             } else {
-                updatedOshi.speechStyle = .polite  // 仮のデフォルト
+                updatedOshi.personalityText = personalityText
             }
             
             // 画像がある場合はStorageにアップロード
@@ -478,10 +478,10 @@ struct GenderSelectionView: View {
             oshi: OshiCharacter(
                 name: "さくら",
                 gender: .female,
-                personality: .kind,
+                personalityText: "優しい",
                 speechCharacteristics: "柔らかい口調で話す",
                 userCallingName: "あなた",
-                speechStyle: .polite
+                speechStyleText: "敬語"
             ),
             viewModel: OshiViewModel()
         )

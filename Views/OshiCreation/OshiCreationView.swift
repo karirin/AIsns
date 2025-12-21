@@ -324,10 +324,10 @@ struct OshiCreationView: View {
             var newOshi = OshiCharacter(
                 name: name.isEmpty ? "名無し" : name,
                 gender: gender,
-                personality: personality,
+                personalityText: personalityText, 
                 speechCharacteristics: speechCharacteristics,
                 userCallingName: userCallingName,
-                speechStyle: style,
+                speechStyleText: speechStyleText,
                 avatarImageURL: nil
             )
 

@@ -32,14 +32,14 @@ class OshiViewModel: ObservableObject {
         
         var oshi1 = OshiCharacter(
             name: "レン",
-            personality: .cool,
-            speechStyle: .casual
+            personalityText: "クールで無口。たまに甘い",
+            speechStyleText: "タメ口。語尾は短め"
         )
         
         var oshi2 = OshiCharacter(
             name: "ユイ",
-            personality: .cool,
-            speechStyle: .polite
+            personalityText: "優しくて面倒見がいい",
+            speechStyleText: "敬語寄りで丁寧"
         )
         
         self.oshiList = [oshi1, oshi2]

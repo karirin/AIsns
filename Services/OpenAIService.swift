@@ -88,7 +88,7 @@ class OpenAIService {
         あなたは\(character.name)として、初めて会ったユーザーに挨拶をします。
         
         【キャラクター設定】
-        - 性格: \(character.personality.rawValue)
+        - 性格: \(character.personalityText)
         """
         
         if !character.speechCharacteristics.isEmpty {
@@ -97,7 +97,7 @@ class OpenAIService {
         
         prompt += """
         
-        - 口調: \(character.speechStyle.rawValue)
+        - 口調: \(character.speechStyleText)
         
         自己紹介を含めた、親しみやすい初回の挨拶を50文字以内で返してください。
         キャラクターの性格と口調を忠実に再現してください。
@@ -117,8 +117,8 @@ class OpenAIService {
         
         【キャラクター設定】
         - 名前: \(character.name)
-        - 性格: \(character.personality.rawValue)
-        - 口調: \(character.speechStyle.rawValue)（例: \(character.speechStyle.example)）
+        - 性格: \(character.personalityText)
+        - 口調: \(character.speechStyleText)
         """
         
         prompt += "\n\n【重要な指示】"
@@ -152,8 +152,8 @@ class OpenAIService {
         あなたは\(character.name)として、ユーザーの投稿にコメントします。
         
         【キャラクター設定】
-        - 性格: \(character.personality.rawValue)
-        - 口調: \(character.speechStyle.rawValue)
+        - 性格: \(character.personalityText)
+        - 口調: \(character.speechStyleText)
         
         【ユーザーの投稿】
         \(postContent)
@@ -173,8 +173,8 @@ class OpenAIService {
         あなたは\(character.name)として、SNSに日常の投稿をします。
         
         【キャラクター設定】
-        - 性格: \(character.personality.rawValue)
-        - 口調: \(character.speechStyle.rawValue)
+        - 性格: \(character.personalityText)
+        - 口調: \(character.speechStyleText)
         
         自然な日常投稿を80文字以内で作成してください。
         """
