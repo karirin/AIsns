@@ -98,8 +98,6 @@ class OpenAIService {
         prompt += """
         
         - 口調: \(character.speechStyle.rawValue)
-        - 関係性: \(character.relationshipDistance.rawValue)
-        - 世界観: \(character.worldSetting.rawValue)
         
         自己紹介を含めた、親しみやすい初回の挨拶を50文字以内で返してください。
         キャラクターの性格と口調を忠実に再現してください。
@@ -121,14 +119,7 @@ class OpenAIService {
         - 名前: \(character.name)
         - 性格: \(character.personality.rawValue)
         - 口調: \(character.speechStyle.rawValue)（例: \(character.speechStyle.example)）
-        - 関係性: \(character.relationshipDistance.rawValue)
-        - 世界観: \(character.worldSetting.rawValue)
-        - 親密度レベル: \(character.intimacyLevel)/100
         """
-        
-        if !character.ngTopics.isEmpty {
-            prompt += "\n- NG項目: \(character.ngTopics.joined(separator: "、"))"
-        }
         
         prompt += "\n\n【重要な指示】"
         prompt += "\n- キャラクターになりきって、設定通りの性格と口調で返答してください"
@@ -163,7 +154,6 @@ class OpenAIService {
         【キャラクター設定】
         - 性格: \(character.personality.rawValue)
         - 口調: \(character.speechStyle.rawValue)
-        - 親密度: \(character.intimacyLevel)/100
         
         【ユーザーの投稿】
         \(postContent)
@@ -185,9 +175,8 @@ class OpenAIService {
         【キャラクター設定】
         - 性格: \(character.personality.rawValue)
         - 口調: \(character.speechStyle.rawValue)
-        - 世界観: \(character.worldSetting.rawValue)
         
-        この世界観と性格に合った、自然な日常投稿を80文字以内で作成してください。
+        自然な日常投稿を80文字以内で作成してください。
         """
         
         return prompt

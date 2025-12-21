@@ -37,8 +37,8 @@ struct OshiProfileView: View {
                                 .fill(
                                     LinearGradient(
                                         colors: [
-                                            Color(hex: oshi.avatarColor),
-                                            Color(hex: oshi.avatarColor).opacity(0.7)
+                                            Color(.red),
+                                            Color(.red).opacity(0.7)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -216,30 +216,6 @@ struct OshiProfileView: View {
                         ) {
                             showingEditView = true
                         }
-                        
-                        Divider()
-                            .padding(.leading, 16)
-                        
-                        // 距離感
-                        ProfileRowButton(
-                            label: "距離感",
-                            value: "\(oshi.relationshipDistance.icon) \(oshi.relationshipDistance.rawValue)",
-                            showChevron: true
-                        ) {
-                            showingEditView = true
-                        }
-                        
-                        Divider()
-                            .padding(.leading, 16)
-                        
-                        // 世界観
-                        ProfileRowButton(
-                            label: "世界観",
-                            value: "\(oshi.worldSetting.icon) \(oshi.worldSetting.rawValue)",
-                            showChevron: true
-                        ) {
-                            showingEditView = true
-                        }
                     }
                     .background(Color(.systemBackground))
                 }
@@ -271,16 +247,7 @@ struct OshiProfileView: View {
                         .padding(.top, 32)
                         .padding(.bottom, 8)
                     
-                    VStack(spacing: 0) {
-                        ProfileRowButton(
-                            label: "親密度レベル",
-                            value: "Lv.\(oshi.intimacyLevel)",
-                            showChevron: false
-                        ) { }
-                        
-                        Divider()
-                            .padding(.leading, 16)
-                        
+                    VStack(spacing: 0) {                        
                         ProfileRowButton(
                             label: "やりとり",
                             value: "\(oshi.totalInteractions)回",
@@ -408,10 +375,7 @@ struct ProfileRowButton: View {
                 personality: .cool,
                 speechCharacteristics: "柔らかくて優しい口調",
                 userCallingName: "あなた",
-                speechStyle: .casual,
-                relationshipDistance: .bestFriend,
-                worldSetting: .student,
-                avatarColor: "#FF69B4"
+                speechStyle: .casual
             ),
             viewModel: OshiViewModel()
         )

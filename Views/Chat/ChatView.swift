@@ -40,7 +40,7 @@ struct ChatRoomRow: View {
             // アバター
             ZStack(alignment: .topTrailing) {
                 Circle()
-                    .fill(Color(hex: oshi.avatarColor).gradient)
+                    .fill(Color(.red).gradient)
                     .frame(width: 56, height: 56)
                     .overlay(
                         Text(String(oshi.name.prefix(1)))
@@ -83,16 +83,6 @@ struct ChatRoomRow: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
-                }
-                
-                // 親密度表示
-                HStack(spacing: 4) {
-                    Image(systemName: "heart.fill")
-                        .foregroundColor(.pink)
-                        .font(.caption)
-                    Text("Lv.\(oshi.intimacyLevel)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -234,7 +224,7 @@ struct MessageBubble: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     // アバター
                     Circle()
-                        .fill(Color(hex: oshi.avatarColor).gradient)
+                        .fill(Color(.red).gradient)
                         .frame(width: 40, height: 40)
                         .overlay(
                             Text(String(oshi.name.prefix(1)))

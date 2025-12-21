@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct OshiListView: View {
     @ObservedObject var viewModel: OshiViewModel
@@ -62,8 +63,15 @@ struct OshiListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingCreationSheet) {
-                OshiCreationView(viewModel: viewModel)
+            .fullScreenCover(isPresented: $showingCreationSheet) {
+                NavigationStack {
+                    OshiCreationView(viewModel: viewModel)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("閉じる") { showingCreationSheet = false }
+                            }
+                        }
+                }
             }
         }
     }
@@ -75,8 +83,7 @@ struct OshiCard: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // アバター
-            Group {
+                // アバター（Groupを使わずに直接 if/else）
                 if let avatarImage = avatarImage {
                     Image(uiImage: avatarImage)
                         .resizable()
@@ -85,7 +92,7 @@ struct OshiCard: View {
                         .clipShape(Circle())
                 } else {
                     Circle()
-                        .fill(Color(hex: oshi.avatarColor).gradient)
+                        .fill(Color(.red).gradient)
                         .frame(width: 50, height: 50)
                         .overlay(
                             Text(String(oshi.name.prefix(1)))
@@ -94,7 +101,6 @@ struct OshiCard: View {
                                 .foregroundColor(.white)
                         )
                 }
-            }
             
             VStack(alignment: .leading, spacing: 4) {
                 // 名前と性格アイコン
@@ -106,12 +112,6 @@ struct OshiCard: View {
                     Text(oshi.personality.emoji)
                         .font(.caption)
                 }
-                
-                // プロフィール情報
-                Text("\(oshi.personality.rawValue) • \(oshi.worldSetting.rawValue)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
             }
             
             Spacer()

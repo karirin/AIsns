@@ -31,8 +31,6 @@ class AIService {
          【キャラクター設定】
          - 性格: \(oshi.personality.rawValue)
          - 口調: \(oshi.speechStyle.rawValue)
-         - 関係性: \(oshi.relationshipDistance.rawValue)
-         - 世界観: \(oshi.worldSetting.rawValue)
          
          自己紹介を含めた、親しみやすい初回の挨拶を50文字以内で返してください。
          キャラクターの性格と口調を忠実に再現してください。
@@ -88,7 +86,6 @@ class AIService {
         【キャラクター設定】
         - 性格: \(oshi.personality.rawValue)
         - 口調: \(oshi.speechStyle.rawValue)
-        - 親密度: \(oshi.intimacyLevel)/100
         
         性格と口調に合った自然な\(greetingType)を30文字以内で返してください。
         """

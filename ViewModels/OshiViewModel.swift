@@ -33,22 +33,14 @@ class OshiViewModel: ObservableObject {
         var oshi1 = OshiCharacter(
             name: "レン",
             personality: .cool,
-            speechStyle: .casual,
-            relationshipDistance: .lover,
-            worldSetting: .fantasy,
-            avatarColor: "#4F46E5"
+            speechStyle: .casual
         )
-        oshi1.intimacyLevel = 12
         
         var oshi2 = OshiCharacter(
             name: "ユイ",
             personality: .cool,
-            speechStyle: .polite,
-            relationshipDistance: .bestFriend,
-            worldSetting: .fantasy,
-            avatarColor: "#EC4899"
+            speechStyle: .polite
         )
-        oshi2.intimacyLevel = 7
         
         self.oshiList = [oshi1, oshi2]
         
@@ -109,7 +101,6 @@ class OshiViewModel: ObservableObject {
         Task {
             do {
                 var newOshi = oshi
-                newOshi.intimacyLevel = 0
                 
                 oshiList.append(newOshi)
                 
@@ -448,7 +439,7 @@ class OshiViewModel: ObservableObject {
         let hour = Calendar.current.component(.hour, from: Date())
         
         Task {
-            for oshi in oshiList where oshi.intimacyLevel >= 70 {
+            for oshi in oshiList {
                 guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { continue }
                 
                 if hour >= 7 && hour < 9 {

@@ -25,12 +25,7 @@ class FirebaseDatabaseManager {
             "speechCharacteristics": oshi.speechCharacteristics,
             "userCallingName": oshi.userCallingName,
             "speechStyle": oshi.speechStyle.rawValue,
-            "relationshipDistance": oshi.relationshipDistance.rawValue,
-            "worldSetting": oshi.worldSetting.rawValue,
-            "ngTopics": oshi.ngTopics,
-            "avatarColor": oshi.avatarColor,
             "createdAt": oshi.createdAt.timeIntervalSince1970,
-            "intimacyLevel": oshi.intimacyLevel,
             "totalInteractions": oshi.totalInteractions,
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0
         ]
@@ -388,11 +383,6 @@ class FirebaseDatabaseManager {
               let personality = PersonalityType(rawValue: personalityRaw),
               let speechStyleRaw = data["speechStyle"] as? String,
               let speechStyle = SpeechStyle(rawValue: speechStyleRaw),
-              let relationshipDistanceRaw = data["relationshipDistance"] as? String,
-              let relationshipDistance = RelationshipDistance(rawValue: relationshipDistanceRaw),
-              let worldSettingRaw = data["worldSetting"] as? String,
-              let worldSetting = WorldSetting(rawValue: worldSettingRaw),
-              let avatarColor = data["avatarColor"] as? String,
               let createdAtTimestamp = data["createdAt"] as? TimeInterval else {
             return nil
         }
@@ -401,7 +391,6 @@ class FirebaseDatabaseManager {
         let gender = genderRaw.flatMap { Gender(rawValue: $0) }
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
-        let ngTopics = data["ngTopics"] as? [String] ?? []
         let intimacyLevel = data["intimacyLevel"] as? Int ?? 0
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
@@ -415,14 +404,9 @@ class FirebaseDatabaseManager {
             speechCharacteristics: speechCharacteristics,
             userCallingName: userCallingName,
             speechStyle: speechStyle,
-            relationshipDistance: relationshipDistance,
-            worldSetting: worldSetting,
-            ngTopics: ngTopics,
-            avatarColor: avatarColor,
             avatarImageURL: avatarImageURL
         )
         
-        oshi.intimacyLevel = intimacyLevel
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil
         

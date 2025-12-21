@@ -49,38 +49,6 @@ enum SpeechStyle: String, CaseIterable, Codable {
     }
 }
 
-enum RelationshipDistance: String, CaseIterable, Codable {
-    case lover = "恋人寄り"
-    case bestFriend = "親友"
-    case fanAndIdol = "ファンと推し"
-    
-    var icon: String {
-        switch self {
-        case .lover: return "❤️"
-        case .bestFriend: return "👥"
-        case .fanAndIdol: return "⭐️"
-        }
-    }
-}
-
-enum WorldSetting: String, CaseIterable, Codable {
-    case idol = "アイドル"
-    case vtuber = "VTuber"
-    case student = "学生"
-    case worker = "社会人"
-    case fantasy = "異世界"
-    
-    var icon: String {
-        switch self {
-        case .idol: return "🎤"
-        case .vtuber: return "🎮"
-        case .student: return "🎓"
-        case .worker: return "💼"
-        case .fantasy: return "🗡️"
-        }
-    }
-}
-
 struct OshiCharacter: Identifiable, Codable {
     let id: UUID
     var name: String
@@ -89,13 +57,7 @@ struct OshiCharacter: Identifiable, Codable {
     var speechCharacteristics: String
     var userCallingName: String
     var speechStyle: SpeechStyle
-    var relationshipDistance: RelationshipDistance
-    var worldSetting: WorldSetting
-    var ngTopics: [String]
-    var avatarColor: String // Color as hex string
-    var avatarImageData: Data? // プロフィール画像データ
     var createdAt: Date
-    var intimacyLevel: Int // 0-100
     var totalInteractions: Int
     var lastInteractionDate: Date?
     var avatarImageURL: String?
@@ -115,17 +77,7 @@ struct OshiCharacter: Identifiable, Codable {
         if !userCallingName.isEmpty {
             return userCallingName
         }
-        
-        // デフォルトの親密度に応じた呼び方
-        if intimacyLevel < 20 {
-            return "\(name)さん"
-        } else if intimacyLevel < 50 {
-            return name
-        } else if intimacyLevel < 80 {
-            return relationshipDistance == .lover ? "\(name)ちゃん" : name
-        } else {
-            return relationshipDistance == .lover ? "きみ" : name
-        }
+        return "\(name)さん"
     }
     
     init(
@@ -136,13 +88,8 @@ struct OshiCharacter: Identifiable, Codable {
         speechCharacteristics: String = "",
         userCallingName: String = "",
         speechStyle: SpeechStyle,
-        relationshipDistance: RelationshipDistance,
-        worldSetting: WorldSetting,
-        ngTopics: [String] = [],
-        avatarColor: String,
         avatarImageURL: String? = nil, // ← これを追加
         createdAt: Date = Date(),
-        intimacyLevel: Int = 0,
         totalInteractions: Int = 0,
         lastInteractionDate: Date? = nil
     ) {
@@ -153,19 +100,13 @@ struct OshiCharacter: Identifiable, Codable {
         self.speechCharacteristics = speechCharacteristics
         self.userCallingName = userCallingName
         self.speechStyle = speechStyle
-        self.relationshipDistance = relationshipDistance
-        self.worldSetting = worldSetting
-        self.ngTopics = ngTopics
-        self.avatarColor = avatarColor
         self.avatarImageURL = avatarImageURL // ← これを追加
         self.createdAt = createdAt
-        self.intimacyLevel = intimacyLevel
         self.totalInteractions = totalInteractions
         self.lastInteractionDate = lastInteractionDate
     }
     
     mutating func increaseIntimacy(by amount: Int = 1) {
-        intimacyLevel = min(100, intimacyLevel + amount)
         totalInteractions += 1
         lastInteractionDate = Date()
     }

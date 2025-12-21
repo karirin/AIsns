@@ -191,8 +191,8 @@ struct PostCardView: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color(hex: oshi.avatarColor),
-                                    Color(hex: oshi.avatarColor).opacity(0.8)
+                                    Color(.red),
+                                    Color(.red).opacity(0.8)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -384,8 +384,8 @@ struct CommentRow: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(hex: oshi.avatarColor),
-                                Color(hex: oshi.avatarColor).opacity(0.8)
+                                Color(.red),
+                                Color(.red).opacity(0.8)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing

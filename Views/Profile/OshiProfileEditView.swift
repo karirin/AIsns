@@ -17,11 +17,7 @@ struct OshiProfileEditView: View {
     @State private var personalityText: String  // 自由入力用
     @State private var speechCharacteristics: String
     @State private var userCallingName: String
-    @State private var speechStyleText: String  // 自由入力用
-    @State private var relationshipDistance: RelationshipDistance
-    @State private var worldSetting: WorldSetting
-    @State private var ngTopicsText: String
-    @State private var selectedColor: Color
+    @State private var speechStyleText: String
     @State private var avatarImage: UIImage?
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
@@ -30,19 +26,21 @@ struct OshiProfileEditView: View {
     init(oshi: OshiCharacter, viewModel: OshiViewModel) {
         self.oshi = oshi
         self.viewModel = viewModel
-        
+
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
         _personalityText = State(initialValue: oshi.personality.rawValue)
         _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
         _userCallingName = State(initialValue: oshi.userCallingName)
         _speechStyleText = State(initialValue: oshi.speechStyle.rawValue)
-        _relationshipDistance = State(initialValue: oshi.relationshipDistance)
-        _worldSetting = State(initialValue: oshi.worldSetting)
-        _ngTopicsText = State(initialValue: oshi.ngTopics.joined(separator: ", "))
-        _selectedColor = State(initialValue: Color(hex: oshi.avatarColor))
-        // avatarImageは.taskで非同期に読み込む
+
+
+        _avatarImage = State(initialValue: nil)
+        _showingSaveConfirmation = State(initialValue: false)
+        _showingImagePicker = State(initialValue: false)
+        _isLoadingImage = State(initialValue: false)
     }
+
     
     var body: some View {
         ZStack {
@@ -75,7 +73,7 @@ struct OshiProfileEditView: View {
                                     Circle()
                                         .fill(
                                             LinearGradient(
-                                                colors: [selectedColor, selectedColor.opacity(0.7)],
+                                                colors: [.red, .red.opacity(0.7)],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
                                             )
@@ -329,13 +327,6 @@ struct OshiProfileEditView: View {
                 updatedOshi.speechStyle = .polite  // 仮のデフォルト
             }
             
-            updatedOshi.relationshipDistance = relationshipDistance
-            updatedOshi.worldSetting = worldSetting
-            updatedOshi.ngTopics = ngTopicsText.split(separator: ",").map {
-                String($0.trimmingCharacters(in: .whitespaces))
-            }.filter { !$0.isEmpty }
-            updatedOshi.avatarColor = selectedColor.toHex()
-            
             // 画像がある場合はStorageにアップロード
             if let image = avatarImage {
                 do {
@@ -490,10 +481,7 @@ struct GenderSelectionView: View {
                 personality: .kind,
                 speechCharacteristics: "柔らかい口調で話す",
                 userCallingName: "あなた",
-                speechStyle: .polite,
-                relationshipDistance: .bestFriend,
-                worldSetting: .student,
-                avatarColor: "#FF69B4"
+                speechStyle: .polite
             ),
             viewModel: OshiViewModel()
         )
