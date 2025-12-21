@@ -22,11 +22,12 @@ struct OshiProfileEditView: View {
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
     @State private var isLoadingImage = false
-    
-    init(oshi: OshiCharacter, viewModel: OshiViewModel) {
+    let isPreset: Bool
+
+    init(oshi: OshiCharacter, viewModel: OshiViewModel, isPreset: Bool = false) {
         self.oshi = oshi
         self.viewModel = viewModel
-
+        self.isPreset = isPreset
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
         _personalityText = State(initialValue: oshi.personalityText)
@@ -316,6 +317,8 @@ struct OshiProfileEditView: View {
             } else {
                 updatedOshi.speechStyleText = speechStyleText // 仮のデフォルト
             }
+            print("💾 saveChanges isPreset=\(isPreset) id=\(updatedOshi.id.uuidString) name=\(updatedOshi.name)")
+
             
             updatedOshi.speechCharacteristics = speechCharacteristics
             updatedOshi.userCallingName = userCallingName
@@ -341,7 +344,11 @@ struct OshiProfileEditView: View {
                 }
             }
             
-            viewModel.updateOshi(updatedOshi)
+            if isPreset {
+                await viewModel.updatePresetOshi(updatedOshi)   // ←新規に用意する
+            } else {
+                await viewModel.updateOshi(updatedOshi)
+            }
             
             // 保存完了の通知を表示
             await MainActor.run {

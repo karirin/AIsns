@@ -10,6 +10,7 @@ class OshiViewModel: ObservableObject {
     @Published var chatRooms: [ChatRoom] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var recommendedOshis: [OshiCharacter] = []
     
     // ✅ 投稿の詳細情報（必要な時だけ取得）
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -67,17 +68,62 @@ class OshiViewModel: ObservableObject {
             self.chatRooms = []
         }
     }
-    
-    func followRecommended(_ oshi: OshiCharacter) async {
-        // すでに追加済みなら何もしない
-        guard !oshiList.contains(where: { $0.id == oshi.id }) else { return }
 
+    func followRecommended(_ preset: OshiCharacter) async {
         do {
-            try await dbManager.saveOshi(oshi)
-            // 画面即反映（createdAt順に合わせたいなら loadOshiList し直しでもOK）
-            oshiList.insert(oshi, at: 0)
+            // すでにフォロー済みなら何もしない
+            if oshiList.contains(where: { $0.id == preset.id }) { return }
+
+            // 1) 推しを保存 & リスト反映
+            try await dbManager.saveOshi(preset)
+            oshiList.insert(preset, at: 0)
+
+            // 2) チャットルームが無ければ作る（空メッセージでOK）
+            if !chatRooms.contains(where: { $0.oshiId == preset.id }) {
+                let room = ChatRoom(id: UUID(), oshiId: preset.id, messages: [], lastMessageDate: nil, unreadCount: 0)
+                try await dbManager.saveChatRoom(room)
+                chatRooms.append(room)
+            }
+
+            // 3) 推しから「最初の1通」を送る（保存されるのでチャットに出る）
+            let welcome = Message(
+                id: UUID(),
+                content: "フォローありがとう、\(preset.userCallingName.isEmpty ? "ねえ" : preset.userCallingName)！これからたくさん話そう☺️",
+                isFromUser: false,
+                oshiId: preset.id,
+                timestamp: Date(),
+                isRead: false
+            )
+
+            try await dbManager.addMessage(to: preset.id, message: welcome)
+
+            // 4) ローカルの chatRooms も即時反映（一覧にすぐ出すため）
+            if let idx = chatRooms.firstIndex(where: { $0.oshiId == preset.id }) {
+                var room = chatRooms[idx]
+                room.messages.append(welcome)
+                room.lastMessageDate = welcome.timestamp
+                room.unreadCount += 1
+                chatRooms[idx] = room
+            }
+
         } catch {
-            errorMessage = "フォローに失敗しました: \(error.localizedDescription)"
+            self.errorMessage = error.localizedDescription
+        }
+    }
+    
+    @MainActor
+    func updatePresetOshi(_ oshi: OshiCharacter) async {
+        do {
+            print("🛠️ updatePresetOshi start id=\(oshi.id.uuidString) name=\(oshi.name)")
+            try await dbManager.savePresetOshi(oshi)
+            print("✅ updatePresetOshi success id=\(oshi.id.uuidString)")
+
+            if let idx = recommendedOshis.firstIndex(where: { $0.id == oshi.id }) {
+                recommendedOshis[idx] = oshi
+            }
+        } catch {
+            print("❌ updatePresetOshi failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -87,27 +133,30 @@ class OshiViewModel: ObservableObject {
     func loadData() async {
         isLoading = true
         errorMessage = nil
-        
+
         do {
             async let oshiListTask = dbManager.loadOshiList()
             async let postsTask = dbManager.loadPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
-            
-            let (loadedOshi, loadedPosts, loadedRooms) = try await (oshiListTask, postsTask, chatRoomsTask)
-            
+            async let presetsTask = dbManager.fetchPresetOshis()   // ✅ 追加（おすすめも並列で取る）
+
+            let (loadedOshi, loadedPosts, loadedRooms, presets) =
+                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask)  // ✅ 変更
+
             oshiList = loadedOshi
+            recommendedOshis = presets    // ✅ ここだけにする（2重ロード削除）
             posts = loadedPosts
             chatRooms = loadedRooms
-            
+
             print("✅ データ読み込み成功: 推し\(oshiList.count)人, 投稿\(posts.count)件")
-            
         } catch {
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
             print("❌ データ読み込みエラー: \(error)")
         }
-        
+
         isLoading = false
     }
+
     
     // MARK: - 推し管理
     
