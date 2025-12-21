@@ -39,6 +39,11 @@ class FirebaseDatabaseManager {
             oshiData["gender"] = gender.rawValue
         }
         
+        // 画像URLを保存 (Base64の代わり)
+        if let imageURL = oshi.avatarImageURL {
+            oshiData["avatarImageURL"] = imageURL
+        }
+        
         try await oshiRef.setValue(oshiData)
     }
     
@@ -61,11 +66,11 @@ class FirebaseDatabaseManager {
     }
     
     func deleteOshi(_ oshiId: UUID) async throws {
+        // Storage上の画像を削除
+        try? await FirebaseStorageManager.shared.deleteOshiAvatar(oshiId: oshiId)
+        
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshiId.uuidString)")
         try await oshiRef.removeValue()
-        
-        // 関連データも削除
-        try await ref.child("users/\(userId)/chatRooms/\(oshiId.uuidString)").removeValue()
         
         // 投稿から推しの投稿を削除
         let postsSnapshot = try await ref.child("users/\(userId)/posts").getData()
@@ -267,10 +272,17 @@ class FirebaseDatabaseManager {
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
         
+        // 画像データの読み込み
+        var avatarImageData: Data? = nil
+        if let base64String = data["avatarImageData"] as? String {
+            avatarImageData = Data(base64Encoded: base64String)
+        }
+        
         let ngTopics = data["ngTopics"] as? [String] ?? []
         let intimacyLevel = data["intimacyLevel"] as? Int ?? 0
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
+        let avatarImageURL = data["avatarImageURL"] as? String
         
         var oshi = OshiCharacter(
             id: id,
@@ -283,7 +295,8 @@ class FirebaseDatabaseManager {
             relationshipDistance: relationshipDistance,
             worldSetting: worldSetting,
             ngTopics: ngTopics,
-            avatarColor: avatarColor
+            avatarColor: avatarColor,
+            avatarImageURL: avatarImageURL // 追加
         )
         
         oshi.intimacyLevel = intimacyLevel

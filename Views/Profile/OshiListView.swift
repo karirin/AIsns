@@ -71,19 +71,30 @@ struct OshiListView: View {
 
 struct OshiCard: View {
     let oshi: OshiCharacter
+    @State private var avatarImage: UIImage?
     
     var body: some View {
         HStack(spacing: 12) {
             // アバター
-            Circle()
-                .fill(Color(hex: oshi.avatarColor).gradient)
-                .frame(width: 50, height: 50)
-                .overlay(
-                    Text(String(oshi.name.prefix(1)))
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                )
+            Group {
+                if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color(hex: oshi.avatarColor).gradient)
+                        .frame(width: 50, height: 50)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        )
+                }
+            }
             
             VStack(alignment: .leading, spacing: 4) {
                 // 名前と性格アイコン
@@ -108,6 +119,12 @@ struct OshiCard: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(Color(.systemBackground))
+        .task {
+            // 画像を非同期で読み込み
+            if let urlString = oshi.avatarImageURL {
+                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+            }
+        }
     }
 }
 

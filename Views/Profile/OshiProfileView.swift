@@ -2,7 +2,7 @@
 //  OshiProfileView.swift
 //  AIsns
 //
-//  Updated: 2025/12/20
+//  Updated: 2025/12/21 - 画像表示対応
 //
 
 import SwiftUI
@@ -13,29 +13,45 @@ struct OshiProfileView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showingDeleteAlert = false
     @State private var showingEditView = false
+    @State private var avatarImage: UIImage?
     
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 // プロフィール画像エリア
                 VStack(spacing: 12) {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(hex: oshi.avatarColor),
-                                    Color(hex: oshi.avatarColor).opacity(0.7)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 100, height: 100)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.system(size: 40, weight: .bold))
-                                .foregroundColor(.white)
-                        )
+                    Button(action: { showingEditView = true }) {
+                        if let avatarImage = avatarImage {
+                            Image(uiImage: avatarImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white, lineWidth: 4)
+                                )
+                                .shadow(radius: 5)
+                        } else {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(hex: oshi.avatarColor),
+                                            Color(hex: oshi.avatarColor).opacity(0.7)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 100, height: 100)
+                                .overlay(
+                                    Text(String(oshi.name.prefix(1)))
+                                        .font(.system(size: 40, weight: .bold))
+                                        .foregroundColor(.white)
+                                )
+                        }
+                    }
                     
                     Text("写真を変更")
                         .font(.subheadline)

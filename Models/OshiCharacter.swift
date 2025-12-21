@@ -84,19 +84,30 @@ enum WorldSetting: String, CaseIterable, Codable {
 struct OshiCharacter: Identifiable, Codable {
     let id: UUID
     var name: String
-    var gender: Gender?  // 新規追加
+    var gender: Gender?
     var personality: PersonalityType
-    var speechCharacteristics: String  // 新規追加: 話し方の特徴
-    var userCallingName: String  // 新規追加: ユーザーへの呼び方
+    var speechCharacteristics: String
+    var userCallingName: String
     var speechStyle: SpeechStyle
     var relationshipDistance: RelationshipDistance
     var worldSetting: WorldSetting
     var ngTopics: [String]
     var avatarColor: String // Color as hex string
+    var avatarImageData: Data? // プロフィール画像データ
     var createdAt: Date
     var intimacyLevel: Int // 0-100
     var totalInteractions: Int
     var lastInteractionDate: Date?
+    var avatarImageURL: String?
+    
+    // UIImageに変換
+    @MainActor
+    var avatarImage: UIImage? {
+        get async {
+            guard let urlString = avatarImageURL else { return nil }
+            return try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+        }
+    }
     
     // 親密度に応じた呼び方（既存のロジックは保持）
     var callingName: String {
@@ -117,12 +128,24 @@ struct OshiCharacter: Identifiable, Codable {
         }
     }
     
-    init(id: UUID = UUID(), name: String, gender: Gender? = nil,
-         personality: PersonalityType, speechCharacteristics: String = "",
-         userCallingName: String = "", speechStyle: SpeechStyle,
-         relationshipDistance: RelationshipDistance,
-         worldSetting: WorldSetting, ngTopics: [String] = [],
-         avatarColor: String = "#FF6B9D") {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        gender: Gender? = nil,
+        personality: PersonalityType,
+        speechCharacteristics: String = "",
+        userCallingName: String = "",
+        speechStyle: SpeechStyle,
+        relationshipDistance: RelationshipDistance,
+        worldSetting: WorldSetting,
+        ngTopics: [String] = [],
+        avatarColor: String,
+        avatarImageURL: String? = nil, // ← これを追加
+        createdAt: Date = Date(),
+        intimacyLevel: Int = 0,
+        totalInteractions: Int = 0,
+        lastInteractionDate: Date? = nil
+    ) {
         self.id = id
         self.name = name
         self.gender = gender
@@ -134,10 +157,11 @@ struct OshiCharacter: Identifiable, Codable {
         self.worldSetting = worldSetting
         self.ngTopics = ngTopics
         self.avatarColor = avatarColor
-        self.createdAt = Date()
-        self.intimacyLevel = 0
-        self.totalInteractions = 0
-        self.lastInteractionDate = nil
+        self.avatarImageURL = avatarImageURL // ← これを追加
+        self.createdAt = createdAt
+        self.intimacyLevel = intimacyLevel
+        self.totalInteractions = totalInteractions
+        self.lastInteractionDate = lastInteractionDate
     }
     
     mutating func increaseIntimacy(by amount: Int = 1) {

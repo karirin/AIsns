@@ -2,7 +2,7 @@
 //  OshiProfileEdit.swift
 //  AIsns
 //
-//  Updated: 2025/12/20
+//  Updated: 2025/12/21 - 画像アップロード機能追加
 //
 
 import SwiftUI
@@ -22,7 +22,10 @@ struct OshiProfileEditView: View {
     @State private var worldSetting: WorldSetting
     @State private var ngTopicsText: String
     @State private var selectedColor: Color
+    @State private var avatarImage: UIImage?
     @State private var showingSaveConfirmation = false
+    @State private var showingImagePicker = false
+    @State private var isLoadingImage = false
     
     init(oshi: OshiCharacter, viewModel: OshiViewModel) {
         self.oshi = oshi
@@ -38,6 +41,7 @@ struct OshiProfileEditView: View {
         _worldSetting = State(initialValue: oshi.worldSetting)
         _ngTopicsText = State(initialValue: oshi.ngTopics.joined(separator: ", "))
         _selectedColor = State(initialValue: Color(hex: oshi.avatarColor))
+        // avatarImageは.taskで非同期に読み込む
     }
     
     var body: some View {
@@ -46,20 +50,45 @@ struct OshiProfileEditView: View {
                 VStack(spacing: 0) {
                     // プロフィール画像エリア
                     VStack(spacing: 12) {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [selectedColor, selectedColor.opacity(0.7)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 100, height: 100)
-                            .overlay(
-                                Text(String(name.prefix(1).isEmpty ? "?" : name.prefix(1)))
-                                    .font(.system(size: 40, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
+                        Button(action: { showingImagePicker = true }) {
+                            Group {
+                                if isLoadingImage {
+                                    // ローディング中
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 100, height: 100)
+                                        .overlay(
+                                            ProgressView()
+                                        )
+                                } else if let avatarImage = avatarImage {
+                                    Image(uiImage: avatarImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 100, height: 100)
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white, lineWidth: 4)
+                                        )
+                                        .shadow(radius: 5)
+                                } else {
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [selectedColor, selectedColor.opacity(0.7)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 100, height: 100)
+                                        .overlay(
+                                            Text(String(name.prefix(1).isEmpty ? "?" : name.prefix(1)))
+                                                .font(.system(size: 40, weight: .bold))
+                                                .foregroundColor(.white)
+                                        )
+                                }
+                            }
+                        }
                         
                         Text("写真を変更")
                             .font(.subheadline)
@@ -264,53 +293,79 @@ struct OshiProfileEditView: View {
                 .fontWeight(.semibold)
             }
         }
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePickerWithCrop(selectedImage: $avatarImage)
+        }
+        .task {
+            // 画像を非同期で読み込み
+            if let urlString = oshi.avatarImageURL, avatarImage == nil {
+                isLoadingImage = true
+                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+                isLoadingImage = false
+            }
+        }
     }
     
     private func saveChanges() {
-        var updatedOshi = oshi
-        updatedOshi.name = name
-        updatedOshi.gender = gender
-        
-        // 性格: カスタムテキストまたは既存の列挙型から選択
-        if let matchedPersonality = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
-            updatedOshi.personality = matchedPersonality
-        } else {
-            // カスタムテキストの場合は適当なデフォルト値を設定
-            // または PersonalityType に .custom(String) を追加する必要があります
-            updatedOshi.personality = .kind  // 仮のデフォルト
-        }
-        
-        updatedOshi.speechCharacteristics = speechCharacteristics
-        updatedOshi.userCallingName = userCallingName
-        
-        // 口調: カスタムテキストまたは既存の列挙型から選択
-        if let matchedStyle = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
-            updatedOshi.speechStyle = matchedStyle
-        } else {
-            updatedOshi.speechStyle = .polite  // 仮のデフォルト
-        }
-        
-        updatedOshi.relationshipDistance = relationshipDistance
-        updatedOshi.worldSetting = worldSetting
-        updatedOshi.ngTopics = ngTopicsText.split(separator: ",").map {
-            String($0.trimmingCharacters(in: .whitespaces))
-        }.filter { !$0.isEmpty }
-        updatedOshi.avatarColor = selectedColor.toHex()
-        
-        viewModel.updateOshi(updatedOshi)
-        
-        // 保存完了の通知を表示
-        withAnimation {
-            showingSaveConfirmation = true
-        }
-        
-        // 1.5秒後に通知を非表示にして閉じる
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
-                showingSaveConfirmation = false
+        Task {
+            var updatedOshi = oshi
+            updatedOshi.name = name
+            updatedOshi.gender = gender
+            
+            // 性格: カスタムテキストまたは既存の列挙型から選択
+            if let matchedPersonality = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
+                updatedOshi.personality = matchedPersonality
+            } else {
+                updatedOshi.personality = .kind  // 仮のデフォルト
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismiss()
+            
+            updatedOshi.speechCharacteristics = speechCharacteristics
+            updatedOshi.userCallingName = userCallingName
+            
+            // 口調: カスタムテキストまたは既存の列挙型から選択
+            if let matchedStyle = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
+                updatedOshi.speechStyle = matchedStyle
+            } else {
+                updatedOshi.speechStyle = .polite  // 仮のデフォルト
+            }
+            
+            updatedOshi.relationshipDistance = relationshipDistance
+            updatedOshi.worldSetting = worldSetting
+            updatedOshi.ngTopics = ngTopicsText.split(separator: ",").map {
+                String($0.trimmingCharacters(in: .whitespaces))
+            }.filter { !$0.isEmpty }
+            updatedOshi.avatarColor = selectedColor.toHex()
+            
+            // 画像がある場合はStorageにアップロード
+            if let image = avatarImage {
+                do {
+                    let imageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(
+                        image,
+                        oshiId: oshi.id
+                    )
+                    updatedOshi.avatarImageURL = imageURL
+                } catch {
+                    print("画像アップロードエラー: \(error)")
+                    // エラー処理 (必要に応じてアラート表示)
+                }
+            }
+            
+            viewModel.updateOshi(updatedOshi)
+            
+            // 保存完了の通知を表示
+            await MainActor.run {
+                withAnimation {
+                    showingSaveConfirmation = true
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation {
+                        showingSaveConfirmation = false
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
+                }
             }
         }
     }
