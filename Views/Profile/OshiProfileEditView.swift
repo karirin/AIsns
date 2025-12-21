@@ -14,10 +14,10 @@ struct OshiProfileEditView: View {
     
     @State private var name: String
     @State private var gender: Gender?
-    @State private var personality: PersonalityType
+    @State private var personalityText: String  // 自由入力用
     @State private var speechCharacteristics: String
     @State private var userCallingName: String
-    @State private var speechStyle: SpeechStyle
+    @State private var speechStyleText: String  // 自由入力用
     @State private var relationshipDistance: RelationshipDistance
     @State private var worldSetting: WorldSetting
     @State private var ngTopicsText: String
@@ -30,10 +30,10 @@ struct OshiProfileEditView: View {
         
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
-        _personality = State(initialValue: oshi.personality)
+        _personalityText = State(initialValue: oshi.personality.rawValue)
         _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
         _userCallingName = State(initialValue: oshi.userCallingName)
-        _speechStyle = State(initialValue: oshi.speechStyle)
+        _speechStyleText = State(initialValue: oshi.speechStyle.rawValue)
         _relationshipDistance = State(initialValue: oshi.relationshipDistance)
         _worldSetting = State(initialValue: oshi.worldSetting)
         _ngTopicsText = State(initialValue: oshi.ngTopics.joined(separator: ", "))
@@ -93,7 +93,7 @@ struct OshiProfileEditView: View {
                                 
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.clear)
                             }
                             .padding(.horizontal)
                             .padding(.vertical, 14)
@@ -128,81 +128,10 @@ struct OshiProfileEditView: View {
                             
                             Divider()
                                 .padding(.leading, 16)
-                            
-                            // ユーザー名（固定）
-                            HStack {
-                                Text("ユーザー名")
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-                                
-                                Spacer()
-                                
-                                Text("up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))")
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.clear)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 14)
-                            .background(Color(.systemBackground))
-                            
-                            Divider()
-                                .padding(.leading, 16)
-                            
-                            // SNSリンク
-                            HStack {
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Text("tiktok.com/@up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))")
-                                        .font(.subheadline)
-                                        .foregroundColor(.primary)
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 14)
-                            .background(Color(.systemBackground))
                         }
                         .background(Color(.systemBackground))
                     }
-                    
-                    // 自己紹介
-                    VStack(spacing: 0) {
-                        Divider()
-                            .padding(.leading, 16)
-                        
-                        NavigationLink {
-                            SpeechCharacteristicsEditView(text: $speechCharacteristics)
-                        } label: {
-                            HStack {
-                                Text("自己紹介")
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-                                
-                                Spacer()
-                                
-                                Text(speechCharacteristics.isEmpty ? "自己紹介を追加" : speechCharacteristics)
-                                    .font(.subheadline)
-                                    .foregroundColor(speechCharacteristics.isEmpty ? .secondary : .primary)
-                                    .lineLimit(1)
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 14)
-                            .background(Color(.systemBackground))
-                        }
-                    }
-                    .background(Color(.systemBackground))
-                    .padding(.top, 20)
-                    
+
                     // キャラクター設定セクション
                     VStack(spacing: 0) {
                         Text("キャラクター設定")
@@ -214,11 +143,19 @@ struct OshiProfileEditView: View {
                             .padding(.bottom, 8)
                         
                         VStack(spacing: 0) {
-                            // 性格
+                            // 性格（自由入力）
                             NavigationLink {
-                                PersonalitySelectionView(selectedPersonality: $personality)
+                                FreeTextEditView(
+                                    title: "性格",
+                                    placeholder: "優しい、明るい、ツンデレ など",
+                                    text: $personalityText
+                                )
                             } label: {
-                                EditRowLabel(label: "性格", value: "\(personality.emoji) \(personality.rawValue)")
+                                EditRowLabel(
+                                    label: "性格",
+                                    value: personalityText.isEmpty ? "追加" : personalityText,
+                                    valueColor: personalityText.isEmpty ? .secondary : .primary
+                                )
                             }
                             
                             Divider()
@@ -226,7 +163,11 @@ struct OshiProfileEditView: View {
                             
                             // 話し方の特徴
                             NavigationLink {
-                                SpeechCharacteristicsEditView(text: $speechCharacteristics)
+                                FreeTextEditView(
+                                    title: "話し方の特徴",
+                                    placeholder: "柔らかい口調、元気いっぱい など",
+                                    text: $speechCharacteristics
+                                )
                             } label: {
                                 EditRowLabel(
                                     label: "話し方の特徴",
@@ -262,32 +203,23 @@ struct OshiProfileEditView: View {
                             Divider()
                                 .padding(.leading, 16)
                             
-                            // 口調
+                            // 口調（自由入力）
                             NavigationLink {
-                                SpeechStyleSelectionView(selectedStyle: $speechStyle)
+                                FreeTextEditView(
+                                    title: "口調",
+                                    placeholder: "丁寧、タメ口、方言 など",
+                                    text: $speechStyleText
+                                )
                             } label: {
-                                EditRowLabel(label: "口調", value: speechStyle.rawValue)
+                                EditRowLabel(
+                                    label: "口調",
+                                    value: speechStyleText.isEmpty ? "追加" : speechStyleText,
+                                    valueColor: speechStyleText.isEmpty ? .secondary : .primary
+                                )
                             }
                             
                             Divider()
                                 .padding(.leading, 16)
-                            
-                            // 距離感
-                            NavigationLink {
-                                RelationshipSelectionView(selectedDistance: $relationshipDistance)
-                            } label: {
-                                EditRowLabel(label: "距離感", value: "\(relationshipDistance.icon) \(relationshipDistance.rawValue)")
-                            }
-                            
-                            Divider()
-                                .padding(.leading, 16)
-                            
-                            // 世界観
-                            NavigationLink {
-                                WorldSettingSelectionView(selectedSetting: $worldSetting)
-                            } label: {
-                                EditRowLabel(label: "世界観", value: "\(worldSetting.icon) \(worldSetting.rawValue)")
-                            }
                         }
                         .background(Color(.systemBackground))
                     }
@@ -304,7 +236,7 @@ struct OshiProfileEditView: View {
                         Image(systemName: "checkmark")
                             .font(.subheadline)
                             .foregroundColor(.white)
-                        Text("名前を更新しました")
+                        Text("保存しました")
                             .font(.subheadline)
                             .foregroundColor(.white)
                     }
@@ -324,13 +256,6 @@ struct OshiProfileEditView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("キャンセル") {
-                    dismiss()
-                }
-                .foregroundColor(.primary)
-            }
-            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
                     saveChanges()
@@ -345,10 +270,26 @@ struct OshiProfileEditView: View {
         var updatedOshi = oshi
         updatedOshi.name = name
         updatedOshi.gender = gender
-        updatedOshi.personality = personality
+        
+        // 性格: カスタムテキストまたは既存の列挙型から選択
+        if let matchedPersonality = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
+            updatedOshi.personality = matchedPersonality
+        } else {
+            // カスタムテキストの場合は適当なデフォルト値を設定
+            // または PersonalityType に .custom(String) を追加する必要があります
+            updatedOshi.personality = .kind  // 仮のデフォルト
+        }
+        
         updatedOshi.speechCharacteristics = speechCharacteristics
         updatedOshi.userCallingName = userCallingName
-        updatedOshi.speechStyle = speechStyle
+        
+        // 口調: カスタムテキストまたは既存の列挙型から選択
+        if let matchedStyle = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
+            updatedOshi.speechStyle = matchedStyle
+        } else {
+            updatedOshi.speechStyle = .polite  // 仮のデフォルト
+        }
+        
         updatedOshi.relationshipDistance = relationshipDistance
         updatedOshi.worldSetting = worldSetting
         updatedOshi.ngTopics = ngTopicsText.split(separator: ",").map {
@@ -371,6 +312,39 @@ struct OshiProfileEditView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 dismiss()
             }
+        }
+    }
+}
+
+// 自由テキスト編集画面（汎用）
+struct FreeTextEditView: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+    @Environment(\.dismiss) var dismiss
+    @FocusState private var isFocused: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            TextField(placeholder, text: $text, axis: .vertical)
+                .focused($isFocused)
+                .padding()
+                .font(.body)
+                .lineLimit(3...10)
+            
+            Spacer()
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完了") {
+                    dismiss()
+                }
+            }
+        }
+        .onAppear {
+            isFocused = true
         }
     }
 }
@@ -401,40 +375,6 @@ struct EditRowLabel: View {
         .padding(.horizontal)
         .padding(.vertical, 14)
         .background(Color(.systemBackground))
-    }
-}
-
-// 編集行（カスタムコンテンツ対応）
-struct EditRow<Content: View>: View {
-    let icon: String
-    let title: String
-    let value: String
-    let placeholder: String
-    @ViewBuilder let content: Content
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundColor(.primary)
-                .frame(width: 40, height: 40)
-            
-            Text(title)
-                .font(.body)
-            
-            Spacer()
-            
-            content
-            
-            if !(content is EmptyView) {
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .opacity(0)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
     }
 }
 
@@ -482,165 +422,6 @@ struct GenderSelectionView: View {
             }
         }
         .navigationTitle("性別")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// 性格選択画面
-struct PersonalitySelectionView: View {
-    @Binding var selectedPersonality: PersonalityType
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        List {
-            ForEach(PersonalityType.allCases, id: \.self) { personality in
-                Button {
-                    selectedPersonality = personality
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text("\(personality.emoji) \(personality.rawValue)")
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if selectedPersonality == personality {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("性格")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// 話し方の特徴編集画面
-struct SpeechCharacteristicsEditView: View {
-    @Binding var text: String
-    @Environment(\.dismiss) var dismiss
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            TextEditor(text: $text)
-                .focused($isFocused)
-                .padding()
-                .font(.body)
-            
-            Spacer()
-        }
-        .navigationTitle("話し方の特徴")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("完了") {
-                    dismiss()
-                }
-            }
-        }
-        .onAppear {
-            isFocused = true
-        }
-    }
-}
-
-// 口調選択画面
-struct SpeechStyleSelectionView: View {
-    @Binding var selectedStyle: SpeechStyle
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        List {
-            ForEach(SpeechStyle.allCases, id: \.self) { style in
-                Button {
-                    selectedStyle = style
-                    dismiss()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(style.rawValue)
-                                .foregroundColor(.primary)
-                            Text(style.example)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if selectedStyle == style {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("口調")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// 距離感選択画面
-struct RelationshipSelectionView: View {
-    @Binding var selectedDistance: RelationshipDistance
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        List {
-            ForEach(RelationshipDistance.allCases, id: \.self) { distance in
-                Button {
-                    selectedDistance = distance
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text("\(distance.icon) \(distance.rawValue)")
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if selectedDistance == distance {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("距離感")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// 世界観選択画面
-struct WorldSettingSelectionView: View {
-    @Binding var selectedSetting: WorldSetting
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        List {
-            ForEach(WorldSetting.allCases, id: \.self) { setting in
-                Button {
-                    selectedSetting = setting
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text("\(setting.icon) \(setting.rawValue)")
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if selectedSetting == setting {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("世界観")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

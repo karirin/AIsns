@@ -43,7 +43,7 @@ struct OshiListView: View {
                 } else {
                     List {
                         ForEach(viewModel.oshiList) { oshi in
-                            NavigationLink(destination: OshiProfileView(oshi: oshi, viewModel: viewModel)) {
+                            NavigationLink(destination: OshiProfileEditView(oshi: oshi, viewModel: viewModel)) {
                                 OshiCard(oshi: oshi)
                             }
                             .listRowInsets(EdgeInsets())
