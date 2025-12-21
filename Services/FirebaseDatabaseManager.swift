@@ -156,21 +156,30 @@ class FirebaseDatabaseManager {
     
     /// 特定投稿のリアクションを全取得
     func loadReactions(for postId: UUID) async throws -> [Reaction] {
-        let snapshot = try await ref.child("users/\(userId)/reactions/\(postId.uuidString)").getData()
-        
-        guard let value = snapshot.value as? [String: [String: Any]] else {
-            return []
-        }
-        
-        var reactions: [Reaction] = []
-        
-        for (_, reactionData) in value {
-            if let reaction = parseReaction(from: reactionData) {
-                reactions.append(reaction)
+        do {
+            let snapshot = try await ref.child("users/\(userId)/reactions/\(postId.uuidString)").getData()
+            
+            guard let value = snapshot.value as? [String: [String: Any]] else {
+                return []
             }
+            
+            var reactions: [Reaction] = []
+            
+            for (_, reactionData) in value {
+                if let reaction = parseReaction(from: reactionData) {
+                    reactions.append(reaction)
+                }
+            }
+            
+            return reactions.sorted { $0.timestamp > $1.timestamp }
+        } catch let error as NSError {
+            // オフラインエラーの場合は空配列を返す
+            if error.domain == "com.firebase.core" && error.code == 1 {
+                print("⚠️ リアクション読み込みスキップ: \(error.localizedDescription)")
+                return []
+            }
+            throw error
         }
-        
-        return reactions.sorted { $0.timestamp > $1.timestamp }
     }
     
     /// リアクションを削除
@@ -217,23 +226,32 @@ class FirebaseDatabaseManager {
         
         query = query.queryLimited(toLast: UInt(limit))
         
-        let snapshot = try await query.getData()
-        
-        guard let value = snapshot.value as? [String: [String: Any]] else {
-            return []
-        }
-        
-        var comments: [Comment] = []
-        
-        for (_, commentData) in value {
-            if let comment = parseComment(from: commentData) {
-                comments.append(comment)
+        do {
+            let snapshot = try await query.getData()
+            
+            guard let value = snapshot.value as? [String: [String: Any]] else {
+                return []
             }
+            
+            var comments: [Comment] = []
+            
+            for (_, commentData) in value {
+                if let comment = parseComment(from: commentData) {
+                    comments.append(comment)
+                }
+            }
+            
+            return comments.sorted { $0.timestamp < $1.timestamp } // 古い順
+        } catch let error as NSError {
+            // インデックスエラーまたはオフラインエラーの場合は空配列を返す
+            if error.domain == "com.firebase.core" && error.code == 1 {
+                print("⚠️ コメント読み込みスキップ: \(error.localizedDescription)")
+                return []
+            }
+            throw error
         }
-        
-        return comments.sorted { $0.timestamp < $1.timestamp } // 古い順
     }
-    
+
     /// コメントを削除
     func removeComment(_ commentId: UUID, from postId: UUID) async throws {
         // 1. コメントを削除

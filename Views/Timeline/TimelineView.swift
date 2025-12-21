@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct TimelineView: View {
+struct TimelineScreenView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var showingPostSheet = false
     
@@ -149,28 +149,36 @@ struct PostComposerView: View {
     }
 }
 
-// ✅ 修正版: リアクション・コメントを自動的に表示
+// 投稿カード
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
-    @State private var showingDetails = false
-    
+    @State private var showingReactions = false
+
     var oshi: OshiCharacter? {
         if let authorId = post.authorId {
             return viewModel.oshiList.first { $0.id == authorId }
         }
         return nil
     }
-    
-    // ✅ 投稿の詳細情報を取得
+
     var postDetails: PostDetails? {
         viewModel.postDetails[post.id]
     }
-    
+
     var body: some View {
+        NavigationLink {
+            PostDetailView(post: post, viewModel: viewModel)
+        } label: {
+            cardContent
+        }
+        .buttonStyle(.plain)
+    }
+
+    // ✅ ここに入れる（PostCardViewの中）
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // アバター
                 if let oshi = oshi {
                     Circle()
                         .fill(
@@ -205,91 +213,54 @@ struct PostCardView: View {
                                 .foregroundColor(.white)
                         )
                 }
-                
+
                 VStack(alignment: .leading, spacing: 8) {
-                    // ヘッダー
                     HStack(spacing: 4) {
                         Text(post.authorName)
                             .font(.subheadline)
                             .fontWeight(.bold)
-                        
+
                         if post.isUserPost {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.caption)
                                 .foregroundColor(.blue)
                         }
-                        
+
                         Text("·")
                             .foregroundColor(.secondary)
-                        
-                        Text(post.timestamp, style: .relative)
+
+                        XStyleRelativeTimeText(date: post.timestamp)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {}) {
                             Image(systemName: "ellipsis")
                                 .foregroundColor(.secondary)
                         }
+                        .buttonStyle(.borderless)
                     }
-                    
-                    // 本文
+
                     Text(post.content)
                         .font(.body)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
-                    
-                    // ✅ リアクション表示（カウントがあれば自動的に読み込み）
-                    if let details = postDetails, !details.reactions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(details.reactions) { reaction in
-                                    ReactionBubble(reaction: reaction)
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    } else if post.reactionCount > 0 && postDetails == nil {
-                        // ✅ カウントはあるが詳細がない場合、読み込み中表示
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                            Text("読み込み中...")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 4)
-                        .task {
-                            // 自動的に詳細を読み込み
-                            await viewModel.loadPostDetails(for: post.id)
-                        }
-                    }
-                    
-                    // アクションボタン
+
                     HStack(spacing: 0) {
-                        // ✅ コメントボタン（件数を表示）
-                        Button(action: {
-                            showingDetails.toggle()
-                            if showingDetails && postDetails == nil {
-                                Task {
-                                    await viewModel.loadPostDetails(for: post.id)
-                                }
-                            }
-                        }) {
+                        Button(action: {}) {
                             HStack(spacing: 4) {
-                                Image(systemName: showingDetails ? "bubble.left.fill" : "bubble.left")
+                                Image(systemName: "bubble.left")
                                     .font(.subheadline)
                                 if post.commentCount > 0 {
                                     Text("\(post.commentCount)")
                                         .font(.caption)
                                 }
                             }
-                            .foregroundColor(showingDetails ? .blue : .secondary)
+                            .foregroundColor(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        
-                        // リポスト
+
                         Button(action: {}) {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.2.squarepath")
@@ -300,9 +271,12 @@ struct PostCardView: View {
                             .foregroundColor(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        
-                        // ✅ いいねボタン（件数を表示）
+
                         Button(action: {
+                            showingReactions.toggle()
+                            if showingReactions && postDetails == nil {
+                                Task { await viewModel.loadPostDetails(for: post.id) }
+                            }
                             if !post.isUserPost {
                                 viewModel.reactToOshiPost(post)
                             }
@@ -315,19 +289,17 @@ struct PostCardView: View {
                                         .font(.caption)
                                 }
                             }
-                            .foregroundColor(.secondary)
+                            .foregroundColor(showingReactions ? .pink : .secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        
-                        // ブックマーク
+
                         Button(action: {}) {
                             Image(systemName: "bookmark")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        
-                        // 共有
+
                         Button(action: {}) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.subheadline)
@@ -336,48 +308,31 @@ struct PostCardView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .padding(.top, 12)
-                    
-                    // ✅ コメント表示（詳細を読み込んでいる場合のみ）
-                    if showingDetails {
-                        if let details = postDetails {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(details.comments) { comment in
-                                    CommentRow(comment: comment, viewModel: viewModel)
-                                }
-                                
-                                // ✅ もっと読み込むボタン
-                                if details.hasMoreComments {
-                                    Button(action: {
-                                        Task {
-                                            await viewModel.loadMoreComments(for: post.id)
-                                        }
-                                    }) {
-                                        Text("返信をさらに表示")
-                                            .font(.caption)
-                                            .foregroundColor(.blue)
+                    .buttonStyle(.borderless)
+
+                    if showingReactions {
+                        if let details = postDetails, !details.reactions.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(details.reactions) { reaction in
+                                        ReactionBubble(reaction: reaction)
                                     }
-                                    .padding(.leading, 52)
                                 }
                             }
                             .padding(.top, 8)
-                        } else if post.commentCount > 0 {
-                            // 読み込み中
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("コメントを読み込み中...")
+                        } else if post.reactionCount > 0 {
+                            HStack(spacing: 6) {
+                                ProgressView().scaleEffect(0.8)
+                                Text("いいねを読み込み中...")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 8)
-                            .padding(.leading, 52)
                         } else {
-                            // コメントがない
-                            Text("まだコメントはありません")
+                            Text("まだいいねはありません")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.top, 8)
-                                .padding(.leading, 52)
                         }
                     }
                 }
@@ -385,15 +340,9 @@ struct PostCardView: View {
             .padding()
         }
         .background(Color(.systemBackground))
-        // ✅ 投稿が表示された時に、カウントがあれば自動的に詳細を読み込む
-        .task(id: post.id) {
-            // リアクションまたはコメントがあり、まだ詳細を読み込んでいない場合
-            if (post.reactionCount > 0 || post.commentCount > 0) && postDetails == nil {
-                await viewModel.loadPostDetails(for: post.id)
-            }
-        }
     }
 }
+
 
 struct ReactionBubble: View {
     let reaction: Reaction
@@ -423,7 +372,6 @@ struct CommentRow: View {
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            // アバター
             if let oshi = oshi {
                 Circle()
                     .fill(
@@ -452,7 +400,7 @@ struct CommentRow: View {
                         .fontWeight(.bold)
                     Text("·")
                         .foregroundColor(.secondary)
-                    Text(comment.timestamp, style: .relative)
+                    XStyleRelativeTimeText(date: comment.timestamp)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -467,6 +415,43 @@ struct CommentRow: View {
     }
 }
 
+// ✅ X風：分単位で更新する相対時刻表示
+struct XStyleRelativeTimeText: View {
+    let date: Date
+
+    var body: some View {
+        SwiftUI.TimelineView(.periodic(from: Date(), by: 60)) { context in
+            Text(Self.format(from: date, now: context.date))
+        }
+    }
+
+    private static func format(from date: Date, now: Date) -> String {
+        let diff = max(0, Int(now.timeIntervalSince(date)))
+
+        if diff < 60 { return "たった今" }
+
+        let minutes = diff / 60
+        if minutes < 60 { return "\(minutes)分" }
+
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)時間" }
+
+        let days = hours / 24
+        if days < 7 { return "\(days)日" }
+
+        // 7日以上は日付表示（Xっぽく）
+        return shortDateFormatter.string(from: date)
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d" // 好みで "M月d日" もOK
+        return f
+    }()
+}
+
+
 #Preview {
-    TimelineView(viewModel: OshiViewModel())
+    TimelineScreenView(viewModel: OshiViewModel())
 }

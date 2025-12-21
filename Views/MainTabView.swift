@@ -9,7 +9,7 @@ struct MainTabView: View {
     
     var body: some View {
         TabView {
-            TimelineView(viewModel: viewModel)
+            TimelineScreenView(viewModel: viewModel)
                 .tabItem {
                     Label("タイムライン", systemImage: "house.fill")
                 }

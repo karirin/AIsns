@@ -234,6 +234,16 @@ class OshiViewModel: ObservableObject {
                     if var details = postDetails[post.id] {
                         details.comments.append(comment)
                         postDetails[post.id] = details
+                    } else {
+                        // ✅ postDetailsが存在しない場合は新規作成
+                        if let currentPost = posts.first(where: { $0.id == post.id }) {
+                            postDetails[post.id] = PostDetails(
+                                post: currentPost,
+                                reactions: postDetails[post.id]?.reactions ?? [],
+                                comments: [comment],
+                                hasMoreComments: false
+                            )
+                        }
                     }
                     
                     // 親密度アップ
@@ -308,7 +318,16 @@ class OshiViewModel: ObservableObject {
             }
             
         } catch {
-            print("❌ 投稿詳細の読み込みエラー: \(error)")
+            print("⚠️ 投稿詳細の読み込みスキップ: \(error.localizedDescription)")
+            // エラー時は空のPostDetailsを作成
+            if let post = posts.first(where: { $0.id == postId }) {
+                postDetails[postId] = PostDetails(
+                    post: post,
+                    reactions: [],
+                    comments: [],
+                    hasMoreComments: false
+                )
+            }
         }
     }
     
