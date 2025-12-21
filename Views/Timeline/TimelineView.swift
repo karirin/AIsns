@@ -153,6 +153,7 @@ struct PostComposerView: View {
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
+    var isNavigable: Bool = true   // ✅ 追加
     @State private var showingReactions = false
 
     var oshi: OshiCharacter? {
@@ -167,12 +168,18 @@ struct PostCardView: View {
     }
 
     var body: some View {
-        NavigationLink {
-            PostDetailView(post: post, viewModel: viewModel)
-        } label: {
-            cardContent
+        Group {
+            if isNavigable {
+                NavigationLink {
+                    PostDetailView(post: post, viewModel: viewModel)
+                } label: {
+                    cardContent
+                }
+                .buttonStyle(.plain)
+            } else {
+                cardContent   // ✅ 詳細では遷移させない
+            }
         }
-        .buttonStyle(.plain)
     }
 
     // ✅ ここに入れる（PostCardViewの中）

@@ -20,7 +20,7 @@ struct PostDetailView: View {
         ScrollView {
             VStack(spacing: 0) {
                 // 投稿本文（見た目はカードを再利用）
-                PostCardView(post: post, viewModel: viewModel)
+                PostCardView(post: post, viewModel: viewModel, isNavigable: false)
                 Divider()
 
                 // コメント一覧
