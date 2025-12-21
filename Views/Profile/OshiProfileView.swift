@@ -1,3 +1,10 @@
+//
+//  OshiProfileView.swift
+//  AIsns
+//
+//  Updated: 2025/12/20
+//
+
 import SwiftUI
 
 struct OshiProfileView: View {
@@ -10,307 +17,297 @@ struct OshiProfileView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // ヘッダー背景グラデーション
-                ZStack(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [
-                            Color(hex: oshi.avatarColor).opacity(0.3),
-                            Color(hex: oshi.avatarColor).opacity(0.1),
-                            Color(.systemBackground)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 280)
-                    .ignoresSafeArea(edges: .top)
-                    
-                    VStack(spacing: 16) {
-                        // アバター
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(hex: oshi.avatarColor),
-                                        Color(hex: oshi.avatarColor).opacity(0.7)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 100, height: 100)
-                            .overlay(
-                                Text(String(oshi.name.prefix(1)))
-                                    .font(.system(size: 44, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white, lineWidth: 4)
-                            )
-                            .shadow(color: Color(hex: oshi.avatarColor).opacity(0.4), radius: 20, y: 10)
-                        
-                        Text(oshi.name)
-                            .font(.system(size: 28, weight: .bold))
-                        
-                        // 親密度バッジ
-                        HStack(spacing: 6) {
-                            Image(systemName: "heart.fill")
-                                .font(.caption)
-                                .foregroundColor(.pink)
-                            Text("Lv.\(oshi.intimacyLevel)")
-                                .font(.system(size: 15, weight: .semibold))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color(.systemBackground))
-                                .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
-                        )
-                    }
-                    .padding(.bottom, 20)
-                }
-                
-                // 親密度プログレスバー
+                // プロフィール画像エリア
                 VStack(spacing: 12) {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(.systemGray5))
-                                .frame(height: 8)
-                            
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            .pink,
-                                            .purple,
-                                            Color(hex: oshi.avatarColor)
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(
-                                    width: geometry.size.width * CGFloat(oshi.intimacyLevel) / 100,
-                                    height: 8
-                                )
-                                .shadow(color: .pink.opacity(0.5), radius: 4, y: 2)
-                        }
-                    }
-                    .frame(height: 8)
-                    
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .font(.caption2)
-                                .foregroundColor(.pink)
-                            Text("親密度")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Text("\(oshi.intimacyLevel) / 100")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                
-                // 統計カード
-                HStack(spacing: 12) {
-                    ModernStatCard(
-                        icon: "message.fill",
-                        iconColor: .blue,
-                        title: "やりとり",
-                        value: "\(oshi.totalInteractions)",
-                        unit: "回"
-                    )
-                    
-                    ModernStatCard(
-                        icon: "clock.fill",
-                        iconColor: .orange,
-                        title: "最後",
-                        value: formatDateShort(oshi.lastInteractionDate),
-                        unit: ""
-                    )
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                
-                // プロフィールセクション
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("プロフィール")
-                            .font(.system(size: 20, weight: .bold))
-                        Spacer()
-                        Button {
-                            showingEditView = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("編集")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.blue)
-                        }
-                    }
-                    
-                    VStack(spacing: 12) {
-                        // 性別
-                        if let gender = oshi.gender {
-                            ModernProfileRow(
-                                icon: "person.fill",
-                                iconColor: .purple,
-                                title: "性別",
-                                value: gender.rawValue
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: oshi.avatarColor),
+                                    Color(hex: oshi.avatarColor).opacity(0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
-                            
-                            Divider()
-                                .padding(.leading, 40)
-                        }
-                        
-                        // 性格
-                        ModernProfileRow(
-                            icon: "face.smiling",
-                            iconColor: .orange,
-                            title: "性格",
-                            value: "\(oshi.personality.emoji) \(oshi.personality.rawValue)"
                         )
+                        .frame(width: 100, height: 100)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                    
+                    Text("写真を変更")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                }
+                .padding(.top, 24)
+                .padding(.bottom, 32)
+                
+                // ユーザー情報セクション
+                VStack(spacing: 0) {
+                    Text("ユーザー情報")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                    
+                    VStack(spacing: 0) {
+                        // 名前
+                        ProfileRowButton(
+                            label: "名前",
+                            value: oshi.name,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
                         
                         Divider()
-                            .padding(.leading, 40)
+                            .padding(.leading, 16)
+                        
+                        // 性別
+                        ProfileRowButton(
+                            label: "性別",
+                            value: oshi.gender?.rawValue ?? "未設定",
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
+                        
+                        Divider()
+                            .padding(.leading, 16)
+                        
+                        // ユーザー名
+                        ProfileRowButton(
+                            label: "ユーザー名",
+                            value: "up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))",
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
+                        
+                        Divider()
+                            .padding(.leading, 16)
+                        
+                        // SNSリンク
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text("tiktok.com/@up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                Image(systemName: "doc.on.doc")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 14)
+                        .background(Color(.systemBackground))
+                        .contentShape(Rectangle())
+                    }
+                    .background(Color(.systemBackground))
+                }
+                
+                // 自己紹介
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.leading, 16)
+                    
+                    ProfileRowButton(
+                        label: "自己紹介",
+                        value: oshi.speechCharacteristics.isEmpty ? "自己紹介を追加" : oshi.speechCharacteristics,
+                        valueColor: oshi.speechCharacteristics.isEmpty ? .secondary : .primary,
+                        showChevron: true
+                    ) {
+                        showingEditView = true
+                    }
+                }
+                .background(Color(.systemBackground))
+                .padding(.top, 20)
+                
+                // リンク
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.leading, 16)
+                    
+                    ProfileRowButton(
+                        label: "リンク",
+                        value: "追加",
+                        valueColor: .secondary,
+                        showChevron: true
+                    ) {
+                        // リンク追加処理
+                    }
+                }
+                .background(Color(.systemBackground))
+                
+                // キャラクター設定セクション
+                VStack(spacing: 0) {
+                    Text("キャラクター設定")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 32)
+                        .padding(.bottom, 8)
+                    
+                    VStack(spacing: 0) {
+                        // 性格
+                        ProfileRowButton(
+                            label: "性格",
+                            value: "\(oshi.personality.emoji) \(oshi.personality.rawValue)",
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
+                        
+                        Divider()
+                            .padding(.leading, 16)
                         
                         // 話し方の特徴
-                        if !oshi.speechCharacteristics.isEmpty {
-                            ModernProfileRow(
-                                icon: "bubble.left.fill",
-                                iconColor: .green,
-                                title: "話し方の特徴",
-                                value: oshi.speechCharacteristics
-                            )
-                            
-                            Divider()
-                                .padding(.leading, 40)
+                        ProfileRowButton(
+                            label: "話し方の特徴",
+                            value: oshi.speechCharacteristics.isEmpty ? "追加" : oshi.speechCharacteristics,
+                            valueColor: oshi.speechCharacteristics.isEmpty ? .secondary : .primary,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
                         }
+                        
+                        Divider()
+                            .padding(.leading, 16)
                         
                         // ユーザーへの呼び方
-                        if !oshi.userCallingName.isEmpty {
-                            ModernProfileRow(
-                                icon: "person.crop.circle.fill",
-                                iconColor: .pink,
-                                title: "あなたへの呼び方",
-                                value: oshi.userCallingName
-                            )
-                            
-                            Divider()
-                                .padding(.leading, 40)
+                        ProfileRowButton(
+                            label: "ユーザーへの呼び方",
+                            value: oshi.userCallingName.isEmpty ? "追加" : oshi.userCallingName,
+                            valueColor: oshi.userCallingName.isEmpty ? .secondary : .primary,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
                         }
+                        
+                        Divider()
+                            .padding(.leading, 16)
                         
                         // 口調
-                        ModernProfileRow(
-                            icon: "message",
-                            iconColor: .blue,
-                            title: "口調",
-                            value: oshi.speechStyle.rawValue
-                        )
+                        ProfileRowButton(
+                            label: "口調",
+                            value: oshi.speechStyle.rawValue,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
                         
                         Divider()
-                            .padding(.leading, 40)
+                            .padding(.leading, 16)
                         
                         // 距離感
-                        ModernProfileRow(
-                            icon: "person.2",
-                            iconColor: .purple,
-                            title: "距離感",
-                            value: "\(oshi.relationshipDistance.icon) \(oshi.relationshipDistance.rawValue)"
-                        )
+                        ProfileRowButton(
+                            label: "距離感",
+                            value: "\(oshi.relationshipDistance.icon) \(oshi.relationshipDistance.rawValue)",
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
                         
                         Divider()
-                            .padding(.leading, 40)
+                            .padding(.leading, 16)
                         
                         // 世界観
-                        ModernProfileRow(
-                            icon: "globe",
-                            iconColor: .blue,
-                            title: "世界観",
-                            value: "\(oshi.worldSetting.icon) \(oshi.worldSetting.rawValue)"
-                        )
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.systemGray6).opacity(0.5))
-                    )
-                    
-                    // NG項目
-                    if !oshi.ngTopics.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.orange)
-                                Text("NG項目")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(oshi.ngTopics, id: \.self) { topic in
-                                    HStack(spacing: 8) {
-                                        Circle()
-                                            .fill(Color.orange.opacity(0.3))
-                                            .frame(width: 6, height: 6)
-                                        Text(topic)
-                                            .font(.subheadline)
-                                    }
-                                }
-                            }
+                        ProfileRowButton(
+                            label: "世界観",
+                            value: "\(oshi.worldSetting.icon) \(oshi.worldSetting.rawValue)",
+                            showChevron: true
+                        ) {
+                            showingEditView = true
                         }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color.orange.opacity(0.1))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                                )
-                        )
+                    }
+                    .background(Color(.systemBackground))
+                }
+                
+                // AI Self
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.leading, 16)
+                    
+                    ProfileRowButton(
+                        label: "AI Self",
+                        value: "私のAI Self",
+                        valueColor: .secondary,
+                        showChevron: true
+                    ) {
+                        // AI Self処理
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 28)
+                .background(Color(.systemBackground))
+                .padding(.top, 20)
+                
+                // 統計情報
+                VStack(spacing: 0) {
+                    Text("統計")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 32)
+                        .padding(.bottom, 8)
+                    
+                    VStack(spacing: 0) {
+                        ProfileRowButton(
+                            label: "親密度レベル",
+                            value: "Lv.\(oshi.intimacyLevel)",
+                            showChevron: false
+                        ) { }
+                        
+                        Divider()
+                            .padding(.leading, 16)
+                        
+                        ProfileRowButton(
+                            label: "やりとり",
+                            value: "\(oshi.totalInteractions)回",
+                            showChevron: false
+                        ) { }
+                        
+                        Divider()
+                            .padding(.leading, 16)
+                        
+                        ProfileRowButton(
+                            label: "最後のやりとり",
+                            value: formatDateShort(oshi.lastInteractionDate),
+                            showChevron: false
+                        ) { }
+                    }
+                    .background(Color(.systemBackground))
+                }
                 
                 // 削除ボタン
                 Button(action: { showingDeleteAlert = true }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "trash")
-                        Text("推しを削除")
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.red.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.red.opacity(0.3), lineWidth: 1)
-                            )
-                    )
+                    Text("推しを削除")
+                        .font(.body)
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                 }
-                .padding(.horizontal, 24)
+                .background(Color(.systemBackground))
                 .padding(.top, 32)
                 .padding(.bottom, 32)
             }
         }
+        .background(Color(.systemGray6))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showingEditView = true
+                } label: {
+                    Text("編集")
+                        .foregroundColor(.primary)
+                }
+            }
+        }
         .sheet(isPresented: $showingEditView) {
             NavigationStack {
                 OshiProfileEditView(oshi: oshi, viewModel: viewModel)
@@ -349,76 +346,40 @@ struct OshiProfileView: View {
     }
 }
 
-struct ModernStatCard: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
+// プロフィール行ボタン
+struct ProfileRowButton: View {
+    let label: String
     let value: String
-    let unit: String
+    var valueColor: Color = .primary
+    var showChevron: Bool
+    let action: () -> Void
     
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(iconColor)
-                .frame(width: 44, height: 44)
-                .background(
-                    Circle()
-                        .fill(iconColor.opacity(0.15))
-                )
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
                 Text(value)
-                    .font(.system(size: 24, weight: .bold))
-                if !unit.isEmpty {
-                    Text(unit)
+                    .font(.subheadline)
+                    .foregroundColor(valueColor)
+                    .lineLimit(1)
+                
+                if showChevron {
+                    Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
+            .padding(.horizontal)
+            .padding(.vertical, 14)
+            .background(Color(.systemBackground))
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
-        )
-    }
-}
-
-struct ModernProfileRow: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let value: String
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundColor(iconColor)
-                .frame(width: 28, height: 28)
-                .background(
-                    Circle()
-                        .fill(iconColor.opacity(0.15))
-                )
-            
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-        }
-        .padding(.vertical, 4)
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -426,7 +387,7 @@ struct ModernProfileRow: View {
     NavigationStack {
         OshiProfileView(
             oshi: OshiCharacter(
-                name: "さくら",
+                name: "UI Pocket",
                 gender: .female,
                 personality: .cool,
                 speechCharacteristics: "柔らかくて優しい口調",

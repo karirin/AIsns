@@ -2,7 +2,7 @@
 //  OshiProfileEdit.swift
 //  AIsns
 //
-//  Created by Apple on 2025/12/20.
+//  Updated: 2025/12/20
 //
 
 import SwiftUI
@@ -41,253 +41,287 @@ struct OshiProfileEditView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // ヘッダー画像エリア
-                ZStack(alignment: .center) {
-                    // 背景グラデーション
-                    LinearGradient(
-                        colors: [
-                            selectedColor.opacity(0.2),
-                            Color(.systemBackground)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 200)
-                    
+        ZStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // プロフィール画像エリア
                     VStack(spacing: 12) {
-                        // プロフィール画像
-                        ZStack(alignment: .bottomTrailing) {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [selectedColor, selectedColor.opacity(0.7)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [selectedColor, selectedColor.opacity(0.7)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
-                                .frame(width: 100, height: 100)
-                                .overlay(
-                                    Text(String(name.prefix(1).isEmpty ? "?" : name.prefix(1)))
-                                        .font(.system(size: 40, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.white, lineWidth: 4)
-                                )
-                            
-                            // カメラアイコン
-                            Circle()
-                                .fill(Color(.systemBackground))
-                                .frame(width: 32, height: 32)
-                                .overlay(
-                                    Image(systemName: "camera.fill")
-                                        .font(.caption)
-                                        .foregroundColor(.primary)
-                                )
-                                .shadow(color: .black.opacity(0.1), radius: 4)
-                        }
+                            )
+                            .frame(width: 100, height: 100)
+                            .overlay(
+                                Text(String(name.prefix(1).isEmpty ? "?" : name.prefix(1)))
+                                    .font(.system(size: 40, weight: .bold))
+                                    .foregroundColor(.white)
+                            )
                         
                         Text("写真を変更")
                             .font(.subheadline)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.primary)
                     }
-                }
-                
-                // ユーザー情報セクション
-                VStack(spacing: 0) {
-                    Text("ユーザー情報")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
+                    .padding(.top, 24)
+                    .padding(.bottom, 32)
                     
+                    // ユーザー情報セクション
                     VStack(spacing: 0) {
-                        // 名前
-                        EditRow(
-                            icon: "person.fill",
-                            title: "名前",
-                            value: name,
-                            placeholder: "推しの名前"
-                        ) {
-                            TextField("推しの名前", text: $name)
-                                .multilineTextAlignment(.trailing)
+                        Text("ユーザー情報")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                        
+                        VStack(spacing: 0) {
+                            // 名前
+                            HStack {
+                                Text("名前")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                TextField("", text: $name)
+                                    .multilineTextAlignment(.trailing)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // 性別
+                            NavigationLink {
+                                GenderSelectionView(selectedGender: $gender)
+                            } label: {
+                                HStack {
+                                    Text("性別")
+                                        .font(.body)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    Text(gender?.rawValue ?? "未設定")
+                                        .font(.subheadline)
+                                        .foregroundColor(gender == nil ? .secondary : .primary)
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal)
+                                .padding(.vertical, 14)
+                                .background(Color(.systemBackground))
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // ユーザー名（固定）
+                            HStack {
+                                Text("ユーザー名")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                Text("up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.clear)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // SNSリンク
+                            HStack {
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Text("tiktok.com/@up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))")
+                                        .font(.subheadline)
+                                        .foregroundColor(.primary)
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
                         }
-                        
+                        .background(Color(.systemBackground))
+                    }
+                    
+                    // 自己紹介
+                    VStack(spacing: 0) {
                         Divider()
-                            .padding(.leading, 56)
+                            .padding(.leading, 16)
                         
-                        // 性別
                         NavigationLink {
-                            GenderSelectionView(selectedGender: $gender)
+                            SpeechCharacteristicsEditView(text: $speechCharacteristics)
                         } label: {
-                            EditRowLabel(
-                                icon: "person.2.fill",
-                                title: "性別",
-                                value: gender?.rawValue ?? "未設定",
-                                valueColor: gender == nil ? .secondary.opacity(0.6) : .primary
-                            )
+                            HStack {
+                                Text("自己紹介")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                Text(speechCharacteristics.isEmpty ? "自己紹介を追加" : speechCharacteristics)
+                                    .font(.subheadline)
+                                    .foregroundColor(speechCharacteristics.isEmpty ? .secondary : .primary)
+                                    .lineLimit(1)
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
                         }
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // ユーザー名（固定）
-                        EditRowLabel(
-                            icon: "at",
-                            title: "ユーザー名",
-                            value: "up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))",
-                            valueColor: .primary
-                        )
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // SNSリンク風（ダミー）
-                        EditRowLabel(
-                            icon: "link",
-                            title: "",
-                            value: "tiktok.com/@up\(String(format: "%05d", abs(oshi.id.hashValue % 100000)))",
-                            valueColor: .primary
-                        )
                     }
                     .background(Color(.systemBackground))
-                }
-                
-                // キャラクター設定セクション
-                VStack(spacing: 0) {
-                    Text("キャラクター設定")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
+                    .padding(.top, 20)
                     
+                    // キャラクター設定セクション
                     VStack(spacing: 0) {
-                        // 性格
-                        NavigationLink {
-                            PersonalitySelectionView(selectedPersonality: $personality)
-                        } label: {
-                            EditRowLabel(
-                                icon: "face.smiling",
-                                title: "性格",
-                                value: "\(personality.emoji) \(personality.rawValue)"
-                            )
-                        }
+                        Text("キャラクター設定")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.top, 32)
+                            .padding(.bottom, 8)
                         
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // 話し方の特徴
-                        EditRow(
-                            icon: "bubble.left.fill",
-                            title: "話し方の特徴",
-                            value: speechCharacteristics,
-                            placeholder: "追加"
-                        ) {
+                        VStack(spacing: 0) {
+                            // 性格
+                            NavigationLink {
+                                PersonalitySelectionView(selectedPersonality: $personality)
+                            } label: {
+                                EditRowLabel(label: "性格", value: "\(personality.emoji) \(personality.rawValue)")
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // 話し方の特徴
                             NavigationLink {
                                 SpeechCharacteristicsEditView(text: $speechCharacteristics)
                             } label: {
-                                Text(speechCharacteristics.isEmpty ? "追加" : speechCharacteristics)
-                                    .foregroundColor(speechCharacteristics.isEmpty ? .blue : .primary)
-                                    .lineLimit(1)
+                                EditRowLabel(
+                                    label: "話し方の特徴",
+                                    value: speechCharacteristics.isEmpty ? "追加" : speechCharacteristics,
+                                    valueColor: speechCharacteristics.isEmpty ? .secondary : .primary
+                                )
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // ユーザーへの呼び方
+                            HStack {
+                                Text("ユーザーへの呼び方")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                TextField("あなた、きみ など", text: $userCallingName)
+                                    .multilineTextAlignment(.trailing)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.clear)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // 口調
+                            NavigationLink {
+                                SpeechStyleSelectionView(selectedStyle: $speechStyle)
+                            } label: {
+                                EditRowLabel(label: "口調", value: speechStyle.rawValue)
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // 距離感
+                            NavigationLink {
+                                RelationshipSelectionView(selectedDistance: $relationshipDistance)
+                            } label: {
+                                EditRowLabel(label: "距離感", value: "\(relationshipDistance.icon) \(relationshipDistance.rawValue)")
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 16)
+                            
+                            // 世界観
+                            NavigationLink {
+                                WorldSettingSelectionView(selectedSetting: $worldSetting)
+                            } label: {
+                                EditRowLabel(label: "世界観", value: "\(worldSetting.icon) \(worldSetting.rawValue)")
                             }
                         }
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // ユーザーへの呼び方
-                        EditRow(
-                            icon: "person.crop.circle",
-                            title: "ユーザーへの呼び方",
-                            value: userCallingName,
-                            placeholder: "追加"
-                        ) {
-                            TextField("あなた、きみ など", text: $userCallingName)
-                                .multilineTextAlignment(.trailing)
-                        }
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // 口調
-                        NavigationLink {
-                            SpeechStyleSelectionView(selectedStyle: $speechStyle)
-                        } label: {
-                            EditRowLabel(
-                                icon: "message",
-                                title: "口調",
-                                value: speechStyle.rawValue
-                            )
-                        }
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // 距離感
-                        NavigationLink {
-                            RelationshipSelectionView(selectedDistance: $relationshipDistance)
-                        } label: {
-                            EditRowLabel(
-                                icon: "person.2",
-                                title: "距離感",
-                                value: "\(relationshipDistance.icon) \(relationshipDistance.rawValue)"
-                            )
-                        }
-                        
-                        Divider()
-                            .padding(.leading, 56)
-                        
-                        // 世界観
-                        NavigationLink {
-                            WorldSettingSelectionView(selectedSetting: $worldSetting)
-                        } label: {
-                            EditRowLabel(
-                                icon: "globe",
-                                title: "世界観",
-                                value: "\(worldSetting.icon) \(worldSetting.rawValue)"
-                            )
-                        }
+                        .background(Color(.systemBackground))
                     }
-                    .background(Color(.systemBackground))
+                    
+                    Spacer(minLength: 100)
                 }
-                
-                // AI Self セクション（ダミー）
-                VStack(spacing: 0) {
-                    HStack {
-                        Image(systemName: "sparkles")
-                            .font(.body)
-                            .foregroundColor(.purple)
-                            .frame(width: 40, height: 40)
-                        
-                        Text("AI Self")
-                            .font(.body)
-                        
-                        Spacer()
-                        
-                        Text("私のAI Self")
+            }
+            .background(Color(.systemGray6))
+            
+            // トースト通知
+            if showingSaveConfirmation {
+                VStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white)
+                        Text("名前を更新しました")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
                     }
-                    .padding()
-                    .background(Color(.systemBackground))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        Capsule()
+                            .fill(Color.black.opacity(0.85))
+                    )
+                    .padding(.top, 60)
+                    
+                    Spacer()
                 }
-                .padding(.top, 24)
-                
-                Spacer(minLength: 100)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.3), value: showingSaveConfirmation)
             }
         }
-        .background(Color(.systemGray6))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -298,36 +332,11 @@ struct OshiProfileEditView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
+                Button("保存") {
                     saveChanges()
-                } label: {
-                    Image(systemName: "checkmark")
-                        .foregroundColor(.white)
-                        .fontWeight(.semibold)
-                        .frame(width: 32, height: 32)
-                        .background(Color.pink)
-                        .clipShape(Circle())
                 }
-            }
-        }
-        .overlay(alignment: .top) {
-            if showingSaveConfirmation {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark")
-                        .foregroundColor(.white)
-                    Text("名前を更新しました")
-                        .foregroundColor(.white)
-                        .font(.subheadline)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.8))
-                )
-                .padding(.top, 60)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(), value: showingSaveConfirmation)
+                .foregroundColor(.primary)
+                .fontWeight(.semibold)
             }
         }
     }
@@ -366,6 +375,35 @@ struct OshiProfileEditView: View {
     }
 }
 
+// 編集行ラベル
+struct EditRowLabel: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.body)
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            Text(value)
+                .font(.subheadline)
+                .foregroundColor(valueColor)
+                .lineLimit(1)
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 14)
+        .background(Color(.systemBackground))
+    }
+}
+
 // 編集行（カスタムコンテンツ対応）
 struct EditRow<Content: View>: View {
     let icon: String
@@ -397,48 +435,6 @@ struct EditRow<Content: View>: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-    }
-}
-
-// 編集行ラベル（NavigationLink用）
-struct EditRowLabel: View {
-    let icon: String
-    let title: String
-    let value: String
-    var valueColor: Color = .primary
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            if !icon.isEmpty {
-                Image(systemName: icon)
-                    .font(.body)
-                    .foregroundColor(.primary)
-                    .frame(width: 40, height: 40)
-            } else {
-                Spacer()
-                    .frame(width: 40, height: 40)
-            }
-            
-            if !title.isEmpty {
-                Text(title)
-                    .font(.body)
-                    .foregroundColor(.primary)
-            }
-            
-            Spacer()
-            
-            Text(value)
-                .font(.body)
-                .foregroundColor(valueColor)
-                .lineLimit(1)
-            
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
     }
 }
 
