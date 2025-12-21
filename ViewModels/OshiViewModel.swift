@@ -68,6 +68,20 @@ class OshiViewModel: ObservableObject {
         }
     }
     
+    func followRecommended(_ oshi: OshiCharacter) async {
+        // すでに追加済みなら何もしない
+        guard !oshiList.contains(where: { $0.id == oshi.id }) else { return }
+
+        do {
+            try await dbManager.saveOshi(oshi)
+            // 画面即反映（createdAt順に合わせたいなら loadOshiList し直しでもOK）
+            oshiList.insert(oshi, at: 0)
+        } catch {
+            errorMessage = "フォローに失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    
     // MARK: - Data Loading
     
     func loadData() async {
