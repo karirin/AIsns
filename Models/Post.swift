@@ -1,30 +1,36 @@
 import Foundation
 
-// 投稿モデル
+// MARK: - Optimized Post Model
+
+/// 投稿モデル（最適化版）
 struct Post: Identifiable, Codable {
     let id: UUID
     var authorId: UUID? // nil = ユーザー投稿
     var authorName: String
     var content: String
     var timestamp: Date
-    var reactions: [Reaction]
-    var comments: [Comment]
     var isUserPost: Bool
     
-    init(id: UUID = UUID(), authorId: UUID? = nil, authorName: String, 
+    // 集計値のみを保持（配列は別テーブルに分離）
+    var reactionCount: Int
+    var commentCount: Int
+    
+    init(id: UUID = UUID(), authorId: UUID? = nil, authorName: String,
          content: String, timestamp: Date = Date(), isUserPost: Bool = true) {
         self.id = id
         self.authorId = authorId
         self.authorName = authorName
         self.content = content
         self.timestamp = timestamp
-        self.reactions = []
-        self.comments = []
         self.isUserPost = isUserPost
+        self.reactionCount = 0
+        self.commentCount = 0
     }
 }
 
-// リアクション
+// MARK: - Reaction (Separate Table)
+
+/// リアクション（個別管理）
 struct Reaction: Identifiable, Codable {
     let id: UUID
     let oshiId: UUID
@@ -32,7 +38,7 @@ struct Reaction: Identifiable, Codable {
     let emoji: String
     let timestamp: Date
     
-    init(id: UUID = UUID(), oshiId: UUID, oshiName: String, 
+    init(id: UUID = UUID(), oshiId: UUID, oshiName: String,
          emoji: String = "❤️", timestamp: Date = Date()) {
         self.id = id
         self.oshiId = oshiId
@@ -42,7 +48,9 @@ struct Reaction: Identifiable, Codable {
     }
 }
 
-// コメント
+// MARK: - Comment (Separate Table)
+
+/// コメント（個別管理）
 struct Comment: Identifiable, Codable {
     let id: UUID
     let oshiId: UUID
@@ -50,7 +58,7 @@ struct Comment: Identifiable, Codable {
     let content: String
     let timestamp: Date
     
-    init(id: UUID = UUID(), oshiId: UUID, oshiName: String, 
+    init(id: UUID = UUID(), oshiId: UUID, oshiName: String,
          content: String, timestamp: Date = Date()) {
         self.id = id
         self.oshiId = oshiId
@@ -60,7 +68,26 @@ struct Comment: Identifiable, Codable {
     }
 }
 
-// チャットメッセージ
+// MARK: - Post with Details (UI用の拡張モデル)
+
+/// 投稿の詳細情報（必要な時だけ取得）
+struct PostDetails {
+    let post: Post
+    var reactions: [Reaction]
+    var comments: [Comment]
+    var hasMoreComments: Bool
+    
+    init(post: Post, reactions: [Reaction] = [], comments: [Comment] = [], hasMoreComments: Bool = false) {
+        self.post = post
+        self.reactions = reactions
+        self.comments = comments
+        self.hasMoreComments = hasMoreComments
+    }
+}
+
+// MARK: - Chat Models (変更なし)
+
+/// チャットメッセージ
 struct Message: Identifiable, Codable {
     let id: UUID
     var content: String
@@ -69,7 +96,7 @@ struct Message: Identifiable, Codable {
     var timestamp: Date
     var isRead: Bool
     
-    init(id: UUID = UUID(), content: String, isFromUser: Bool, 
+    init(id: UUID = UUID(), content: String, isFromUser: Bool,
          oshiId: UUID? = nil, timestamp: Date = Date(), isRead: Bool = false) {
         self.id = id
         self.content = content
@@ -80,7 +107,7 @@ struct Message: Identifiable, Codable {
     }
 }
 
-// チャットルーム
+/// チャットルーム
 struct ChatRoom: Identifiable, Codable {
     let id: UUID
     var oshiId: UUID
@@ -88,7 +115,7 @@ struct ChatRoom: Identifiable, Codable {
     var lastMessageDate: Date?
     var unreadCount: Int
     
-    init(id: UUID = UUID(), oshiId: UUID, messages: [Message] = [], 
+    init(id: UUID = UUID(), oshiId: UUID, messages: [Message] = [],
          lastMessageDate: Date? = nil, unreadCount: Int = 0) {
         self.id = id
         self.oshiId = oshiId
@@ -113,7 +140,7 @@ struct ChatRoom: Identifiable, Codable {
     }
 }
 
-// ユーザーの感情状態（投稿から推測）
+/// ユーザーの感情状態（投稿から推測）
 enum UserMood: String, Codable {
     case happy = "嬉しい"
     case tired = "疲れている"

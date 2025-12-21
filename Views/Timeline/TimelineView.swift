@@ -62,9 +62,7 @@ struct PostComposerView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // ユーザーアバター + テキストエディタ
                 HStack(alignment: .top, spacing: 12) {
-                    // ユーザーアバター
                     Circle()
                         .fill(
                             LinearGradient(
@@ -80,7 +78,6 @@ struct PostComposerView: View {
                                 .font(.headline)
                         )
                     
-                    // テキストエディタ
                     ZStack(alignment: .topLeading) {
                         if postText.isEmpty {
                             Text("いまどうしてる？")
@@ -99,7 +96,6 @@ struct PostComposerView: View {
                 
                 Spacer()
                 
-                // 文字数カウンター
                 HStack {
                     Spacer()
                     Text("\(postText.count)/280")
@@ -153,17 +149,22 @@ struct PostComposerView: View {
     }
 }
 
-// 投稿カード
+// ✅ 修正版: リアクション・コメントを自動的に表示
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
-    @State private var showAllComments = false
+    @State private var showingDetails = false
     
     var oshi: OshiCharacter? {
         if let authorId = post.authorId {
             return viewModel.oshiList.first { $0.id == authorId }
         }
         return nil
+    }
+    
+    // ✅ 投稿の詳細情報を取得
+    var postDetails: PostDetails? {
+        viewModel.postDetails[post.id]
     }
     
     var body: some View {
@@ -239,31 +240,52 @@ struct PostCardView: View {
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    // リアクション（投稿直下）
-                    if !post.reactions.isEmpty {
+                    // ✅ リアクション表示（カウントがあれば自動的に読み込み）
+                    if let details = postDetails, !details.reactions.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(post.reactions) { reaction in
+                                ForEach(details.reactions) { reaction in
                                     ReactionBubble(reaction: reaction)
                                 }
                             }
                         }
                         .padding(.top, 4)
+                    } else if post.reactionCount > 0 && postDetails == nil {
+                        // ✅ カウントはあるが詳細がない場合、読み込み中表示
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("読み込み中...")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.top, 4)
+                        .task {
+                            // 自動的に詳細を読み込み
+                            await viewModel.loadPostDetails(for: post.id)
+                        }
                     }
                     
                     // アクションボタン
                     HStack(spacing: 0) {
-                        // コメント
-                        Button(action: {}) {
+                        // ✅ コメントボタン（件数を表示）
+                        Button(action: {
+                            showingDetails.toggle()
+                            if showingDetails && postDetails == nil {
+                                Task {
+                                    await viewModel.loadPostDetails(for: post.id)
+                                }
+                            }
+                        }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "bubble.left")
+                                Image(systemName: showingDetails ? "bubble.left.fill" : "bubble.left")
                                     .font(.subheadline)
-                                if !post.comments.isEmpty {
-                                    Text("\(post.comments.count)")
+                                if post.commentCount > 0 {
+                                    Text("\(post.commentCount)")
                                         .font(.caption)
                                 }
                             }
-                            .foregroundColor(.secondary)
+                            .foregroundColor(showingDetails ? .blue : .secondary)
                         }
                         .frame(maxWidth: .infinity)
                         
@@ -279,7 +301,7 @@ struct PostCardView: View {
                         }
                         .frame(maxWidth: .infinity)
                         
-                        // いいね
+                        // ✅ いいねボタン（件数を表示）
                         Button(action: {
                             if !post.isUserPost {
                                 viewModel.reactToOshiPost(post)
@@ -288,8 +310,8 @@ struct PostCardView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "heart")
                                     .font(.subheadline)
-                                if !post.reactions.isEmpty {
-                                    Text("\(post.reactions.count)")
+                                if post.reactionCount > 0 {
+                                    Text("\(post.reactionCount)")
                                         .font(.caption)
                                 }
                             }
@@ -315,29 +337,61 @@ struct PostCardView: View {
                     }
                     .padding(.top, 12)
                     
-                    // コメント
-                    if !post.comments.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(showAllComments ? post.comments : Array(post.comments.prefix(2))) { comment in
-                                CommentRow(comment: comment, viewModel: viewModel)
-                            }
-                            
-                            if post.comments.count > 2 && !showAllComments {
-                                Button(action: { showAllComments = true }) {
-                                    Text("返信をさらに表示")
-                                        .font(.caption)
-                                        .foregroundColor(.blue)
+                    // ✅ コメント表示（詳細を読み込んでいる場合のみ）
+                    if showingDetails {
+                        if let details = postDetails {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(details.comments) { comment in
+                                    CommentRow(comment: comment, viewModel: viewModel)
                                 }
-                                .padding(.leading, 52)
+                                
+                                // ✅ もっと読み込むボタン
+                                if details.hasMoreComments {
+                                    Button(action: {
+                                        Task {
+                                            await viewModel.loadMoreComments(for: post.id)
+                                        }
+                                    }) {
+                                        Text("返信をさらに表示")
+                                            .font(.caption)
+                                            .foregroundColor(.blue)
+                                    }
+                                    .padding(.leading, 52)
+                                }
                             }
+                            .padding(.top, 8)
+                        } else if post.commentCount > 0 {
+                            // 読み込み中
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("コメントを読み込み中...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.top, 8)
+                            .padding(.leading, 52)
+                        } else {
+                            // コメントがない
+                            Text("まだコメントはありません")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 8)
+                                .padding(.leading, 52)
                         }
-                        .padding(.top, 8)
                     }
                 }
             }
             .padding()
         }
         .background(Color(.systemBackground))
+        // ✅ 投稿が表示された時に、カウントがあれば自動的に詳細を読み込む
+        .task(id: post.id) {
+            // リアクションまたはコメントがあり、まだ詳細を読み込んでいない場合
+            if (post.reactionCount > 0 || post.commentCount > 0) && postDetails == nil {
+                await viewModel.loadPostDetails(for: post.id)
+            }
+        }
     }
 }
 

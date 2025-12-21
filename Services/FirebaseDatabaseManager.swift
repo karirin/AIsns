@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseDatabase
 
+/// 最適化されたFirebase Database Manager
 class FirebaseDatabaseManager {
     static let shared = FirebaseDatabaseManager()
     
@@ -12,7 +13,7 @@ class FirebaseDatabaseManager {
         self.userId = FirebaseConfig.shared.userId
     }
     
-    // MARK: - Oshi Character
+    // MARK: - Oshi Character (変更なし)
     
     func saveOshi(_ oshi: OshiCharacter) async throws {
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshi.id.uuidString)")
@@ -34,12 +35,10 @@ class FirebaseDatabaseManager {
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0
         ]
         
-        // 性別がnilでない場合のみ保存
         if let gender = oshi.gender {
             oshiData["gender"] = gender.rawValue
         }
         
-        // 画像URLを保存 (Base64の代わり)
         if let imageURL = oshi.avatarImageURL {
             oshiData["avatarImageURL"] = imageURL
         }
@@ -66,7 +65,6 @@ class FirebaseDatabaseManager {
     }
     
     func deleteOshi(_ oshiId: UUID) async throws {
-        // Storage上の画像を削除
         try? await FirebaseStorageManager.shared.deleteOshiAvatar(oshiId: oshiId)
         
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshiId.uuidString)")
@@ -77,14 +75,19 @@ class FirebaseDatabaseManager {
         if let posts = postsSnapshot.value as? [String: [String: Any]] {
             for (postId, postData) in posts {
                 if let authorId = postData["authorId"] as? String, authorId == oshiId.uuidString {
+                    // 投稿本体を削除
                     try await ref.child("users/\(userId)/posts/\(postId)").removeValue()
+                    // リアクション・コメントも削除
+                    try await ref.child("users/\(userId)/reactions/\(postId)").removeValue()
+                    try await ref.child("users/\(userId)/comments/\(postId)").removeValue()
                 }
             }
         }
     }
     
-    // MARK: - Posts
+    // MARK: - Posts (最適化版)
     
+    /// 投稿を保存（リアクション・コメントは含まない）
     func savePost(_ post: Post) async throws {
         let postRef = ref.child("users/\(userId)/posts/\(post.id.uuidString)")
         
@@ -95,13 +98,14 @@ class FirebaseDatabaseManager {
             "content": post.content,
             "timestamp": post.timestamp.timeIntervalSince1970,
             "isUserPost": post.isUserPost,
-            "reactions": post.reactions.map { reactionToDict($0) },
-            "comments": post.comments.map { commentToDict($0) }
+            "reactionCount": post.reactionCount,
+            "commentCount": post.commentCount
         ]
         
         try await postRef.setValue(postData)
     }
     
+    /// 投稿リストを取得（軽量・件数のみ）
     func loadPosts(limit: Int = 50) async throws -> [Post] {
         let snapshot = try await ref.child("users/\(userId)/posts")
             .queryOrdered(byChild: "timestamp")
@@ -123,11 +127,125 @@ class FirebaseDatabaseManager {
         return posts.sorted { $0.timestamp > $1.timestamp }
     }
     
+    /// 投稿を更新（主にカウント更新用）
     func updatePost(_ post: Post) async throws {
         try await savePost(post)
     }
     
-    // MARK: - Chat Rooms
+    // MARK: - Reactions (新規実装)
+    
+    /// リアクションを追加
+    func addReaction(_ reaction: Reaction, to postId: UUID) async throws {
+        // 1. リアクションを保存（oshiIdをキーにして重複防止）
+        let reactionRef = ref.child("users/\(userId)/reactions/\(postId.uuidString)/\(reaction.oshiId.uuidString)")
+        
+        let reactionData: [String: Any] = [
+            "id": reaction.id.uuidString,
+            "oshiId": reaction.oshiId.uuidString,
+            "oshiName": reaction.oshiName,
+            "emoji": reaction.emoji,
+            "timestamp": reaction.timestamp.timeIntervalSince1970
+        ]
+        
+        try await reactionRef.setValue(reactionData)
+        
+        // 2. 投稿のreactionCountをインクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/reactionCount")
+        try await countRef.setValue(ServerValue.increment(1))
+    }
+    
+    /// 特定投稿のリアクションを全取得
+    func loadReactions(for postId: UUID) async throws -> [Reaction] {
+        let snapshot = try await ref.child("users/\(userId)/reactions/\(postId.uuidString)").getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else {
+            return []
+        }
+        
+        var reactions: [Reaction] = []
+        
+        for (_, reactionData) in value {
+            if let reaction = parseReaction(from: reactionData) {
+                reactions.append(reaction)
+            }
+        }
+        
+        return reactions.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    /// リアクションを削除
+    func removeReaction(oshiId: UUID, from postId: UUID) async throws {
+        // 1. リアクションを削除
+        let reactionRef = ref.child("users/\(userId)/reactions/\(postId.uuidString)/\(oshiId.uuidString)")
+        try await reactionRef.removeValue()
+        
+        // 2. 投稿のreactionCountをデクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/reactionCount")
+        try await countRef.setValue(ServerValue.increment(-1))
+    }
+    
+    // MARK: - Comments (新規実装)
+    
+    /// コメントを追加
+    func addComment(_ comment: Comment, to postId: UUID) async throws {
+        // 1. コメントを保存
+        let commentRef = ref.child("users/\(userId)/comments/\(postId.uuidString)/\(comment.id.uuidString)")
+        
+        let commentData: [String: Any] = [
+            "id": comment.id.uuidString,
+            "oshiId": comment.oshiId.uuidString,
+            "oshiName": comment.oshiName,
+            "content": comment.content,
+            "timestamp": comment.timestamp.timeIntervalSince1970
+        ]
+        
+        try await commentRef.setValue(commentData)
+        
+        // 2. 投稿のcommentCountをインクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/commentCount")
+        try await countRef.setValue(ServerValue.increment(1))
+    }
+    
+    /// 特定投稿のコメントを取得（ページネーション対応）
+    func loadComments(for postId: UUID, limit: Int = 10, before: Date? = nil) async throws -> [Comment] {
+        var query = ref.child("users/\(userId)/comments/\(postId.uuidString)")
+            .queryOrdered(byChild: "timestamp")
+        
+        if let before = before {
+            query = query.queryEnding(atValue: before.timeIntervalSince1970)
+        }
+        
+        query = query.queryLimited(toLast: UInt(limit))
+        
+        let snapshot = try await query.getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else {
+            return []
+        }
+        
+        var comments: [Comment] = []
+        
+        for (_, commentData) in value {
+            if let comment = parseComment(from: commentData) {
+                comments.append(comment)
+            }
+        }
+        
+        return comments.sorted { $0.timestamp < $1.timestamp } // 古い順
+    }
+    
+    /// コメントを削除
+    func removeComment(_ commentId: UUID, from postId: UUID) async throws {
+        // 1. コメントを削除
+        let commentRef = ref.child("users/\(userId)/comments/\(postId.uuidString)/\(commentId.uuidString)")
+        try await commentRef.removeValue()
+        
+        // 2. 投稿のcommentCountをデクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/commentCount")
+        try await countRef.setValue(ServerValue.increment(-1))
+    }
+    
+    // MARK: - Chat Rooms (変更なし)
     
     func saveChatRoom(_ chatRoom: ChatRoom) async throws {
         let roomRef = ref.child("users/\(userId)/chatRooms/\(chatRoom.oshiId.uuidString)")
@@ -141,10 +259,9 @@ class FirebaseDatabaseManager {
         
         try await roomRef.setValue(roomData)
         
-        // メッセージは別ノードに保存（効率化のため）
         let messagesRef = ref.child("users/\(userId)/messages/\(chatRoom.oshiId.uuidString)")
         
-        for message in chatRoom.messages.suffix(100) { // 最新100件のみ保存
+        for message in chatRoom.messages.suffix(100) {
             let messageData: [String: Any] = [
                 "id": message.id.uuidString,
                 "content": message.content,
@@ -173,7 +290,6 @@ class FirebaseDatabaseManager {
                 continue
             }
             
-            // メッセージを読み込み
             let messagesSnapshot = try await ref.child("users/\(userId)/messages/\(oshiIdString)").getData()
             var messages: [Message] = []
             
@@ -219,13 +335,11 @@ class FirebaseDatabaseManager {
         
         try await messageRef.setValue(messageData)
         
-        // チャットルームのlastMessageDateを更新
         let roomRef = ref.child("users/\(userId)/chatRooms/\(oshiId.uuidString)")
         try await roomRef.updateChildValues([
             "lastMessageDate": message.timestamp.timeIntervalSince1970
         ])
         
-        // 未読カウントを更新
         if !message.isFromUser {
             let unreadRef = roomRef.child("unreadCount")
             try await unreadRef.setValue(ServerValue.increment(1))
@@ -236,7 +350,6 @@ class FirebaseDatabaseManager {
         let roomRef = ref.child("users/\(userId)/chatRooms/\(oshiId.uuidString)")
         try await roomRef.updateChildValues(["unreadCount": 0])
         
-        // すべてのメッセージを既読に
         let messagesRef = ref.child("users/\(userId)/messages/\(oshiId.uuidString)")
         let snapshot = try await messagesRef.getData()
         
@@ -266,18 +379,10 @@ class FirebaseDatabaseManager {
             return nil
         }
         
-        // 新しいフィールドの読み込み（オプショナル）
         let genderRaw = data["gender"] as? String
         let gender = genderRaw.flatMap { Gender(rawValue: $0) }
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
-        
-        // 画像データの読み込み
-        var avatarImageData: Data? = nil
-        if let base64String = data["avatarImageData"] as? String {
-            avatarImageData = Data(base64Encoded: base64String)
-        }
-        
         let ngTopics = data["ngTopics"] as? [String] ?? []
         let intimacyLevel = data["intimacyLevel"] as? Int ?? 0
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
@@ -296,7 +401,7 @@ class FirebaseDatabaseManager {
             worldSetting: worldSetting,
             ngTopics: ngTopics,
             avatarColor: avatarColor,
-            avatarImageURL: avatarImageURL // 追加
+            avatarImageURL: avatarImageURL
         )
         
         oshi.intimacyLevel = intimacyLevel
@@ -318,6 +423,8 @@ class FirebaseDatabaseManager {
         
         let authorId = (data["authorId"] as? String).flatMap { UUID(uuidString: $0) }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
+        let reactionCount = data["reactionCount"] as? Int ?? 0
+        let commentCount = data["commentCount"] as? Int ?? 0
         
         var post = Post(
             id: id,
@@ -328,13 +435,8 @@ class FirebaseDatabaseManager {
             isUserPost: isUserPost
         )
         
-        if let reactionsData = data["reactions"] as? [[String: Any]] {
-            post.reactions = reactionsData.compactMap { parseReaction(from: $0) }
-        }
-        
-        if let commentsData = data["comments"] as? [[String: Any]] {
-            post.comments = commentsData.compactMap { parseComment(from: $0) }
-        }
+        post.reactionCount = reactionCount
+        post.commentCount = commentCount
         
         return post
     }
@@ -392,25 +494,5 @@ class FirebaseDatabaseManager {
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         
         return Comment(id: id, oshiId: oshiId, oshiName: oshiName, content: content, timestamp: timestamp)
-    }
-    
-    private func reactionToDict(_ reaction: Reaction) -> [String: Any] {
-        return [
-            "id": reaction.id.uuidString,
-            "oshiId": reaction.oshiId.uuidString,
-            "oshiName": reaction.oshiName,
-            "emoji": reaction.emoji,
-            "timestamp": reaction.timestamp.timeIntervalSince1970
-        ]
-    }
-    
-    private func commentToDict(_ comment: Comment) -> [String: Any] {
-        return [
-            "id": comment.id.uuidString,
-            "oshiId": comment.oshiId.uuidString,
-            "oshiName": comment.oshiName,
-            "content": comment.content,
-            "timestamp": comment.timestamp.timeIntervalSince1970
-        ]
     }
 }
