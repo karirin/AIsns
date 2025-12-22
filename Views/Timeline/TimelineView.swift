@@ -153,8 +153,9 @@ struct PostComposerView: View {
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
-    var isNavigable: Bool = true   // ✅ 追加
+    var isNavigable: Bool = true
     @State private var showingReactions = false
+    @State private var avatarImage: UIImage?
 
     var oshi: OshiCharacter? {
         if let authorId = post.authorId {
@@ -177,34 +178,46 @@ struct PostCardView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                cardContent   // ✅ 詳細では遷移させない
+                cardContent
+            }
+        }
+        .task {
+            if let oshi = oshi, let urlString = oshi.avatarImageURL {
+                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
             }
         }
     }
 
-    // ✅ ここに入れる（PostCardViewの中）
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 if let oshi = oshi {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(.red),
-                                    Color(.red).opacity(0.8)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    if let avatarImage = avatarImage {
+                        Image(uiImage: avatarImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(.red),
+                                        Color(.red).opacity(0.8)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.headline)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        )
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Text(String(oshi.name.prefix(1)))
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                            )
+                    }
                 } else {
                     Circle()
                         .fill(
@@ -372,6 +385,7 @@ struct ReactionBubble: View {
 struct CommentRow: View {
     let comment: Comment
     @ObservedObject var viewModel: OshiViewModel
+    @State private var avatarImage: UIImage?
     
     var oshi: OshiCharacter? {
         viewModel.oshiList.first { $0.id == comment.oshiId }
@@ -380,24 +394,32 @@ struct CommentRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if let oshi = oshi {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(.red),
-                                Color(.red).opacity(0.8)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(.red),
+                                    Color(.red).opacity(0.8)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    )
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        )
+                }
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -418,6 +440,11 @@ struct CommentRow: View {
             }
             
             Spacer()
+        }
+        .task {
+            if let oshi = oshi, let urlString = oshi.avatarImageURL {
+                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+            }
         }
     }
 }

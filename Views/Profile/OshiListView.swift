@@ -110,16 +110,12 @@ struct OshiListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(viewModel.oshiList) { oshi in
-                            if canEditRecommended {
-                                NavigationLink(
-                                    destination: OshiProfileEditView(oshi: oshi, viewModel: viewModel)
-                                ) {
-                                    OshiCell(oshi: oshi)
-                                }
-                                .buttonStyle(.plain)
-                            } else {
+                            NavigationLink(
+                                destination: OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
+                            ) {
                                 OshiCell(oshi: oshi)
                             }
+                            .buttonStyle(.plain)
                             
                             Divider()
                                 .padding(.leading, 76)
@@ -178,10 +174,9 @@ struct OshiListView: View {
                 ForEach(viewModel.recommendedOshis) { oshi in
                     HStack(spacing: 12) {
                         NavigationLink(
-                            destination: OshiProfileEditView(
+                            destination: OshiProfileDetailView(
                                 oshi: oshi,
-                                viewModel: viewModel,
-                                isPreset: true
+                                viewModel: viewModel
                             )
                         ) {
                             OshiCell(oshi: oshi, showChevron: false)

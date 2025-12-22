@@ -30,6 +30,7 @@ struct ChatListView: View {
 struct ChatRoomRow: View {
     let oshi: OshiCharacter
     let room: ChatRoom
+    @State private var avatarImage: UIImage?
     
     var lastMessage: Message? {
         room.messages.last
@@ -39,15 +40,23 @@ struct ChatRoomRow: View {
         HStack(spacing: 12) {
             // アバター
             ZStack(alignment: .topTrailing) {
-                Circle()
-                    .fill(Color(.red).gradient)
-                    .frame(width: 56, height: 56)
-                    .overlay(
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    )
+                if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 56, height: 56)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color(.red).gradient)
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        )
+                }
                 
                 // 未読バッジ
                 if room.unreadCount > 0 {
@@ -61,6 +70,11 @@ struct ChatRoomRow: View {
                                 .foregroundColor(.white)
                         )
                         .offset(x: 4, y: -4)
+                }
+            }
+            .task {
+                if let urlString = oshi.avatarImageURL {
+                    avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
                 }
             }
             
@@ -195,6 +209,7 @@ struct ChatDetailView: View {
 struct MessageBubble: View {
     let message: Message
     let oshi: OshiCharacter
+    @State private var avatarImage: UIImage?
     
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -223,15 +238,23 @@ struct MessageBubble: View {
             } else {
                 HStack(alignment: .bottom, spacing: 8) {
                     // アバター
-                    Circle()
-                        .fill(Color(.red).gradient)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.callout)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        )
+                    if let avatarImage = avatarImage {
+                        Image(uiImage: avatarImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                    } else {
+                        Circle()
+                            .fill(Color(.red).gradient)
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Text(String(oshi.name.prefix(1)))
+                                    .font(.callout)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                            )
+                    }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         // 名前
@@ -247,6 +270,11 @@ struct MessageBubble: View {
                             .foregroundColor(.primary)
                             .cornerRadius(20)
                             .frame(maxWidth: 260, alignment: .leading)
+                    }
+                }
+                .task {
+                    if let urlString = oshi.avatarImageURL {
+                        avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
                     }
                 }
                 
