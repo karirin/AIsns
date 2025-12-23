@@ -247,49 +247,52 @@ class OshiViewModel: ObservableObject {
         
         let mood = aiService.analyzeMood(from: post.content)
         
+        // ✅ コメントする人数をランダムに決定（2〜3人、推しが少ない場合は全員）
+        let commentersCount = min(Int.random(in: 2...3), oshiList.count)
+        
+        // ✅ 親密度ベースの重み付き抽選
+        let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
+        
         for oshi in oshiList {
-            // いいね（個別にFirebaseに保存）
-            let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
-            
-            do {
-                try await dbManager.addReaction(reaction, to: post.id)
+            // ✅ いいね（全員が60〜90%の確率で反応）
+            if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
+                let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
                 
-                // ✅ ローカルのカウントを更新
-                if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                    posts[idx].reactionCount += 1
+                do {
+                    try await dbManager.addReaction(reaction, to: post.id)
+                    
+                    if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                        posts[idx].reactionCount += 1
+                    }
+                    
+                    if var details = postDetails[post.id] {
+                        details.reactions.append(reaction)
+                        postDetails[post.id] = details
+                    }
+                } catch {
+                    print("❌ リアクション追加エラー: \(error)")
                 }
-                
-                // ✅ postDetailsにもリアクションを追加（即座に表示）
-                if var details = postDetails[post.id] {
-                    details.reactions.append(reaction)
-                    postDetails[post.id] = details
-                }
-                
-            } catch {
-                print("❌ リアクション追加エラー: \(error)")
             }
             
-            // コメント（80%の確率）
-            if Double.random(in: 0...1) < 0.8 {
+            // ✅ コメント（選ばれた推しのみ）
+            if selectedCommenters.contains(where: { $0.id == oshi.id }) {
                 do {
-                    try await Task.sleep(nanoseconds: UInt64.random(in: 2_000_000_000...5_000_000_000))
+                    // ランダムな遅延（1〜5秒）
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...5_000_000_000))
                     
                     let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood)
                     let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
                     
                     try await dbManager.addComment(comment, to: post.id)
                     
-                    // ✅ ローカルのカウントを更新
                     if let idx = posts.firstIndex(where: { $0.id == post.id }) {
                         posts[idx].commentCount += 1
                     }
                     
-                    // ✅ postDetailsにもコメントを追加（即座に表示）
                     if var details = postDetails[post.id] {
                         details.comments.append(comment)
                         postDetails[post.id] = details
                     } else {
-                        // ✅ postDetailsが存在しない場合は新規作成
                         if let currentPost = posts.first(where: { $0.id == post.id }) {
                             postDetails[post.id] = PostDetails(
                                 post: currentPost,
@@ -311,6 +314,58 @@ class OshiViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // ✅ 親密度ベースの重み付き抽選システム
+    private func selectCommentersWithIntimacy(count: Int) -> [OshiCharacter] {
+        guard !oshiList.isEmpty else { return [] }
+        
+        // 親密度をベースにした重み計算
+        let weighedOshis: [(oshi: OshiCharacter, weight: Double)] = oshiList.map { oshi in
+            // 基本重み: 親密度による重み（1〜10）
+            let intimacyWeight = max(1.0, Double(oshi.totalInteractions) / 10.0)
+            
+            // ランダム要素: 0.5〜1.5倍のランダムブースト（決まった人だけにならないように）
+            let randomBoost = Double.random(in: 0.5...1.5)
+            
+            // 最終重み
+            let finalWeight = intimacyWeight * randomBoost
+            
+            return (oshi, finalWeight)
+        }
+        
+        // 重みが高い順にソート
+        let sortedOshis = weighedOshis.sorted { $0.weight > $1.weight }
+        
+        // 上位から選択（ただし完全に上位だけでなく、若干のランダム性を持たせる）
+        var selected: [OshiCharacter] = []
+        
+        for (index, item) in sortedOshis.enumerated() {
+            if selected.count >= count { break }
+            
+            // 上位ほど選ばれやすいが、下位にもチャンスを与える
+            let selectionProbability: Double
+            if index == 0 {
+                selectionProbability = 0.9  // 1位: 90%
+            } else if index == 1 {
+                selectionProbability = 0.8  // 2位: 80%
+            } else if index == 2 {
+                selectionProbability = 0.6  // 3位: 60%
+            } else {
+                selectionProbability = 0.3  // 4位以降: 30%
+            }
+            
+            if Double.random(in: 0...1) < selectionProbability {
+                selected.append(item.oshi)
+            }
+        }
+        
+        // もし誰も選ばれなかった場合は、トップ2を強制選択
+        if selected.isEmpty {
+            selected = Array(sortedOshis.prefix(min(2, sortedOshis.count)).map { $0.oshi })
+        }
+        
+        return selected
     }
     
     func createOshiPost(by oshi: OshiCharacter) {
@@ -481,7 +536,7 @@ class OshiViewModel: ObservableObject {
     // MARK: - 自動投稿
     
     private func startAutoPosting() {
-        autoPostTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+        autoPostTimer = Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.randomOshiPost()
             }
