@@ -11,6 +11,7 @@ class OshiViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var recommendedOshis: [OshiCharacter] = []
+    @Published var notifications: [AppNotification] = []
     
     // ✅ 投稿の詳細情報（必要な時だけ取得）
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -19,6 +20,9 @@ class OshiViewModel: ObservableObject {
     private let dbManager = FirebaseDatabaseManager.shared
     private var cancellables = Set<AnyCancellable>()
     private var autoPostTimer: Timer?
+    var unreadNotificationCount: Int {
+        notifications.filter { !$0.isRead }.count
+    }
     
     init() {
         Task {
@@ -261,6 +265,10 @@ class OshiViewModel: ObservableObject {
                 do {
                     try await dbManager.addReaction(reaction, to: post.id)
                     
+                    if post.isUserPost {
+                        createReactionNotification(oshi: oshi, post: post)
+                    }
+                    
                     if let idx = posts.firstIndex(where: { $0.id == post.id }) {
                         posts[idx].reactionCount += 1
                     }
@@ -284,6 +292,10 @@ class OshiViewModel: ObservableObject {
                     let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
                     
                     try await dbManager.addComment(comment, to: post.id)
+                    
+                    if post.isUserPost {
+                        createCommentNotification(oshi: oshi, post: post, commentContent: commentText)
+                    }
                     
                     if let idx = posts.firstIndex(where: { $0.id == post.id }) {
                         posts[idx].commentCount += 1
@@ -377,6 +389,8 @@ class OshiViewModel: ObservableObject {
                 posts.insert(post, at: 0)
                 
                 try await dbManager.savePost(post)
+                
+                createOshiPostNotification(oshi: oshi, post: post)
                 
                 print("✅ 推しの投稿作成成功: \(oshi.name)")
                 
@@ -492,6 +506,10 @@ class OshiViewModel: ObservableObject {
                 
                 try await dbManager.addMessage(to: oshiId, message: aiMessage)
                 
+                if let oshi = oshiList.first(where: { $0.id == oshiId }) {
+                    createChatNotification(oshi: oshi, message: aiMessage)
+                }
+                
                 print("✅ チャット返信成功")
                 
             } catch {
@@ -526,6 +544,8 @@ class OshiViewModel: ObservableObject {
             
             try await dbManager.addMessage(to: oshi.id, message: message)
             
+            createChatNotification(oshi: oshi, message: message)
+            
             print("✅ 初回挨拶成功: \(oshi.name)")
             
         } catch {
@@ -549,6 +569,81 @@ class OshiViewModel: ObservableObject {
         if let randomOshi = oshiList.randomElement() {
             createOshiPost(by: randomOshi)
         }
+    }
+    
+    private func addNotification(_ notification: AppNotification) {
+        notifications.insert(notification, at: 0)
+        
+        // 通知が100件を超えたら古いものを削除
+        if notifications.count > 100 {
+            notifications = Array(notifications.prefix(100))
+        }
+    }
+
+    /// 通知を既読にする
+    func markNotificationAsRead(_ notificationId: UUID) {
+        if let index = notifications.firstIndex(where: { $0.id == notificationId }) {
+            notifications[index].isRead = true
+        }
+    }
+
+    /// すべての通知を既読にする
+    func markAllNotificationsAsRead() {
+        for index in notifications.indices {
+            notifications[index].isRead = true
+        }
+    }
+
+    /// すべての通知を削除
+    func clearAllNotifications() {
+        notifications.removeAll()
+    }
+
+    /// リアクション通知を作成
+    private func createReactionNotification(oshi: OshiCharacter, post: Post) {
+        let notification = AppNotification(
+            type: .reaction,
+            senderId: oshi.id,
+            senderName: oshi.name,
+            content: "",
+            relatedPostId: post.id
+        )
+        addNotification(notification)
+    }
+
+    /// コメント通知を作成
+    private func createCommentNotification(oshi: OshiCharacter, post: Post, commentContent: String) {
+        let notification = AppNotification(
+            type: .comment,
+            senderId: oshi.id,
+            senderName: oshi.name,
+            content: commentContent,
+            relatedPostId: post.id
+        )
+        addNotification(notification)
+    }
+
+    /// 推しの投稿通知を作成
+    private func createOshiPostNotification(oshi: OshiCharacter, post: Post) {
+        let notification = AppNotification(
+            type: .oshiPost,
+            senderId: oshi.id,
+            senderName: oshi.name,
+            content: post.content,
+            relatedPostId: post.id
+        )
+        addNotification(notification)
+    }
+
+    /// チャットメッセージ通知を作成
+    private func createChatNotification(oshi: OshiCharacter, message: Message) {
+        let notification = AppNotification(
+            type: .chat,
+            senderId: oshi.id,
+            senderName: oshi.name,
+            content: message.content
+        )
+        addNotification(notification)
     }
     
     // MARK: - 高親密度での自発的メッセージ

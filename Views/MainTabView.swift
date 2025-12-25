@@ -7,12 +7,22 @@ struct MainTabView: View {
         viewModel.chatRooms.reduce(0) { $0 + $1.unreadCount }
     }
     
+    var unreadNotificationCount: Int {
+        viewModel.notifications.filter { !$0.isRead }.count
+    }
+    
     var body: some View {
         TabView {
             TimelineScreenView(viewModel: viewModel)
                 .tabItem {
                     Label("タイムライン", systemImage: "house.fill")
                 }
+            
+            NotificationView(viewModel: viewModel)
+                .tabItem {
+                    Label("通知", systemImage: "bell.fill")
+                }
+                .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
             
             ChatListView(viewModel: viewModel)
                 .tabItem {
