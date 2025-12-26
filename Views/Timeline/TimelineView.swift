@@ -12,29 +12,35 @@ struct TimelineScreenView: View {
                         ForEach(viewModel.posts) { post in
                             PostCardView(post: post, viewModel: viewModel)
                             Divider()
+                                .padding(.leading, 64)
                         }
                     }
                     .padding(.bottom, 80)
+                }
+                .refreshable {
+                    // リフレッシュ処理
                 }
                 
                 // フローティング投稿ボタン
                 Button(action: {
                     showingPostSheet = true
                 }) {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 56, height: 56)
                         .background(
                             LinearGradient(
-                                colors: [.blue, .purple],
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                         .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                        .shadow(color: Color.blue.opacity(0.3), radius: 15, x: 0, y: 8)
                 }
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
@@ -48,7 +54,6 @@ struct TimelineScreenView: View {
     }
 }
 
-// 投稿作成シート
 struct PostComposerView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
@@ -66,22 +71,26 @@ struct PostComposerView: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [.blue, .purple],
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "person.fill")
                                 .foregroundColor(.white)
-                                .font(.headline)
+                                .font(.system(size: 20))
                         )
                     
                     ZStack(alignment: .topLeading) {
                         if postText.isEmpty {
-                            Text("いまどうしてる？")
-                                .foregroundColor(.secondary.opacity(0.5))
+                            Text("いまどうしてる?")
+                                .foregroundColor(.secondary.opacity(0.6))
+                                .font(.body)
                                 .padding(.top, 8)
                         }
                         
@@ -89,21 +98,45 @@ struct PostComposerView: View {
                             .focused($isTextFieldFocused)
                             .font(.body)
                             .scrollContentBackground(.hidden)
-                            .frame(minHeight: 100)
+                            .frame(minHeight: 120)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
                 
                 Spacer()
                 
+                // ツールバー
                 HStack {
+                    HStack(spacing: 16) {
+                        Button(action: {}) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
+                        }
+                        Button(action: {}) {
+                            Image(systemName: "face.smiling")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
+                        }
+                    }
+                    .padding(.leading, 16)
+                    
                     Spacer()
+                    
                     Text("\(postText.count)/280")
-                        .font(.caption)
+                        .font(.system(size: 13))
                         .foregroundColor(postText.count > 280 ? .red : .secondary)
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
+                        .padding(.trailing, 16)
                 }
+                .padding(.vertical, 12)
+                .background(Color(.systemBackground))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundColor(Color(.separator)),
+                    alignment: .top
+                )
             }
             .navigationTitle("投稿")
             .navigationBarTitleDisplayMode(.inline)
@@ -119,14 +152,17 @@ struct PostComposerView: View {
                         viewModel.createUserPost(content: postText)
                         isPresented = false
                     }
-                    .fontWeight(.bold)
+                    .fontWeight(.semibold)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 8)
                     .background(
                         canPost ?
                         LinearGradient(
-                            colors: [.blue, .purple],
+                            colors: [
+                                Color(red: 0.2, green: 0.7, blue: 1.0),
+                                Color(red: 0.5, green: 0.4, blue: 1.0)
+                            ],
                             startPoint: .leading,
                             endPoint: .trailing
                         ) :
@@ -149,7 +185,6 @@ struct PostComposerView: View {
     }
 }
 
-// 投稿カード
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
@@ -191,30 +226,30 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
+                // アバター
                 if let oshi = oshi {
                     if let avatarImage = avatarImage {
                         Image(uiImage: avatarImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                             .clipShape(Circle())
                     } else {
                         Circle()
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color(.red),
-                                        Color(.red).opacity(0.8)
+                                        Color(.systemPink),
+                                        Color(.systemPink).opacity(0.7)
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                             .overlay(
                                 Text(String(oshi.name.prefix(1)))
-                                    .font(.headline)
-                                    .fontWeight(.bold)
+                                    .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
                             )
                     }
@@ -222,77 +257,83 @@ struct PostCardView: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [.blue, .purple],
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "person.fill")
                                 .foregroundColor(.white)
+                                .font(.system(size: 20))
                         )
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    // ヘッダー
                     HStack(spacing: 4) {
                         Text(post.authorName)
-                            .font(.subheadline)
-                            .fontWeight(.bold)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.primary)
 
                         if post.isUserPost {
                             Image(systemName: "checkmark.seal.fill")
-                                .font(.caption)
-                                .foregroundColor(.blue)
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
                         }
 
                         Text("·")
+                            .font(.system(size: 14))
                             .foregroundColor(.secondary)
 
                         XStyleRelativeTimeText(date: post.timestamp)
-                            .font(.caption)
+                            .font(.system(size: 14))
                             .foregroundColor(.secondary)
 
                         Spacer()
 
                         Button(action: {}) {
                             Image(systemName: "ellipsis")
+                                .font(.system(size: 16))
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(.borderless)
                     }
 
+                    // 投稿内容
                     Text(post.content)
-                        .font(.body)
-                        .lineSpacing(4)
+                        .font(.system(size: 15))
+                        .lineSpacing(3)
+                        .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
 
+                    // アクションボタン
                     HStack(spacing: 0) {
-                        Button(action: {}) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bubble.left")
-                                    .font(.subheadline)
-                                if post.commentCount > 0 {
-                                    Text("\(post.commentCount)")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(.secondary)
-                        }
+                        ActionButton(
+                            icon: "bubble.left",
+                            count: post.commentCount,
+                            color: .secondary
+                        ) {}
                         .frame(maxWidth: .infinity)
 
-                        Button(action: {}) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.2.squarepath")
-                                    .font(.subheadline)
-                                Text("0")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.secondary)
-                        }
+                        ActionButton(
+                            icon: "arrow.2.squarepath",
+                            count: 0,
+                            color: .secondary
+                        ) {}
                         .frame(maxWidth: .infinity)
 
-                        Button(action: {
+                        ActionButton(
+                            icon: "heart",
+                            count: post.reactionCount,
+                            color: showingReactions ? .pink : .secondary,
+                            isFilled: showingReactions
+                        ) {
                             showingReactions.toggle()
                             if showingReactions && postDetails == nil {
                                 Task { await viewModel.loadPostDetails(for: post.id) }
@@ -300,69 +341,86 @@ struct PostCardView: View {
                             if !post.isUserPost {
                                 viewModel.reactToOshiPost(post)
                             }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "heart")
-                                    .font(.subheadline)
-                                if post.reactionCount > 0 {
-                                    Text("\(post.reactionCount)")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundColor(showingReactions ? .pink : .secondary)
                         }
                         .frame(maxWidth: .infinity)
 
-                        Button(action: {}) {
-                            Image(systemName: "bookmark")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                        ActionButton(
+                            icon: "bookmark",
+                            count: nil,
+                            color: .secondary
+                        ) {}
                         .frame(maxWidth: .infinity)
 
-                        Button(action: {}) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                        ActionButton(
+                            icon: "square.and.arrow.up",
+                            count: nil,
+                            color: .secondary
+                        ) {}
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.top, 12)
-                    .buttonStyle(.borderless)
+                    .padding(.top, 8)
 
+                    // リアクション表示
                     if showingReactions {
                         if let details = postDetails, !details.reactions.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 6) {
                                     ForEach(details.reactions) { reaction in
                                         ReactionBubble(reaction: reaction)
                                     }
                                 }
+                                .padding(.vertical, 4)
                             }
-                            .padding(.top, 8)
+                            .padding(.top, 6)
                         } else if post.reactionCount > 0 {
                             HStack(spacing: 6) {
-                                ProgressView().scaleEffect(0.8)
+                                ProgressView()
+                                    .scaleEffect(0.7)
                                 Text("いいねを読み込み中...")
-                                    .font(.caption)
+                                    .font(.system(size: 13))
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 8)
                         } else {
                             Text("まだいいねはありません")
-                                .font(.caption)
+                                .font(.system(size: 13))
                                 .foregroundColor(.secondary)
                                 .padding(.top, 8)
                         }
                     }
                 }
+                .padding(.trailing, 8)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
         .background(Color(.systemBackground))
     }
 }
 
+// アクションボタンコンポーネント
+struct ActionButton: View {
+    let icon: String
+    let count: Int?
+    let color: Color
+    var isFilled: Bool = false
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: isFilled ? icon + ".fill" : icon)
+                    .font(.system(size: 16))
+                if let count = count, count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 13))
+                }
+            }
+            .foregroundColor(color)
+        }
+        .buttonStyle(.borderless)
+    }
+}
 
 struct ReactionBubble: View {
     let reaction: Reaction
@@ -370,15 +428,15 @@ struct ReactionBubble: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(reaction.emoji)
-                .font(.caption)
+                .font(.system(size: 13))
             Text(reaction.oshiName)
-                .font(.caption2)
+                .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(14)
     }
 }
 
@@ -398,25 +456,24 @@ struct CommentRow: View {
                     Image(uiImage: avatarImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 32, height: 32)
+                        .frame(width: 36, height: 36)
                         .clipShape(Circle())
                 } else {
                     Circle()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color(.red),
-                                    Color(.red).opacity(0.8)
+                                    Color(.systemPink),
+                                    Color(.systemPink).opacity(0.7)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 32, height: 32)
+                        .frame(width: 36, height: 36)
                         .overlay(
                             Text(String(oshi.name.prefix(1)))
-                                .font(.caption)
-                                .fontWeight(.bold)
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
                         )
                 }
@@ -425,17 +482,17 @@ struct CommentRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(comment.oshiName)
-                        .font(.subheadline)
-                        .fontWeight(.bold)
+                        .font(.system(size: 14, weight: .bold))
                     Text("·")
+                        .font(.system(size: 13))
                         .foregroundColor(.secondary)
                     XStyleRelativeTimeText(date: comment.timestamp)
-                        .font(.caption)
+                        .font(.system(size: 13))
                         .foregroundColor(.secondary)
                 }
                 
                 Text(comment.content)
-                    .font(.subheadline)
+                    .font(.system(size: 14))
                     .lineSpacing(2)
             }
             
@@ -449,7 +506,6 @@ struct CommentRow: View {
     }
 }
 
-// ✅ X風：分単位で更新する相対時刻表示
 struct XStyleRelativeTimeText: View {
     let date: Date
 
@@ -473,18 +529,16 @@ struct XStyleRelativeTimeText: View {
         let days = hours / 24
         if days < 7 { return "\(days)日" }
 
-        // 7日以上は日付表示（Xっぽく）
         return shortDateFormatter.string(from: date)
     }
 
     private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d" // 好みで "M月d日" もOK
+        f.dateFormat = "M/d"
         return f
     }()
 }
-
 
 #Preview {
     TimelineScreenView(viewModel: OshiViewModel())

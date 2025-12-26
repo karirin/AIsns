@@ -1,5 +1,58 @@
-
 import SwiftUI
+
+// MARK: - Grouped Notification Model
+
+/// グループ化された通知
+struct GroupedNotification: Identifiable {
+    let id = UUID()
+    let type: NotificationType
+    let relatedPostId: UUID?
+    let notifications: [AppNotification]
+    let timestamp: Date
+    
+    var isRead: Bool {
+        notifications.allSatisfy { $0.isRead }
+    }
+    
+    var senderNames: [String] {
+        notifications.map { $0.senderName }
+    }
+    
+    var senderIds: [UUID] {
+        notifications.map { $0.senderId }
+    }
+    
+    /// 表示用メッセージ
+    var displayMessage: String {
+        let count = notifications.count
+        let firstSender = notifications.first?.senderName ?? ""
+        
+        if count == 1 {
+            return notifications.first?.message ?? ""
+        }
+        
+        switch type {
+        case .reaction:
+            if count == 2 {
+                let secondSender = notifications[1].senderName
+                return "\(firstSender)と\(secondSender)があなたの投稿をいいねしました"
+            } else {
+                return "\(firstSender)と他\(count - 1)人があなたの投稿をいいねしました"
+            }
+        case .comment:
+            if count == 2 {
+                let secondSender = notifications[1].senderName
+                return "\(firstSender)と\(secondSender)があなたの投稿にコメントしました"
+            } else {
+                return "\(firstSender)と他\(count - 1)人があなたの投稿にコメントしました"
+            }
+        default:
+            return notifications.first?.message ?? ""
+        }
+    }
+}
+
+// MARK: - Notification View
 
 struct NotificationView: View {
     @ObservedObject var viewModel: OshiViewModel
@@ -26,6 +79,53 @@ struct NotificationView: View {
         }
     }
     
+    /// 通知をグループ化
+    var groupedNotifications: [GroupedNotification] {
+        var groups: [GroupedNotification] = []
+        var processed: Set<UUID> = []
+        
+        for notification in filteredNotifications.sorted(by: { $0.timestamp > $1.timestamp }) {
+            guard !processed.contains(notification.id) else { continue }
+            
+            // グループ化可能かつ関連投稿IDがある場合
+            if notification.type.canGroup,
+               let postId = notification.relatedPostId {
+                
+                // 同じ投稿・同じタイプの通知を探す
+                let relatedNotifications = filteredNotifications.filter {
+                    $0.type == notification.type &&
+                    $0.relatedPostId == postId &&
+                    !processed.contains($0.id)
+                }
+                
+                // グループ化
+                let group = GroupedNotification(
+                    type: notification.type,
+                    relatedPostId: postId,
+                    notifications: relatedNotifications,
+                    timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
+                )
+                
+                groups.append(group)
+                relatedNotifications.forEach { processed.insert($0.id) }
+                
+            } else {
+                // グループ化しない通知
+                let group = GroupedNotification(
+                    type: notification.type,
+                    relatedPostId: notification.relatedPostId,
+                    notifications: [notification],
+                    timestamp: notification.timestamp
+                )
+                
+                groups.append(group)
+                processed.insert(notification.id)
+            }
+        }
+        
+        return groups.sorted { $0.timestamp > $1.timestamp }
+    }
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
@@ -35,14 +135,14 @@ struct NotificationView: View {
                 Divider()
                 
                 // 通知一覧
-                if filteredNotifications.isEmpty {
+                if groupedNotifications.isEmpty {
                     emptyStateView
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(filteredNotifications) { notification in
-                                NotificationRow(
-                                    notification: notification,
+                            ForEach(groupedNotifications) { group in
+                                GroupedNotificationRow(
+                                    group: group,
                                     viewModel: viewModel
                                 )
                                 
@@ -146,89 +246,85 @@ struct NotificationView: View {
     }
 }
 
-// MARK: - Notification Row
+// MARK: - Grouped Notification Row
 
-struct NotificationRow: View {
-    let notification: AppNotification
+struct GroupedNotificationRow: View {
+    let group: GroupedNotification
     @ObservedObject var viewModel: OshiViewModel
-    @State private var avatarImage: UIImage?
+    @State private var avatarImages: [UUID: UIImage] = [:]
     
-    var oshi: OshiCharacter? {
-        viewModel.oshiList.first { $0.id == notification.senderId }
+    var oshiList: [OshiCharacter] {
+        group.senderIds.compactMap { senderId in
+            viewModel.oshiList.first { $0.id == senderId }
+        }
     }
     
     var relatedPost: Post? {
-        guard let postId = notification.relatedPostId else { return nil }
+        guard let postId = group.relatedPostId else { return nil }
         return viewModel.posts.first { $0.id == postId }
     }
     
+    // 表示するアバター数の制限
+    private let maxAvatarsToShow = 8
+    
     var body: some View {
         Button {
-            viewModel.markNotificationAsRead(notification.id)
-            
-            // 関連する投稿がある場合は投稿詳細へ遷移
-            // （実装は NavigationLink でラップする必要があります）
+            // 全ての通知を既読にする
+            group.notifications.forEach { notification in
+                viewModel.markNotificationAsRead(notification.id)
+            }
         } label: {
-            HStack(alignment: .top, spacing: 12) {
-                // アバター + 通知タイプアイコン
-                ZStack(alignment: .bottomTrailing) {
-                    // アバター
-                    if let avatarImage = avatarImage {
-                        Image(uiImage: avatarImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 48, height: 48)
-                            .clipShape(Circle())
-                    } else {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    // 左側: アバター + 通知タイプアイコン
+                    ZStack(alignment: .bottomTrailing) {
+                        // 複数アバターの重なり表示
+                        if group.notifications.count > 1 {
+                            multipleAvatarsView
+                        } else {
+                            // 単一アバター
+                            singleAvatarView
+                        }
+                        
+                        // 通知タイプアイコン
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.red, .red.opacity(0.7)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 48, height: 48)
+                            .fill(notificationColor)
+                            .frame(width: 24, height: 24)
                             .overlay(
-                                Text(String(notification.senderName.prefix(1)))
-                                    .font(.headline)
-                                    .fontWeight(.bold)
+                                Image(systemName: group.type.icon)
+                                    .font(.system(size: 12, weight: .bold))
                                     .foregroundColor(.white)
                             )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(.systemBackground), lineWidth: 2)
+                            )
+                            .offset(x: group.notifications.count > 1 ? 8 : 4, y: 4)
                     }
+                    .frame(height: 48)
                     
-                    // 通知タイプアイコン
-                    Circle()
-                        .fill(notificationColor)
-                        .frame(width: 20, height: 20)
-                        .overlay(
-                            Image(systemName: notification.type.icon)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                        .offset(x: 2, y: 2)
-                }
-                
-                // 通知内容
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Text(notification.message)
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                        
-                        Spacer()
-                        
-                        // 未読インジケーター
-                        if !notification.isRead {
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 8, height: 8)
-                        }
+                    Spacer()
+                    
+                    // 未読インジケーター
+                    if !group.isRead {
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 8, height: 8)
+                            .padding(.top, 4)
                     }
+                }
+                .padding(.horizontal)
+                .padding(.top)
+                
+                // 通知内容（アバターの下）
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(group.displayMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
                     
                     // 投稿の内容プレビュー
-                    if let post = relatedPost, notification.type == .comment || notification.type == .reaction {
+                    if let post = relatedPost {
                         Text(post.content)
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -239,35 +335,122 @@ struct NotificationRow: View {
                             .cornerRadius(8)
                     }
                     
-                    // コメント内容プレビュー
-                    if notification.type == .comment, !notification.content.isEmpty {
-                        Text(notification.content)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-                    
                     // 時刻
-                    XStyleRelativeTimeText(date: notification.timestamp)
+                    XStyleRelativeTimeText(date: group.timestamp)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
-                Spacer()
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom)
             }
-            .padding()
-            .background(notification.isRead ? Color(.systemBackground) : Color(.systemGray6).opacity(0.3))
+            .background(group.isRead ? Color(.systemBackground) : Color(.systemGray6).opacity(0.3))
         }
         .buttonStyle(.plain)
         .task {
-            if let oshi = oshi, let urlString = oshi.avatarImageURL {
-                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
-            }
+            await loadAvatars()
         }
     }
     
+    // MARK: - Single Avatar View
+    
+    @ViewBuilder
+    private var singleAvatarView: some View {
+        if let oshi = oshiList.first,
+           let avatarImage = avatarImages[oshi.id] {
+            Image(uiImage: avatarImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+        } else {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [.red, .red.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Text(String(group.senderNames.first?.prefix(1) ?? ""))
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                )
+        }
+    }
+    
+    // MARK: - Multiple Avatars View
+    
+    private var multipleAvatarsView: some View {
+        ZStack {
+            // 表示するアバターのリスト
+            let displayOshi = Array(oshiList.prefix(maxAvatarsToShow))
+            let totalCount = oshiList.count
+            
+            ForEach(Array(displayOshi.enumerated()), id: \.element.id) { index, oshi in
+                if let avatarImage = avatarImages[oshi.id] {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color(.systemBackground), lineWidth: 2)
+                        )
+                        .offset(x: CGFloat(index) * 40, y: 0)
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.red, .red.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color(.systemBackground), lineWidth: 2)
+                        )
+                        .offset(x: CGFloat(index) * 40, y: 0)
+                }
+            }
+            
+            // 4人以上の場合は「+N」を表示
+            if totalCount > maxAvatarsToShow {
+                Circle()
+                    .fill(Color(.systemGray4))
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Text("+\(totalCount - maxAvatarsToShow)")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color(.systemBackground), lineWidth: 2)
+                    )
+                    .offset(x: CGFloat(maxAvatarsToShow) * 40, y: 0)
+            }
+        }
+        .frame(width: 100, height: 48, alignment: .leading)
+    }
+    
+    // MARK: - Helper Methods
+    
     private var notificationColor: Color {
-        switch notification.type {
+        switch group.type {
         case .reaction: return .pink
         case .comment: return .blue
         case .mention: return .purple
@@ -276,8 +459,18 @@ struct NotificationRow: View {
         case .oshiPost: return .yellow
         }
     }
+    
+    private func loadAvatars() async {
+        for oshi in oshiList {
+            guard let urlString = oshi.avatarImageURL else { continue }
+            if let image = try? await FirebaseStorageManager.shared.downloadImage(from: urlString) {
+                avatarImages[oshi.id] = image
+            }
+        }
+    }
 }
 
 #Preview {
-    NotificationView(viewModel: OshiViewModel(mock: true))
+//    NotificationView(viewModel: OshiViewModel(mock: true))
+    MainTabView()
 }

@@ -39,6 +39,16 @@ enum NotificationType: String, Codable {
         case .oshiPost: return "yellow"
         }
     }
+    
+    /// 同じ投稿に対する通知をグループ化できるか
+    var canGroup: Bool {
+        switch self {
+        case .reaction, .comment:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// 通知モデル
