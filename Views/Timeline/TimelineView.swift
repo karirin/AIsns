@@ -1,12 +1,21 @@
 import SwiftUI
 
+// サイドバーの遷移先を定義
+enum SidebarDestination: Hashable {
+    case profile
+    case followers
+    case chat
+    case notifications
+}
+
 struct TimelineScreenView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var showingPostSheet = false
     @State private var showingSidebar = false
+    @State private var navigationPath = NavigationPath()
     
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottomTrailing) {
                 // メインコンテンツ
                 mainContent
@@ -15,7 +24,7 @@ struct TimelineScreenView: View {
                 if showingSidebar {
                     sidebarMenu
                         .transition(.move(edge: .leading))
-                        .zIndex(1)  // ✅ サイドバーを最前面に
+                        .zIndex(1)
                 }
                 
                 // フローティング投稿ボタン
@@ -34,8 +43,19 @@ struct TimelineScreenView: View {
                     }
                 }
             }
-            // ✅ サイドバー表示中はナビゲーションバーを隠す
-            .navigationBarHidden(showingSidebar)
+            .toolbar(showingSidebar ? .hidden : .visible, for: .navigationBar)
+            .navigationDestination(for: SidebarDestination.self) { destination in
+                switch destination {
+                case .profile:
+                    UserProfileView()
+                case .followers:
+                    OshiListView(viewModel: viewModel)
+                case .chat:
+                    ChatListView(viewModel: viewModel)
+                case .notifications:
+                    NotificationView(viewModel: viewModel)
+                }
+            }
             .sheet(isPresented: $showingPostSheet) {
                 PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
             }
@@ -60,7 +80,7 @@ struct TimelineScreenView: View {
                 // リフレッシュ処理
             }
             
-            // ✅ サイドバー表示時の半透明オーバーレイ
+            // サイドバー表示時の半透明オーバーレイ
             if showingSidebar {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -100,9 +120,9 @@ struct TimelineScreenView: View {
     private var sidebarMenu: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                // ✅ セーフエリアを考慮したヘッダー
+                // ヘッダー
                 VStack(alignment: .leading, spacing: 12) {
-                    // ✅ 閉じるボタン
+                    // 閉じるボタン
                     HStack {
                         Spacer()
                         Button(action: {
@@ -176,24 +196,26 @@ struct TimelineScreenView: View {
                 // メニュー項目
                 ScrollView {
                     VStack(spacing: 0) {
-                        // ✅ プロフィール
-                        NavigationLink {
-                            UserProfileView()
+                        // プロフィール
+                        Button {
+                            navigationPath.append(SidebarDestination.profile)
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
                         } label: {
                             SidebarMenuItem(
                                 icon: "person.fill",
                                 title: "プロフィール"
                             )
                         }
-                        .simultaneousGesture(TapGesture().onEnded {
+                        .buttonStyle(.plain)
+                        
+                        // フォロワー（推しリスト）
+                        Button {
+                            navigationPath.append(SidebarDestination.followers)
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showingSidebar = false
                             }
-                        })
-                        
-                        // ✅ フォロワー（推しリスト）
-                        NavigationLink {
-                            OshiListView(viewModel: viewModel)
                         } label: {
                             SidebarMenuItem(
                                 icon: "star.fill",
@@ -201,15 +223,14 @@ struct TimelineScreenView: View {
                                 badge: viewModel.oshiList.count
                             )
                         }
-                        .simultaneousGesture(TapGesture().onEnded {
+                        .buttonStyle(.plain)
+                        
+                        // チャット
+                        Button {
+                            navigationPath.append(SidebarDestination.chat)
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showingSidebar = false
                             }
-                        })
-                        
-                        // チャット
-                        NavigationLink {
-                            ChatListView(viewModel: viewModel)
                         } label: {
                             SidebarMenuItem(
                                 icon: "message.fill",
@@ -217,15 +238,14 @@ struct TimelineScreenView: View {
                                 badge: viewModel.chatRooms.reduce(0) { $0 + $1.unreadCount }
                             )
                         }
-                        .simultaneousGesture(TapGesture().onEnded {
+                        .buttonStyle(.plain)
+                        
+                        // 通知
+                        Button {
+                            navigationPath.append(SidebarDestination.notifications)
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showingSidebar = false
                             }
-                        })
-                        
-                        // 通知
-                        NavigationLink {
-                            NotificationView(viewModel: viewModel)
                         } label: {
                             SidebarMenuItem(
                                 icon: "bell.fill",
@@ -233,11 +253,7 @@ struct TimelineScreenView: View {
                                 badge: viewModel.unreadNotificationCount
                             )
                         }
-                        .simultaneousGesture(TapGesture().onEnded {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showingSidebar = false
-                            }
-                        })
+                        .buttonStyle(.plain)
                         
                         Divider()
                             .padding(.vertical, 8)
@@ -255,7 +271,7 @@ struct TimelineScreenView: View {
             .frame(width: 280)
             .background(Color(.systemBackground))
             .shadow(color: .black.opacity(0.2), radius: 10, x: 2, y: 0)
-            .ignoresSafeArea()  // ✅ セーフエリアを無視して全画面表示
+            .ignoresSafeArea()
             
             Spacer()
         }
@@ -495,7 +511,7 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // ✅ アバターをNavigationLinkでラップ（推しの場合のみ）
+                // アバターをNavigationLinkでラップ（推しの場合のみ）
                 Group {
                     if let oshi = oshi {
                         NavigationLink {
@@ -512,7 +528,7 @@ struct PostCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // ヘッダー
                     HStack(spacing: 4) {
-                        // ✅ 名前もタップ可能に（推しの場合のみ）
+                        // 名前もタップ可能に（推しの場合のみ）
                         if let oshi = oshi {
                             NavigationLink {
                                 OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
@@ -645,7 +661,7 @@ struct PostCardView: View {
         .background(Color(.systemBackground))
     }
     
-    // ✅ アバター表示を別Viewに分離
+    // アバター表示を別Viewに分離
     private var avatarView: some View {
         Group {
             if let oshi = oshi {
