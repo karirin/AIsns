@@ -3,33 +3,125 @@ import SwiftUI
 struct TimelineScreenView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var showingPostSheet = false
+    @State private var showingSidebar = false
     
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottomTrailing) {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.posts) { post in
-                            PostCardView(post: post, viewModel: viewModel)
-                            Divider()
-                                .padding(.leading, 64)
-                        }
-                    }
-                    .padding(.bottom, 80)
-                }
-                .refreshable {
-                    // リフレッシュ処理
+                // メインコンテンツ
+                mainContent
+                
+                // サイドバー
+                if showingSidebar {
+                    sidebarMenu
+                        .transition(.move(edge: .leading))
+                        .zIndex(1)  // ✅ サイドバーを最前面に
                 }
                 
                 // フローティング投稿ボタン
-                Button(action: {
-                    showingPostSheet = true
-                }) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(
+                floatingPostButton
+            }
+            .navigationTitle("タイムライン")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingSidebar.toggle()
+                        }
+                    }) {
+                        profileButton
+                    }
+                }
+            }
+            // ✅ サイドバー表示中はナビゲーションバーを隠す
+            .navigationBarHidden(showingSidebar)
+            .sheet(isPresented: $showingPostSheet) {
+                PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
+            }
+        }
+    }
+    
+    // MARK: - Main Content
+    
+    private var mainContent: some View {
+        ZStack {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.posts) { post in
+                        PostCardView(post: post, viewModel: viewModel)
+                        Divider()
+                            .padding(.leading, 64)
+                    }
+                }
+                .padding(.bottom, 80)
+            }
+            .refreshable {
+                // リフレッシュ処理
+            }
+            
+            // ✅ サイドバー表示時の半透明オーバーレイ
+            if showingSidebar {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingSidebar = false
+                        }
+                    }
+            }
+        }
+    }
+    
+    // MARK: - Profile Button
+    
+    private var profileButton: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: 32, height: 32)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+            )
+    }
+    
+    // MARK: - Sidebar Menu
+    
+    private var sidebarMenu: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                // ✅ セーフエリアを考慮したヘッダー
+                VStack(alignment: .leading, spacing: 12) {
+                    // ✅ 閉じるボタン
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .padding(.trailing, 8)
+                    
+                    // プロフィール情報
+                    Circle()
+                        .fill(
                             LinearGradient(
                                 colors: [
                                     Color(red: 0.2, green: 0.7, blue: 1.0),
@@ -39,18 +131,161 @@ struct TimelineScreenView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .clipShape(Circle())
-                        .shadow(color: Color.blue.opacity(0.3), radius: 15, x: 0, y: 8)
+                        .frame(width: 64, height: 64)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                        )
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("あなた")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.primary)
+                        
+                        Text("@user")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack(spacing: 16) {
+                        HStack(spacing: 4) {
+                            Text("\(viewModel.oshiList.count)")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.primary)
+                            Text("フォロー中")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack(spacing: 4) {
+                            Text("\(viewModel.posts.filter { $0.isUserPost }.count)")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.primary)
+                            Text("投稿")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+                
+                Divider()
+                
+                // メニュー項目
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // ✅ プロフィール
+                        NavigationLink {
+                            UserProfileView()
+                        } label: {
+                            SidebarMenuItem(
+                                icon: "person.fill",
+                                title: "プロフィール"
+                            )
+                        }
+                        .simultaneousGesture(TapGesture().onEnded {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        })
+                        
+                        // 推しリスト
+                        SidebarMenuItem(
+                            icon: "star.fill",
+                            title: "推し"
+                        )
+                        
+                        // チャット
+                        SidebarMenuItem(
+                            icon: "message.fill",
+                            title: "チャット"
+                        )
+                        
+                        // 通知
+                        SidebarMenuItem(
+                            icon: "bell.fill",
+                            title: "通知"
+                        )
+                        
+                        Divider()
+                            .padding(.vertical, 8)
+                        
+                        // 設定
+                        SidebarMenuItem(
+                            icon: "gearshape.fill",
+                            title: "設定とプライバシー"
+                        )
+                    }
+                }
+                
+                Spacer()
             }
-            .navigationTitle("タイムライン")
-            .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showingPostSheet) {
-                PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
+            .frame(width: 280)
+            .background(Color(.systemBackground))
+            .shadow(color: .black.opacity(0.2), radius: 10, x: 2, y: 0)
+            .ignoresSafeArea()  // ✅ セーフエリアを無視して全画面表示
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Floating Button
+    
+    private var floatingPostButton: some View {
+        Button(action: {
+            showingPostSheet = true
+        }) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 56, height: 56)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.2, green: 0.7, blue: 1.0),
+                            Color(red: 0.5, green: 0.4, blue: 1.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(Circle())
+                .shadow(color: Color.blue.opacity(0.3), radius: 15, x: 0, y: 8)
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 20)
+    }
+}
+
+struct SidebarMenuItem: View {
+    let icon: String
+    let title: String
+    var badge: Int? = nil
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundColor(.primary)
+                .frame(width: 28)
+            
+            Text(title)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            if let badge = badge, badge > 0 {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .contentShape(Rectangle())
     }
 }
 
