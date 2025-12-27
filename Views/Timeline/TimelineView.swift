@@ -210,7 +210,7 @@ struct TimelineScreenView: View {
                         }
                         .buttonStyle(.plain)
                         
-                        // フォロワー（推しリスト）
+                        // フォロワー(推しリスト)
                         Button {
                             navigationPath.append(SidebarDestination.followers)
                             withAnimation(.easeInOut(duration: 0.25)) {
@@ -487,6 +487,11 @@ struct PostCardView: View {
     var postDetails: PostDetails? {
         viewModel.postDetails[post.id]
     }
+    
+    // ✅ ユーザーがいいね済みかチェック
+    var hasUserLiked: Bool {
+        viewModel.hasUserReacted(to: post)
+    }
 
     var body: some View {
         Group {
@@ -511,7 +516,7 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // アバターをNavigationLinkでラップ（推しの場合のみ）
+                // アバターをNavigationLinkでラップ(推しの場合のみ)
                 Group {
                     if let oshi = oshi {
                         NavigationLink {
@@ -528,7 +533,7 @@ struct PostCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // ヘッダー
                     HStack(spacing: 4) {
-                        // 名前もタップ可能に（推しの場合のみ）
+                        // 名前もタップ可能に(推しの場合のみ)
                         if let oshi = oshi {
                             NavigationLink {
                                 OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
@@ -592,19 +597,15 @@ struct PostCardView: View {
                         ) {}
                         .frame(maxWidth: .infinity)
 
+                        // ✅ いいねボタン - タップ時にtoggleUserReactionを呼び出す
                         ActionButton(
                             icon: "heart",
                             count: post.reactionCount,
-                            color: showingReactions ? .pink : .secondary,
-                            isFilled: showingReactions
+                            color: hasUserLiked ? .pink : .secondary,
+                            isFilled: hasUserLiked
                         ) {
-                            showingReactions.toggle()
-                            if showingReactions && postDetails == nil {
-                                Task { await viewModel.loadPostDetails(for: post.id) }
-                            }
-                            if !post.isUserPost {
-                                viewModel.reactToOshiPost(post)
-                            }
+                            // ✅ ユーザーのいいねをトグル
+                            viewModel.toggleUserReaction(on: post)
                         }
                         .frame(maxWidth: .infinity)
 

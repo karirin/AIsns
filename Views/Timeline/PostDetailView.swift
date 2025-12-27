@@ -22,7 +22,48 @@ struct PostDetailView: View {
                 // 投稿本文（見た目はカードを再利用）
                 PostCardView(post: post, viewModel: viewModel, isNavigable: false)
                 Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("いいね")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
+                    if let details = postDetails {
+                        if details.reactions.isEmpty {
+                            Text("まだいいねはありません")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            // 横スクロールで一覧表示（Xっぽい）
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(details.reactions) { reaction in
+                                        HStack(spacing: 6) {
+                                            Text(reaction.emoji)
+                                                .font(.system(size: 14))
+                                            Text(reaction.oshiName)
+                                                .font(.system(size: 13, weight: .medium))
+                                                .foregroundColor(.primary)
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Color(.secondarySystemBackground))
+                                        .cornerRadius(16)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.9)
+                            Text("いいねを読み込み中...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
                 // コメント一覧
                 VStack(alignment: .leading, spacing: 12) {
                     if let details = postDetails {

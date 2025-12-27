@@ -1,4 +1,4 @@
-// ViewModels/OshiViewModel.swift (修正版)
+// ViewModels/OshiViewModel.swift (修正版 - いいね機能追加)
 
 import Foundation
 import Combine
@@ -13,7 +13,7 @@ class OshiViewModel: ObservableObject {
     @Published var recommendedOshis: [OshiCharacter] = []
     @Published var notifications: [AppNotification] = []
     
-    // ✅ 投稿の詳細情報（必要な時だけ取得）
+    // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
     
     private let aiService = AIService.shared
@@ -52,10 +52,10 @@ class OshiViewModel: ObservableObject {
         var room1 = ChatRoom(oshiId: oshi1.id)
         var room2 = ChatRoom(oshiId: oshi2.id)
         
-        room1.addMessage(Message(content: "おはよ！今日もえらい！", isFromUser: false, oshiId: oshi1.id))
-        room1.addMessage(Message(content: "ありがとう！", isFromUser: true))
+        room1.addMessage(Message(content: "おはよ!今日もえらい!", isFromUser: false, oshiId: oshi1.id))
+        room1.addMessage(Message(content: "ありがとう!", isFromUser: true))
         
-        room2.addMessage(Message(content: "今日なにしてた？", isFromUser: false, oshiId: oshi2.id))
+        room2.addMessage(Message(content: "今日なにしてた?", isFromUser: false, oshiId: oshi2.id))
         
         self.chatRooms = [room1, room2]
     }
@@ -82,17 +82,17 @@ class OshiViewModel: ObservableObject {
             try await dbManager.saveOshi(preset)
             oshiList.insert(preset, at: 0)
 
-            // 2) チャットルームが無ければ作る（空メッセージでOK）
+            // 2) チャットルームが無ければ作る(空メッセージでOK)
             if !chatRooms.contains(where: { $0.oshiId == preset.id }) {
                 let room = ChatRoom(id: UUID(), oshiId: preset.id, messages: [], lastMessageDate: nil, unreadCount: 0)
                 try await dbManager.saveChatRoom(room)
                 chatRooms.append(room)
             }
 
-            // 3) 推しから「最初の1通」を送る（保存されるのでチャットに出る）
+            // 3) 推しから「最初の1通」を送る(保存されるのでチャットに出る)
             let welcome = Message(
                 id: UUID(),
-                content: "フォローありがとう、\(preset.userCallingName.isEmpty ? "ねえ" : preset.userCallingName)！これからたくさん話そう☺️",
+                content: "フォローありがとう、\(preset.userCallingName.isEmpty ? "ねえ" : preset.userCallingName)!これからたくさん話そう☺️",
                 isFromUser: false,
                 oshiId: preset.id,
                 timestamp: Date(),
@@ -101,7 +101,7 @@ class OshiViewModel: ObservableObject {
 
             try await dbManager.addMessage(to: preset.id, message: welcome)
 
-            // 4) ローカルの chatRooms も即時反映（一覧にすぐ出すため）
+            // 4) ローカルの chatRooms も即時反映(一覧にすぐ出すため)
             if let idx = chatRooms.firstIndex(where: { $0.oshiId == preset.id }) {
                 var room = chatRooms[idx]
                 room.messages.append(welcome)
@@ -142,13 +142,13 @@ class OshiViewModel: ObservableObject {
             async let oshiListTask = dbManager.loadOshiList()
             async let postsTask = dbManager.loadPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
-            async let presetsTask = dbManager.fetchPresetOshis()   // ✅ 追加（おすすめも並列で取る）
+            async let presetsTask = dbManager.fetchPresetOshis()   // ✅ 追加(おすすめも並列で取る)
 
             let (loadedOshi, loadedPosts, loadedRooms, presets) =
                 try await (oshiListTask, postsTask, chatRoomsTask, presetsTask)  // ✅ 変更
 
             oshiList = loadedOshi
-            recommendedOshis = presets    // ✅ ここだけにする（2重ロード削除）
+            recommendedOshis = presets    // ✅ ここだけにする(2重ロード削除)
             posts = loadedPosts
             chatRooms = loadedRooms
 
@@ -221,20 +221,20 @@ class OshiViewModel: ObservableObject {
         }
     }
     
-    // MARK: - タイムライン（最適化版）
+    // MARK: - タイムライン(最適化版)
     
     func createUserPost(content: String) {
         let post = Post(authorName: "あなた", content: content, isUserPost: true)
         posts.insert(post, at: 0)
         
-        // ✅ 空のPostDetailsを作成（即座に表示できるように）
+        // ✅ 空のPostDetailsを作成(即座に表示できるように)
         postDetails[post.id] = PostDetails(post: post, reactions: [], comments: [], hasMoreComments: false)
         
         Task {
             do {
                 try await dbManager.savePost(post)
                 
-                // すべての推しが反応（遅延実行）
+                // すべての推しが反応(遅延実行)
                 try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
                 await generateReactionsForPost(post)
                 
@@ -251,14 +251,14 @@ class OshiViewModel: ObservableObject {
         
         let mood = aiService.analyzeMood(from: post.content)
         
-        // ✅ コメントする人数をランダムに決定（2〜3人、推しが少ない場合は全員）
+        // ✅ コメントする人数をランダムに決定(2〜3人、推しが少ない場合は全員)
         let commentersCount = min(Int.random(in: 2...3), oshiList.count)
         
         // ✅ 親密度ベースの重み付き抽選
         let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
         
         for oshi in oshiList {
-            // ✅ いいね（全員が60〜90%の確率で反応）
+            // ✅ いいね(全員が60〜90%の確率で反応)
             if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
                 let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
                 
@@ -282,10 +282,10 @@ class OshiViewModel: ObservableObject {
                 }
             }
             
-            // ✅ コメント（選ばれた推しのみ）
+            // ✅ コメント(選ばれた推しのみ)
             if selectedCommenters.contains(where: { $0.id == oshi.id }) {
                 do {
-                    // ランダムな遅延（1〜5秒）
+                    // ランダムな遅延(1〜5秒)
                     try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...5_000_000_000))
                     
                     let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood)
@@ -334,10 +334,10 @@ class OshiViewModel: ObservableObject {
         
         // 親密度をベースにした重み計算
         let weighedOshis: [(oshi: OshiCharacter, weight: Double)] = oshiList.map { oshi in
-            // 基本重み: 親密度による重み（1〜10）
+            // 基本重み: 親密度による重み(1〜10)
             let intimacyWeight = max(1.0, Double(oshi.totalInteractions) / 10.0)
             
-            // ランダム要素: 0.5〜1.5倍のランダムブースト（決まった人だけにならないように）
+            // ランダム要素: 0.5〜1.5倍のランダムブースト(決まった人だけにならないように)
             let randomBoost = Double.random(in: 0.5...1.5)
             
             // 最終重み
@@ -349,7 +349,7 @@ class OshiViewModel: ObservableObject {
         // 重みが高い順にソート
         let sortedOshis = weighedOshis.sorted { $0.weight > $1.weight }
         
-        // 上位から選択（ただし完全に上位だけでなく、若干のランダム性を持たせる）
+        // 上位から選択(ただし完全に上位だけでなく、若干のランダム性を持たせる)
         var selected: [OshiCharacter] = []
         
         for (index, item) in sortedOshis.enumerated() {
@@ -415,9 +415,77 @@ class OshiViewModel: ObservableObject {
         }
     }
     
+    // MARK: - ユーザーからのいいね
+    
+    /// ユーザーが投稿にいいねする
+    func toggleUserReaction(on post: Post) {
+        Task {
+            do {
+                // ユーザーのいいねを表す特別なID
+                let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+                
+                // すでにいいねしているかチェック
+                if var details = postDetails[post.id] {
+                    if let existingIndex = details.reactions.firstIndex(where: { $0.oshiId == userId }) {
+                        // いいね取り消し
+                        let removedReaction = details.reactions.remove(at: existingIndex)
+                        try await dbManager.deleteReaction(removedReaction, from: post.id)
+                        
+                        if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                            posts[idx].reactionCount = max(0, posts[idx].reactionCount - 1)
+                        }
+                        
+                        postDetails[post.id] = details
+                    } else {
+                        // いいね追加
+                        let reaction = Reaction(
+                            oshiId: userId,
+                            oshiName: "あなた"
+                        )
+                        
+                        try await dbManager.addReaction(reaction, to: post.id)
+                        
+                        if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                            posts[idx].reactionCount += 1
+                        }
+                        
+                        details.reactions.insert(reaction, at: 0)
+                        postDetails[post.id] = details
+                        
+                        // 推しの投稿にいいねした場合は親密度アップ
+                        if !post.isUserPost {
+                            reactToOshiPost(post)
+                        }
+                    }
+                } else {
+                    // 詳細が未読み込みの場合は、まずロードしてからいいね
+                    await loadPostDetails(for: post.id)
+                    
+                    // 再帰的に呼び出し
+                    await toggleUserReaction(on: post)
+                }
+                
+            } catch {
+                print("❌ いいね処理エラー: \(error)")
+                errorMessage = "いいねに失敗しました"
+            }
+        }
+    }
+    
+    /// ユーザーがすでにいいねしているかチェック
+    func hasUserReacted(to post: Post) -> Bool {
+        let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+        
+        guard let details = postDetails[post.id] else {
+            return false
+        }
+        
+        return details.reactions.contains(where: { $0.oshiId == userId })
+    }
+    
     // MARK: - 投稿詳細の取得
     
-    /// 投稿の詳細（リアクション・コメント）を取得
+    /// 投稿の詳細(リアクション・コメント)を取得
     func loadPostDetails(for postId: UUID) async {
         // すでに読み込み済みならスキップ
         if postDetails[postId] != nil {

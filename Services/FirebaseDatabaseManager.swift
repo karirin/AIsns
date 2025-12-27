@@ -82,7 +82,7 @@ class FirebaseDatabaseManager {
 
     // MARK: - Posts
 
-    /// 投稿を保存（リアクション・コメントは含まない）
+    /// 投稿を保存(リアクション・コメントは含まない)
     func savePost(_ post: Post) async throws {
         let postRef = ref.child("users/\(userId)/posts/\(post.id.uuidString)")
 
@@ -100,7 +100,7 @@ class FirebaseDatabaseManager {
         try await postRef.setValue(postData)
     }
 
-    /// 投稿リストを取得（軽量・件数のみ）
+    /// 投稿リストを取得(軽量・件数のみ)
     func loadPosts(limit: Int = 50) async throws -> [Post] {
         let snapshot = try await ref.child("users/\(userId)/posts")
             .queryOrdered(byChild: "timestamp")
@@ -122,7 +122,7 @@ class FirebaseDatabaseManager {
         return posts.sorted { $0.timestamp > $1.timestamp }
     }
 
-    /// 投稿を更新（主にカウント更新用）
+    /// 投稿を更新(主にカウント更新用)
     func updatePost(_ post: Post) async throws {
         try await savePost(post)
     }
@@ -131,7 +131,7 @@ class FirebaseDatabaseManager {
 
     /// リアクションを追加
     func addReaction(_ reaction: Reaction, to postId: UUID) async throws {
-        // 1. リアクションを保存（oshiIdをキーにして重複防止）
+        // 1. リアクションを保存(oshiIdをキーにして重複防止)
         let reactionRef = ref.child("users/\(userId)/reactions/\(postId.uuidString)/\(reaction.oshiId.uuidString)")
 
         let reactionData: [String: Any] = [
@@ -177,7 +177,7 @@ class FirebaseDatabaseManager {
         }
     }
 
-    /// リアクションを削除
+    /// リアクションを削除(oshiIdベース)
     func removeReaction(oshiId: UUID, from postId: UUID) async throws {
         // 1. リアクションを削除
         let reactionRef = ref.child("users/\(userId)/reactions/\(postId.uuidString)/\(oshiId.uuidString)")
@@ -186,6 +186,11 @@ class FirebaseDatabaseManager {
         // 2. 投稿のreactionCountをデクリメント
         let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/reactionCount")
         try await countRef.setValue(ServerValue.increment(-1))
+    }
+    
+    /// リアクションを削除(Reactionオブジェクトを受け取る版)
+    func deleteReaction(_ reaction: Reaction, from postId: UUID) async throws {
+        try await removeReaction(oshiId: reaction.oshiId, from: postId)
     }
 
     // MARK: - Comments
@@ -210,7 +215,7 @@ class FirebaseDatabaseManager {
         try await countRef.setValue(ServerValue.increment(1))
     }
 
-    /// 特定投稿のコメントを取得（ページネーション対応）
+    /// 特定投稿のコメントを取得(ページネーション対応)
     func loadComments(for postId: UUID, limit: Int = 10, before: Date? = nil) async throws -> [Comment] {
         var query = ref.child("users/\(userId)/comments/\(postId.uuidString)")
             .queryOrdered(byChild: "timestamp")
@@ -408,7 +413,7 @@ class FirebaseDatabaseManager {
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil
 
-        // createdAtTimestamp は OshiCharacter 内で保持されている前提（もし必要ならここで反映）
+        // createdAtTimestamp は OshiCharacter 内で保持されている前提(もし必要ならここで反映)
         _ = createdAtTimestamp
 
         return oshi
@@ -524,7 +529,7 @@ class FirebaseDatabaseManager {
         }
     }
 
-    // 追加：プリセット推し一覧を取得（残すなら）
+    // 追加:プリセット推し一覧を取得(残すなら)
     func loadPresetOshiList() async throws -> [OshiCharacter] {
         let snapshot = try await ref.child("presets/oshiList").getData()
 
