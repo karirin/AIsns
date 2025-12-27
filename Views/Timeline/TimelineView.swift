@@ -191,23 +191,53 @@ struct TimelineScreenView: View {
                             }
                         })
                         
-                        // 推しリスト
-                        SidebarMenuItem(
-                            icon: "star.fill",
-                            title: "推し"
-                        )
+                        // ✅ フォロワー（推しリスト）
+                        NavigationLink {
+                            OshiListView(viewModel: viewModel)
+                        } label: {
+                            SidebarMenuItem(
+                                icon: "star.fill",
+                                title: "フォロワー",
+                                badge: viewModel.oshiList.count
+                            )
+                        }
+                        .simultaneousGesture(TapGesture().onEnded {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        })
                         
                         // チャット
-                        SidebarMenuItem(
-                            icon: "message.fill",
-                            title: "チャット"
-                        )
+                        NavigationLink {
+                            ChatListView(viewModel: viewModel)
+                        } label: {
+                            SidebarMenuItem(
+                                icon: "message.fill",
+                                title: "チャット",
+                                badge: viewModel.chatRooms.reduce(0) { $0 + $1.unreadCount }
+                            )
+                        }
+                        .simultaneousGesture(TapGesture().onEnded {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        })
                         
                         // 通知
-                        SidebarMenuItem(
-                            icon: "bell.fill",
-                            title: "通知"
-                        )
+                        NavigationLink {
+                            NotificationView(viewModel: viewModel)
+                        } label: {
+                            SidebarMenuItem(
+                                icon: "bell.fill",
+                                title: "通知",
+                                badge: viewModel.unreadNotificationCount
+                            )
+                        }
+                        .simultaneousGesture(TapGesture().onEnded {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        })
                         
                         Divider()
                             .padding(.vertical, 8)
@@ -278,9 +308,13 @@ struct SidebarMenuItem: View {
             Spacer()
             
             if let badge = badge, badge > 0 {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 8, height: 8)
+                Text("\(badge)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.red)
+                    .clipShape(Capsule())
             }
         }
         .padding(.horizontal, 20)
