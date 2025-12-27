@@ -52,9 +52,9 @@ struct TimelineScreenView: View {
                 case .followers:
                     OshiListView(viewModel: viewModel)
                 case .chat:
-                    ChatListView(viewModel: viewModel)
+                    ChatListView(viewModel: viewModel, isPresented: .constant(true) )
                 case .notifications:
-                    NotificationView(viewModel: viewModel)
+                    NotificationView(viewModel: viewModel, isPresented: .constant(true))
                 }
             }
             .sheet(isPresented: $showingPostSheet) {

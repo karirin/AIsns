@@ -18,13 +18,13 @@ struct MainTabView: View {
                     Label("タイムライン", systemImage: "house.fill")
                 }
             
-            NotificationView(viewModel: viewModel)
+            NotificationView(viewModel: viewModel, isPresented: .constant(false))
                 .tabItem {
                     Label("通知", systemImage: "bell.fill")
                 }
                 .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
             
-            ChatListView(viewModel: viewModel)
+            ChatListView(viewModel: viewModel, isPresented: .constant(false))
                 .tabItem {
                     Label("チャット", systemImage: "message.fill")
                 }

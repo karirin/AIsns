@@ -57,6 +57,8 @@ struct GroupedNotification: Identifiable {
 struct NotificationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var selectedFilter: NotificationFilter = .all
+    @Binding var isPresented: Bool
+    @Environment(\.dismiss) var dismiss
     
     enum NotificationFilter: String, CaseIterable {
         case all = "すべて"
@@ -127,7 +129,6 @@ struct NotificationView: View {
     }
     
     var body: some View {
-        NavigationView {
             VStack(spacing: 0) {
                 // フィルタータブ
                 filterBar
@@ -152,10 +153,22 @@ struct NotificationView: View {
                         }
                     }
                 }
-            }
+        }
             .navigationTitle("通知")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if isPresented {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
@@ -175,7 +188,6 @@ struct NotificationView: View {
                     }
                 }
             }
-        }
     }
     
     // MARK: - Filter Bar

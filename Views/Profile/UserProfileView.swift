@@ -14,11 +14,12 @@ struct UserProfileView: View {
     @State private var showingImagePicker = false
     @State private var showingEditSheet = false
     @State private var isLoadingImage = false
+    @Environment(\.dismiss) var dismiss
     
     private let avatarSize: CGFloat = 100
     
     var body: some View {
-        NavigationView {
+//        NavigationView {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
                     // アバターセクション
@@ -37,8 +38,19 @@ struct UserProfileView: View {
             }
             .background(Color(.systemBackground))
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingEditSheet = true
                     } label: {
@@ -57,7 +69,6 @@ struct UserProfileView: View {
                     )
                 }
             }
-        }
     }
     
     // MARK: - Avatar Section

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ChatListView: View {
     @ObservedObject var viewModel: OshiViewModel
+    @Binding var isPresented: Bool
+    @Environment(\.dismiss) var dismiss
     
     var sortedChatRooms: [ChatRoom] {
         viewModel.chatRooms.sorted { room1, room2 in
@@ -23,7 +25,22 @@ struct ChatListView: View {
             .listStyle(.plain)
             .navigationTitle("チャット")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if isPresented {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
         }
+        .navigationBarBackButtonHidden(true)
     }
 }
 
@@ -285,5 +302,5 @@ struct MessageBubble: View {
 }
 
 #Preview {
-    ChatListView(viewModel: OshiViewModel(mock: true))
+    ChatListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false))
 }
