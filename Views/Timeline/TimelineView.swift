@@ -32,22 +32,6 @@ struct TimelineScreenView: View {
                 floatingPostButton
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if !showingSidebar {
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showingSidebar.toggle()
-                            }
-                        }) {
-                            profileButton
-                        }
-                    } else {
-                        
-                    }
-                }
-            }
-            .toolbar(!showingSidebar ? .visible : .visible, for: .navigationBar)
             .navigationDestination(for: SidebarDestination.self) { destination in
                 switch destination {
                 case .profile:
@@ -70,15 +54,29 @@ struct TimelineScreenView: View {
     
     private var mainContent: some View {
         ZStack {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.posts) { post in
-                        PostCardView(post: post, viewModel: viewModel)
-                        Divider()
-                            .padding(.leading, 64)
+            VStack{
+                HStack{
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingSidebar.toggle()
+                        }
+                    }) {
+                        profileButton
                     }
+                    Spacer()
                 }
-                .padding(.bottom, 80)
+                .padding(.horizontal)
+                .padding(.top)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewModel.posts) { post in
+                            PostCardView(post: post, viewModel: viewModel)
+                            Divider()
+                                .padding(.leading, 64)
+                        }
+                    }
+                    .padding(.bottom, 80)
+                }
             }
             .refreshable {
                 // リフレッシュ処理
@@ -95,6 +93,30 @@ struct TimelineScreenView: View {
                     }
             }
         }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > abs(dy) else { return }
+
+                    // 右スワイプで開く（左端からだけにしたいなら startLocation 条件を追加）
+                    if dx > 60, !showingSidebar {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingSidebar = true
+                        }
+                    }
+
+                    // 左スワイプで閉じる（任意）
+                    if dx < -60, showingSidebar {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingSidebar = false
+                        }
+                    }
+                }
+        )
+
     }
     
     // MARK: - Profile Button
@@ -111,10 +133,10 @@ struct TimelineScreenView: View {
                     endPoint: .bottomTrailing
                 )
             )
-            .frame(width: 32, height: 32)
+            .frame(width: 40, height: 40)
             .overlay(
                 Image(systemName: "person.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: 20))
                     .foregroundColor(.white)
             )
     }
@@ -276,7 +298,6 @@ struct TimelineScreenView: View {
             .background(Color(.systemBackground))
             .shadow(color: .black.opacity(0.2), radius: 10, x: 2, y: 0)
             .ignoresSafeArea()
-            
             Spacer()
         }
     }
