@@ -226,59 +226,38 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // アバター
-                if let oshi = oshi {
-                    if let avatarImage = avatarImage {
-                        Image(uiImage: avatarImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipShape(Circle())
+                // ✅ アバターをNavigationLinkでラップ（推しの場合のみ）
+                Group {
+                    if let oshi = oshi {
+                        NavigationLink {
+                            OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
+                        } label: {
+                            avatarView
+                        }
+                        .buttonStyle(.plain)
                     } else {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(.systemPink),
-                                        Color(.systemPink).opacity(0.7)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Text(String(oshi.name.prefix(1)))
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
+                        avatarView
                     }
-                } else {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.white)
-                                .font(.system(size: 20))
-                        )
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     // ヘッダー
                     HStack(spacing: 4) {
-                        Text(post.authorName)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.primary)
+                        // ✅ 名前もタップ可能に（推しの場合のみ）
+                        if let oshi = oshi {
+                            NavigationLink {
+                                OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
+                            } label: {
+                                Text(post.authorName)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(.primary)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text(post.authorName)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.primary)
+                        }
 
                         if post.isUserPost {
                             Image(systemName: "checkmark.seal.fill")
@@ -395,6 +374,57 @@ struct PostCardView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemBackground))
+    }
+    
+    // ✅ アバター表示を別Viewに分離
+    private var avatarView: some View {
+        Group {
+            if let oshi = oshi {
+                if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(.systemPink),
+                                    Color(.systemPink).opacity(0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                }
+            } else {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.2, green: 0.7, blue: 1.0),
+                                Color(red: 0.5, green: 0.4, blue: 1.0)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .foregroundColor(.white)
+                            .font(.system(size: 20))
+                    )
+            }
+        }
     }
 }
 
