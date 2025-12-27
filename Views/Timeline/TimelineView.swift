@@ -31,20 +31,23 @@ struct TimelineScreenView: View {
                 // フローティング投稿ボタン
                 floatingPostButton
             }
-            .navigationTitle("タイムライン")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showingSidebar.toggle()
+                    if !showingSidebar {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar.toggle()
+                            }
+                        }) {
+                            profileButton
                         }
-                    }) {
-                        profileButton
+                    } else {
+                        
                     }
                 }
             }
-            .toolbar(showingSidebar ? .hidden : .visible, for: .navigationBar)
+            .toolbar(!showingSidebar ? .visible : .visible, for: .navigationBar)
             .navigationDestination(for: SidebarDestination.self) { destination in
                 switch destination {
                 case .profile:
