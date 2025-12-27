@@ -1,8 +1,11 @@
+// Models/Post.swift
+// 既存のPostモデルを以下で置き換えてください
+
 import Foundation
 
 // MARK: - Optimized Post Model
 
-/// 投稿モデル（最適化版）
+/// 投稿モデル(画像対応版)
 struct Post: Identifiable, Codable {
     let id: UUID
     var authorId: UUID? // nil = ユーザー投稿
@@ -11,12 +14,22 @@ struct Post: Identifiable, Codable {
     var timestamp: Date
     var isUserPost: Bool
     
-    // 集計値のみを保持（配列は別テーブルに分離）
+    // 集計値のみを保持(配列は別テーブルに分離)
     var reactionCount: Int
     var commentCount: Int
     
-    init(id: UUID = UUID(), authorId: UUID? = nil, authorName: String,
-         content: String, timestamp: Date = Date(), isUserPost: Bool = true) {
+    // ✅ 画像URL配列を追加
+    var imageURLs: [String]
+    
+    init(
+        id: UUID = UUID(),
+        authorId: UUID? = nil,
+        authorName: String,
+        content: String,
+        timestamp: Date = Date(),
+        isUserPost: Bool = true,
+        imageURLs: [String] = [] // ✅ デフォルト値を空配列に
+    ) {
         self.id = id
         self.authorId = authorId
         self.authorName = authorName
@@ -25,12 +38,14 @@ struct Post: Identifiable, Codable {
         self.isUserPost = isUserPost
         self.reactionCount = 0
         self.commentCount = 0
+        self.imageURLs = imageURLs // ✅ 追加
     }
 }
 
 // MARK: - Reaction (Separate Table)
+// ※ 以下は変更なし、既存のコードをそのまま使用
 
-/// リアクション（個別管理）
+/// リアクション(個別管理)
 struct Reaction: Identifiable, Codable {
     let id: UUID
     let oshiId: UUID
@@ -50,7 +65,7 @@ struct Reaction: Identifiable, Codable {
 
 // MARK: - Comment (Separate Table)
 
-/// コメント（個別管理）
+/// コメント(個別管理)
 struct Comment: Identifiable, Codable {
     let id: UUID
     let oshiId: UUID
@@ -70,7 +85,7 @@ struct Comment: Identifiable, Codable {
 
 // MARK: - Post with Details (UI用の拡張モデル)
 
-/// 投稿の詳細情報（必要な時だけ取得）
+/// 投稿の詳細情報(必要な時だけ取得)
 struct PostDetails {
     let post: Post
     var reactions: [Reaction]
@@ -140,7 +155,7 @@ struct ChatRoom: Identifiable, Codable {
     }
 }
 
-/// ユーザーの感情状態（投稿から推測）
+/// ユーザーの感情状態(投稿から推測)
 enum UserMood: String, Codable {
     case happy = "嬉しい"
     case tired = "疲れている"

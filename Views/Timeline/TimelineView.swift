@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 // サイドバーの遷移先を定義
 enum SidebarDestination: Hashable {
@@ -339,70 +340,77 @@ struct SidebarMenuItem: View {
     }
 }
 
+// MARK: - ✅ 画像添付対応のPostComposerView
 struct PostComposerView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
     @State private var postText = ""
+    @State private var selectedImages: [UIImage] = []
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isUploading = false
     @FocusState private var isTextFieldFocused: Bool
     
     var canPost: Bool {
-        !postText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && postText.count <= 280
+        (!postText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedImages.isEmpty)
+        && postText.count <= 280
+        && selectedImages.count <= 4
+        && !isUploading
     }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                HStack(alignment: .top, spacing: 12) {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.white)
-                                .font(.system(size: 20))
-                        )
-                    
-                    ZStack(alignment: .topLeading) {
-                        if postText.isEmpty {
-                            Text("いまどうしてる?")
-                                .foregroundColor(.secondary.opacity(0.6))
-                                .font(.body)
-                                .padding(.top, 8)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ZStack(alignment: .topLeading) {
+                                if postText.isEmpty {
+                                    Text("いまどうしてる?")
+                                        .foregroundColor(.secondary.opacity(0.6))
+                                        .font(.body)
+                                        .padding(.top, 8)
+                                        .padding(.leading,8)
+                                }
+                                
+                                TextEditor(text: $postText)
+                                    .focused($isTextFieldFocused)
+                                    .font(.body)
+                                    .scrollContentBackground(.hidden)
+                                    .frame(minHeight: 120)
+                            }
                         }
+                        .padding(.horizontal, 16)
                         
-                        TextEditor(text: $postText)
-                            .focused($isTextFieldFocused)
-                            .font(.body)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 120)
+                        // ✅ 選択された画像のプレビュー
+                        if !selectedImages.isEmpty {
+                            imagePreviewGrid
+                                .padding(.horizontal, 16)
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                
-                Spacer()
                 
                 // ツールバー
                 HStack {
                     HStack(spacing: 16) {
-                        Button(action: {}) {
+                        // ✅ 画像選択ボタン(PhotosPicker)
+                        PhotosPicker(
+                            selection: $selectedPhotos,
+                            maxSelectionCount: 4,
+                            matching: .images
+                        ) {
                             Image(systemName: "photo")
                                 .font(.system(size: 20))
-                                .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
+                                .foregroundColor(
+                                    selectedImages.count >= 4
+                                    ? Color.gray
+                                    : Color(red: 0.2, green: 0.7, blue: 1.0)
+                                )
                         }
-                        Button(action: {}) {
-                            Image(systemName: "face.smiling")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
+                        .disabled(selectedImages.count >= 4)
+                        .onChange(of: selectedPhotos) { newItems in
+                            Task {
+                                await loadImages(from: newItems)
+                            }
                         }
                     }
                     .padding(.leading, 16)
@@ -431,33 +439,54 @@ struct PostComposerView: View {
                         isPresented = false
                     }
                     .foregroundColor(.primary)
+                    .disabled(isUploading)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("投稿") {
-                        viewModel.createUserPost(content: postText)
-                        isPresented = false
+                    Button {
+                        Task {
+                            await createPost()
+                        }
+                    } label: {
+                        if isUploading {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(width: 60, height: 36)
+                                .background(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.5),
+                                            Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.5)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(20)
+                        } else {
+                            Text("投稿")
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 8)
+                                .background(
+                                    canPost ?
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.2, green: 0.7, blue: 1.0),
+                                            Color(red: 0.5, green: 0.4, blue: 1.0)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ) :
+                                    LinearGradient(
+                                        colors: [.gray.opacity(0.3), .gray.opacity(0.3)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .cornerRadius(20)
+                        }
                     }
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-                    .background(
-                        canPost ?
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.2, green: 0.7, blue: 1.0),
-                                Color(red: 0.5, green: 0.4, blue: 1.0)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ) :
-                        LinearGradient(
-                            colors: [.gray.opacity(0.3), .gray.opacity(0.3)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(20)
                     .disabled(!canPost)
                 }
             }
@@ -468,14 +497,128 @@ struct PostComposerView: View {
             }
         }
     }
+    
+    // ✅ 画像プレビューグリッド
+    private var imagePreviewGrid: some View {
+        let columns = selectedImages.count == 1
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+        
+        return LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, image in
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: selectedImages.count == 1 ? 300 : 150)
+                        .clipped()
+                        .cornerRadius(12)
+                    
+                    // 削除ボタン
+                    Button {
+                        withAnimation {
+                            selectedImages.remove(at: index)
+                            selectedPhotos.remove(at: index)
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                            .background(
+                                Circle()
+                                    .fill(Color.black.opacity(0.5))
+                                    .frame(width: 28, height: 28)
+                            )
+                    }
+                    .padding(8)
+                }
+            }
+        }
+    }
+    
+    // ✅ PhotosPickerItemから画像をロード
+    private func loadImages(from items: [PhotosPickerItem]) async {
+        selectedImages.removeAll()
+        
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let uiImage = UIImage(data: data) {
+                await MainActor.run {
+                    selectedImages.append(uiImage)
+                }
+            }
+        }
+    }
+    
+    // ✅ 修正版: 投稿作成(画像アップロード含む)
+    private func createPost() async {
+        print("🚀 createPost開始")
+        
+        // UIの更新
+        await MainActor.run {
+            isUploading = true
+        }
+        
+        var imageURLs: [String] = []
+        
+        // 画像をアップロード
+        if !selectedImages.isEmpty {
+            print("📸 画像アップロード開始: \(selectedImages.count)枚")
+            
+            // ✅ 修正: 1つのpostIdを使う
+            let postId = UUID()
+            
+            for (index, image) in selectedImages.enumerated() {
+                do {
+                    print("  📤 画像\(index + 1)をアップロード中...")
+                    let url = try await FirebaseStorageManager.shared.uploadPostImage(
+                        image,
+                        postId: postId,
+                        index: index
+                    )
+                    imageURLs.append(url)
+                    print("  ✅ 画像\(index + 1)アップロード成功: \(url)")
+                } catch {
+                    print("  ❌ 画像\(index + 1)アップロードエラー: \(error)")
+                    // エラーがあっても続行
+                }
+            }
+            
+            print("📸 画像アップロード完了: \(imageURLs.count)/\(selectedImages.count)枚成功")
+        }
+        
+        // 投稿作成
+        await MainActor.run {
+            print("💾 投稿を作成中...")
+            
+            // ✅ 修正: imageURLsパラメータを確実に渡す
+            if imageURLs.isEmpty {
+                // 画像なしの場合
+                viewModel.createUserPost(content: postText)
+            } else {
+                // 画像ありの場合
+                viewModel.createUserPost(content: postText, imageURLs: imageURLs)
+            }
+            
+            print("✅ 投稿作成完了")
+            
+            // UIをクローズ
+            isUploading = false
+            isPresented = false
+        }
+        
+        print("🎉 createPost完了")
+    }
 }
 
+// MARK: - ✅ 画像表示対応のPostCardView
 struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
     var isNavigable: Bool = true
     @State private var showingReactions = false
     @State private var avatarImage: UIImage?
+    @State private var postImages: [UIImage] = [] // ✅ 投稿画像
 
     var oshi: OshiCharacter? {
         if let authorId = post.authorId {
@@ -488,7 +631,6 @@ struct PostCardView: View {
         viewModel.postDetails[post.id]
     }
     
-    // ✅ ユーザーがいいね済みかチェック
     var hasUserLiked: Bool {
         viewModel.hasUserReacted(to: post)
     }
@@ -507,8 +649,20 @@ struct PostCardView: View {
             }
         }
         .task {
+            // アバター画像読み込み
             if let oshi = oshi, let urlString = oshi.avatarImageURL {
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+            }
+            
+            // ✅ 投稿画像読み込み
+            if !post.imageURLs.isEmpty {
+                for imageURL in post.imageURLs {
+                    if let image = try? await FirebaseStorageManager.shared.downloadImage(from: imageURL) {
+                        await MainActor.run {
+                            postImages.append(image)
+                        }
+                    }
+                }
             }
         }
     }
@@ -516,7 +670,6 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // アバターをNavigationLinkでラップ(推しの場合のみ)
                 Group {
                     if let oshi = oshi {
                         NavigationLink {
@@ -533,7 +686,6 @@ struct PostCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // ヘッダー
                     HStack(spacing: 4) {
-                        // 名前もタップ可能に(推しの場合のみ)
                         if let oshi = oshi {
                             NavigationLink {
                                 OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
@@ -574,12 +726,20 @@ struct PostCardView: View {
                     }
 
                     // 投稿内容
-                    Text(post.content)
-                        .font(.system(size: 15))
-                        .lineSpacing(3)
-                        .foregroundColor(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
+                    if !post.content.isEmpty {
+                        Text(post.content)
+                            .font(.system(size: 15))
+                            .lineSpacing(3)
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                    }
+                    
+                    // ✅ 投稿画像表示
+                    if !postImages.isEmpty {
+                        postImageGrid
+                            .padding(.top, 8)
+                    }
 
                     // アクションボタン
                     HStack(spacing: 0) {
@@ -597,14 +757,12 @@ struct PostCardView: View {
                         ) {}
                         .frame(maxWidth: .infinity)
 
-                        // ✅ いいねボタン - タップ時にtoggleUserReactionを呼び出す
                         ActionButton(
                             icon: "heart",
                             count: post.reactionCount,
                             color: hasUserLiked ? .pink : .secondary,
                             isFilled: hasUserLiked
                         ) {
-                            // ✅ ユーザーのいいねをトグル
                             viewModel.toggleUserReaction(on: post)
                         }
                         .frame(maxWidth: .infinity)
@@ -662,7 +820,24 @@ struct PostCardView: View {
         .background(Color(.systemBackground))
     }
     
-    // アバター表示を別Viewに分離
+    // ✅ 投稿画像グリッド
+    private var postImageGrid: some View {
+        let columns: [GridItem] = postImages.count == 1
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+        
+        return LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(Array(postImages.enumerated()), id: \.offset) { index, image in
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: postImages.count == 1 ? 300 : 150)
+                    .clipped()
+                    .cornerRadius(12)
+            }
+        }
+    }
+    
     private var avatarView: some View {
         Group {
             if let oshi = oshi {

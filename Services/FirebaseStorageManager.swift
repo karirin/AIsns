@@ -1,35 +1,30 @@
 //
-//   FirebaseStorageManager.swift
+//  FirebaseStorageManager.swift
 //  AIsns
 //
-//  Created by Apple on 2025/12/21.
+//  画像アップロード・ダウンロード機能
 //
 
 import Foundation
-import FirebaseStorage
 import UIKit
+import FirebaseStorage
 
 class FirebaseStorageManager {
     static let shared = FirebaseStorageManager()
     
-    private let storage: Storage
-    private let userId: String
+    private let storage = Storage.storage()
+    private init() {}
     
-    private init() {
-        self.storage = Storage.storage()
-        self.userId = FirebaseConfig.shared.userId
-    }
-    
-    // MARK: - Avatar Image Upload
+    // MARK: - 推しアバター画像
     
     /// 推しのアバター画像をアップロード
     func uploadOshiAvatar(_ image: UIImage, oshiId: UUID) async throws -> String {
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw StorageError.invalidImage
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+            throw StorageError.imageConversionFailed
         }
         
-        let path = "users/\(userId)/avatars/\(oshiId.uuidString).jpg"
-        let storageRef = storage.reference().child(path)
+        let fileName = "\(oshiId.uuidString).jpg"
+        let storageRef = storage.reference().child("oshi_avatars/\(fileName)")
         
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
@@ -40,13 +35,27 @@ class FirebaseStorageManager {
         return downloadURL.absoluteString
     }
     
-    /// 推しのアバター画像を削除
-    func deleteOshiAvatar(oshiId: UUID) async throws {
-        let path = "users/\(userId)/avatars/\(oshiId.uuidString).jpg"
-        let storageRef = storage.reference().child(path)
+    // MARK: - ✅ 投稿画像
+    
+    /// 投稿画像をアップロード
+    func uploadPostImage(_ image: UIImage, postId: UUID, index: Int) async throws -> String {
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw StorageError.imageConversionFailed
+        }
         
-        try await storageRef.delete()
+        let fileName = "\(postId.uuidString)_\(index).jpg"
+        let storageRef = storage.reference().child("post_images/\(fileName)")
+        
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
+        let downloadURL = try await storageRef.downloadURL()
+        
+        return downloadURL.absoluteString
     }
+    
+    // MARK: - 画像ダウンロード
     
     /// URLから画像をダウンロード
     func downloadImage(from urlString: String) async throws -> UIImage {
@@ -57,55 +66,45 @@ class FirebaseStorageManager {
         let (data, _) = try await URLSession.shared.data(from: url)
         
         guard let image = UIImage(data: data) else {
-            throw StorageError.invalidImage
+            throw StorageError.imageConversionFailed
         }
         
         return image
     }
     
-    // MARK: - Post Image Upload (将来の拡張用)
+    // MARK: - 画像削除
     
-    /// 投稿画像をアップロード
-    func uploadPostImage(_ image: UIImage, postId: UUID) async throws -> String {
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw StorageError.invalidImage
-        }
-        
-        let path = "users/\(userId)/posts/\(postId.uuidString).jpg"
-        let storageRef = storage.reference().child(path)
-        
-        let metadata = StorageMetadata()
-        metadata.contentType = "image/jpeg"
-        
-        _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
-        let downloadURL = try await storageRef.downloadURL()
-        
-        return downloadURL.absoluteString
+    /// 推しアバター画像を削除
+    func deleteOshiAvatar(oshiId: UUID) async throws {
+        let fileName = "\(oshiId.uuidString).jpg"
+        let storageRef = storage.reference().child("oshi_avatars/\(fileName)")
+        try await storageRef.delete()
     }
     
     /// 投稿画像を削除
-    func deletePostImage(postId: UUID) async throws {
-        let path = "users/\(userId)/posts/\(postId.uuidString).jpg"
-        let storageRef = storage.reference().child(path)
-        
-        try await storageRef.delete()
+    func deletePostImages(postId: UUID, imageCount: Int) async throws {
+        for index in 0..<imageCount {
+            let fileName = "\(postId.uuidString)_\(index).jpg"
+            let storageRef = storage.reference().child("post_images/\(fileName)")
+            try? await storageRef.delete() // エラーがあっても続行
+        }
     }
 }
 
-// MARK: - Error
+// MARK: - エラー定義
 
 enum StorageError: LocalizedError {
-    case invalidImage
+    case imageConversionFailed
     case invalidURL
     case uploadFailed
     case downloadFailed
     
     var errorDescription: String? {
         switch self {
-        case .invalidImage:
-            return "画像が無効です"
+        case .imageConversionFailed:
+            return "画像の変換に失敗しました"
         case .invalidURL:
-            return "URLが無効です"
+            return "無効なURLです"
         case .uploadFailed:
             return "アップロードに失敗しました"
         case .downloadFailed:

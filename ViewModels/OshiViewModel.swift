@@ -415,6 +415,53 @@ class OshiViewModel: ObservableObject {
         }
     }
     
+    func createUserPost(content: String, imageURLs: [String] = []) {
+        print("📝 createUserPost開始")
+        print("  - テキスト: \(content)")
+        print("  - 画像数: \(imageURLs.count)")
+        
+        let post = Post(
+            authorName: "あなた",
+            content: content,
+            isUserPost: true,
+            imageURLs: imageURLs
+        )
+        
+        posts.insert(post, at: 0)
+        
+        // ✅ 空のPostDetailsを作成(即座に表示できるように)
+        postDetails[post.id] = PostDetails(
+            post: post,
+            reactions: [],
+            comments: [],
+            hasMoreComments: false
+        )
+        
+        print("✅ ローカルに投稿追加完了")
+        
+        Task {
+            do {
+                print("💾 Firebaseに保存中...")
+                try await dbManager.savePost(post)
+                print("✅ Firebase保存完了")
+                
+                // すべての推しが反応(遅延実行)
+                let delay = UInt64.random(in: 1_000_000_000...3_000_000_000)
+                print("⏱️ \(Double(delay) / 1_000_000_000)秒後に反応生成開始")
+                try await Task.sleep(nanoseconds: delay)
+                
+                await generateReactionsForPost(post)
+                print("✅ 反応生成完了")
+                
+            } catch {
+                await MainActor.run {
+                    errorMessage = "投稿の保存に失敗しました: \(error.localizedDescription)"
+                    print("❌ 投稿保存エラー: \(error)")
+                }
+            }
+        }
+    }
+    
     // MARK: - ユーザーからのいいね
     
     /// ユーザーが投稿にいいねする
