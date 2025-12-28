@@ -14,6 +14,10 @@ struct TimelineScreenView: View {
     @State private var showingPostSheet = false
     @State private var showingSidebar = false
     @State private var navigationPath = NavigationPath()
+    @State private var userAvatarImage: UIImage?
+    @State private var isLoadingUserAvatar = false
+    @State private var userName: String = "あなた"
+    private let dbManager = FirebaseDatabaseManager.shared
     
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -44,11 +48,63 @@ struct TimelineScreenView: View {
                     NotificationView(viewModel: viewModel, isPresented: .constant(true))
                 }
             }
+            .task {
+                do {
+                    let profile = try await dbManager.loadUserProfile()
+                    userName = profile.userName
+
+                    // 既に viewModel 側でURLを持ってるならそれを優先してもOK
+                    if let url = profile.avatarImageURL {
+                        isLoadingUserAvatar = true
+                        userAvatarImage = try await FirebaseStorageManager.shared.downloadImage(from: url)
+                        isLoadingUserAvatar = false
+                    }
+                } catch {
+                    print("❌ TimelineScreenView load user avatar error:", error.localizedDescription)
+                    isLoadingUserAvatar = false
+                }
+            }
             .sheet(isPresented: $showingPostSheet) {
                 PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
             }
         }
     }
+    
+    private var profileButton: some View {
+        Group {
+            if isLoadingUserAvatar {
+                Circle()
+                    .fill(Color(.systemGray5))
+                    .frame(width: 40, height: 40)
+                    .overlay(ProgressView().tint(.gray))
+            } else if let img = userAvatarImage {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.2, green: 0.7, blue: 1.0),
+                                Color(red: 0.5, green: 0.4, blue: 1.0)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                    )
+            }
+        }
+    }
+
     
     // MARK: - Main Content
     
@@ -119,28 +175,6 @@ struct TimelineScreenView: View {
 
     }
     
-    // MARK: - Profile Button
-    
-    private var profileButton: some View {
-        Circle()
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                        Color(red: 0.5, green: 0.4, blue: 1.0)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: 40, height: 40)
-            .overlay(
-                Image(systemName: "person.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
-            )
-    }
-    
     // MARK: - Sidebar Menu
     
     private var sidebarMenu: some View {
@@ -166,32 +200,12 @@ struct TimelineScreenView: View {
                     .padding(.trailing, 8)
                     
                     // プロフィール情報
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 64, height: 64)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                        )
+                    profileButton
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("あなた")
+                        Text(userName)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundColor(.primary)
-                        
-                        Text("@user")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary)
                     }
                     
                     HStack(spacing: 16) {
@@ -642,7 +656,8 @@ struct PostCardView: View {
     var isNavigable: Bool = true
     @State private var showingReactions = false
     @State private var avatarImage: UIImage?
-    @State private var postImages: [UIImage] = [] // ✅ 投稿画像
+    @State private var postImages: [UIImage] = []
+    @State private var userAvatarImage: UIImage?
 
     var oshi: OshiCharacter? {
         if let authorId = post.authorId {
@@ -673,12 +688,17 @@ struct PostCardView: View {
             }
         }
         .task {
-            // アバター画像読み込み
+            // 推しのアバター画像読み込み
             if let oshi = oshi, let urlString = oshi.avatarImageURL {
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
             }
             
-            // ✅ 投稿画像読み込み
+            // ✅ ユーザーのアバター画像読み込み
+            if post.isUserPost, let url = viewModel.userProfileAvatarURL {
+                userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
+            }
+            
+            // 投稿画像読み込み
             if !post.imageURLs.isEmpty {
                 for imageURL in post.imageURLs {
                     if let image = try? await FirebaseStorageManager.shared.downloadImage(from: imageURL) {
@@ -694,6 +714,7 @@ struct PostCardView: View {
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
+                // ✅ ユーザー投稿の場合はNavigationLinkなし
                 Group {
                     if let oshi = oshi {
                         NavigationLink {
@@ -714,13 +735,14 @@ struct PostCardView: View {
                             NavigationLink {
                                 OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
                             } label: {
-                                Text(post.authorName)
+                                Text(oshi.name)
                                     .font(.system(size: 15, weight: .bold))
                                     .foregroundColor(.primary)
                             }
                             .buttonStyle(.plain)
                         } else {
-                            Text(post.authorName)
+                            // ✅ ユーザー投稿の名前表示
+                            Text(post.isUserPost ? viewModel.userProfileName : post.authorName)
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.primary)
                         }
@@ -759,7 +781,7 @@ struct PostCardView: View {
                             .padding(.top, 2)
                     }
                     
-                    // ✅ 投稿画像表示
+                    // 投稿画像表示
                     if !postImages.isEmpty {
                         postImageGrid
                             .padding(.top, 8)
@@ -844,7 +866,6 @@ struct PostCardView: View {
         .background(Color(.systemBackground))
     }
     
-    // ✅ 投稿画像グリッド
     private var postImageGrid: some View {
         let columns: [GridItem] = postImages.count == 1
             ? [GridItem(.flexible())]
@@ -862,9 +883,11 @@ struct PostCardView: View {
         }
     }
     
+    // ✅ アバター表示ロジック修正
     private var avatarView: some View {
         Group {
             if let oshi = oshi {
+                // 推しのアバター
                 if let avatarImage = avatarImage {
                     Image(uiImage: avatarImage)
                         .resizable()
@@ -891,23 +914,32 @@ struct PostCardView: View {
                         )
                 }
             } else {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.2, green: 0.7, blue: 1.0),
-                                Color(red: 0.5, green: 0.4, blue: 1.0)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // ユーザーのアバター
+                if post.isUserPost, let img = userAvatarImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "person.fill")
-                            .foregroundColor(.white)
-                            .font(.system(size: 20))
-                    )
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.white)
+                                .font(.system(size: 20))
+                        )
+                }
             }
         }
     }

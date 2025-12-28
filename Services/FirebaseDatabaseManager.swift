@@ -40,6 +40,32 @@ class FirebaseDatabaseManager {
 
         try await oshiRef.setValue(oshiData)
     }
+    
+    func saveUserProfile(userName: String, userBio: String, avatarImageURL: String?) async throws {
+        let profileRef = ref.child("users/\(userId)/profile")
+
+        var data: [String: Any] = [
+            "userName": userName,
+            "userBio": userBio,
+            "updatedAt": Date().timeIntervalSince1970
+        ]
+        data["avatarImageURL"] = avatarImageURL ?? ""
+
+        try await profileRef.updateChildValues(data)
+    }
+
+    func loadUserProfile() async throws -> (userName: String, userBio: String, avatarImageURL: String?) {
+        let snap = try await ref.child("users/\(userId)/profile").getData()
+
+        guard let v = snap.value as? [String: Any] else {
+            return ("あなた", "", nil)
+        }
+
+        let name = v["userName"] as? String ?? "あなた"
+        let bio = v["userBio"] as? String ?? ""
+        let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (name, bio, avatar)
+    }
 
     func loadOshiList() async throws -> [OshiCharacter] {
         let snapshot = try await ref.child("users/\(userId)/oshiList").getData()

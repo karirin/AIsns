@@ -15,6 +15,8 @@ struct UserProfileView: View {
     @State private var showingEditSheet = false
     @State private var isLoadingImage = false
     @Environment(\.dismiss) var dismiss
+    @State private var avatarImageURL: String? = nil
+    private let dbManager = FirebaseDatabaseManager.shared
     
     private let avatarSize: CGFloat = 100
     
@@ -60,6 +62,9 @@ struct UserProfileView: View {
                     }
                 }
             }
+            .task {
+                await loadProfile()
+            }
             .sheet(isPresented: $showingEditSheet) {
                 NavigationStack {
                     UserProfileEditView(
@@ -69,6 +74,25 @@ struct UserProfileView: View {
                     )
                 }
             }
+    }
+    
+    private func loadProfile() async {
+        do {
+            let profile = try await dbManager.loadUserProfile()
+            userName = profile.userName
+            userBio = profile.userBio
+            avatarImageURL = profile.avatarImageURL
+
+            // URLがあれば画像もDLして表示
+            if let url = profile.avatarImageURL {
+                isLoadingImage = true
+                let img = try await FirebaseStorageManager.shared.downloadImage(from: url)
+                avatarImage = img
+                isLoadingImage = false
+            }
+        } catch {
+            print("❌ loadProfile error:", error.localizedDescription)
+        }
     }
     
     // MARK: - Avatar Section
@@ -198,6 +222,8 @@ struct UserProfileEditView: View {
     @State private var showingImagePicker = false
     @State private var showingSaveConfirmation = false
     @State private var isLoadingImage = false
+    private let dbManager = FirebaseDatabaseManager.shared
+    @State private var isSaving = false
     
     init(userName: Binding<String>, userBio: Binding<String>, avatarImage: Binding<UIImage?>) {
         self._userName = userName
@@ -365,10 +391,11 @@ struct UserProfileEditView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
-                    saveChanges()
+                    Task { await saveChanges() }   // ← ここ変更
                 }
                 .foregroundColor(.primary)
                 .fontWeight(.semibold)
+                .disabled(isSaving)
             }
         }
         .sheet(isPresented: $showingImagePicker) {
@@ -376,22 +403,44 @@ struct UserProfileEditView: View {
         }
     }
     
-    private func saveChanges() {
-        userName = editingName
-        userBio = editingBio
-        
-        // 保存完了の通知を表示
-        withAnimation {
-            showingSaveConfirmation = true
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation {
-                showingSaveConfirmation = false
+    @MainActor
+    private func saveChanges() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            // 1) 画像があれば Storage にアップロード → URL取得
+            let uid = FirebaseConfig.shared.userId
+
+            var newAvatarURL: String? = nil
+            if let img = avatarImage {
+                isLoadingImage = true
+                newAvatarURL = try await FirebaseStorageManager.shared.uploadUserAvatar(img, userId: uid)
+                isLoadingImage = false
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismiss()
+
+            // 2) Realtime Database に保存
+            try await dbManager.saveUserProfile(
+                userName: editingName,
+                userBio: editingBio,
+                avatarImageURL: newAvatarURL
+            )
+
+            // 3) 親Viewへ反映
+            userName = editingName
+            userBio = editingBio
+
+            // 4) トースト→dismiss
+            withAnimation { showingSaveConfirmation = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation { showingSaveConfirmation = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    dismiss()
+                }
             }
+
+        } catch {
+            print("❌ save profile error:", error.localizedDescription)
         }
     }
 }

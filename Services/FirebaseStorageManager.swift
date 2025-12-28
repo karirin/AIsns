@@ -55,6 +55,28 @@ class FirebaseStorageManager {
         return downloadURL.absoluteString
     }
     
+    func uploadUserAvatar(_ image: UIImage, userId: String) async throws -> String {
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
+            throw StorageError.imageConversionFailed
+        }
+
+        let fileName = "\(userId).jpg"
+        let storageRef = storage.reference().child("user_avatars/\(fileName)")
+
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+
+        _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
+        let downloadURL = try await storageRef.downloadURL()
+        return downloadURL.absoluteString
+    }
+
+    func deleteUserAvatar(userId: String) async throws {
+        let fileName = "\(userId).jpg"
+        let storageRef = storage.reference().child("user_avatars/\(fileName)")
+        try await storageRef.delete()
+    }
+    
     // MARK: - 画像ダウンロード
     
     /// URLから画像をダウンロード

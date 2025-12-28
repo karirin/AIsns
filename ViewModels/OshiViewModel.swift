@@ -12,6 +12,8 @@ class OshiViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var recommendedOshis: [OshiCharacter] = []
     @Published var notifications: [AppNotification] = []
+    @Published var userProfileName: String = "あなた"
+    @Published var userProfileAvatarURL: String? = nil
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -143,14 +145,17 @@ class OshiViewModel: ObservableObject {
             async let postsTask = dbManager.loadPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
             async let presetsTask = dbManager.fetchPresetOshis()   // ✅ 追加(おすすめも並列で取る)
+            async let userProfileTask = dbManager.loadUserProfile()
 
-            let (loadedOshi, loadedPosts, loadedRooms, presets) =
-                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask)  // ✅ 変更
+            let (loadedOshi, loadedPosts, loadedRooms, presets, profile) =
+                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask, userProfileTask)  // ✅ 変更
 
             oshiList = loadedOshi
             recommendedOshis = presets    // ✅ ここだけにする(2重ロード削除)
             posts = loadedPosts
             chatRooms = loadedRooms
+            userProfileName = profile.userName                         // 追加
+            userProfileAvatarURL = profile.avatarImageURL 
 
             print("✅ データ読み込み成功: 推し\(oshiList.count)人, 投稿\(posts.count)件")
         } catch {
