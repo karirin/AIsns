@@ -22,8 +22,41 @@ class OshiViewModel: ObservableObject {
     private let dbManager = FirebaseDatabaseManager.shared
     private var cancellables = Set<AnyCancellable>()
     private var autoPostTimer: Timer?
+    private var autoFollowTimer: Timer?
+
     var unreadNotificationCount: Int {
         notifications.filter { !$0.isRead }.count
+    }
+
+    var followingCount: Int {
+        oshiList.filter { $0.isFollowedByUser }.count
+    }
+
+    var followerCount: Int {
+        oshiList.filter { $0.isFollowingUser }.count
+    }
+
+    var mutualFollowCount: Int {
+        oshiList.filter { $0.isMutualFollow }.count
+    }
+    
+    var timelinePosts: [Post] {
+        posts.filter { post in
+            // ユーザーの投稿は常に表示
+            if post.isUserPost {
+                return true
+            }
+            print("他アカウントの投稿1    ：\(post))")
+            // 推しの投稿は相互フォローの場合のみ表示
+            guard let authorId = post.authorId,
+                  let oshi = oshiList.first(where: { $0.id == authorId }) else {
+                return false
+            }
+            print("他アカウントの投稿2    ：\(post))")
+            print("isMutualFollow=\(oshi.isMutualFollow) followed=\(oshi.isFollowedByUser) following=\(oshi.isFollowingUser)")
+
+            return oshi.isMutualFollow
+        }
     }
     
     init() {
@@ -31,6 +64,7 @@ class OshiViewModel: ObservableObject {
             await loadData()
         }
         startAutoPosting()
+        startAutoFollowing()
     }
     
     convenience init(mock: Bool) {
@@ -62,6 +96,150 @@ class OshiViewModel: ObservableObject {
         self.chatRooms = [room1, room2]
     }
     
+    func followOshi(_ oshi: OshiCharacter) async {
+        guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
+        
+        oshiList[index].isFollowedByUser = true
+        
+        do {
+            try await dbManager.saveOshi(oshiList[index])
+            
+            // 相互フォローになった場合、挨拶メッセージを送る
+            if oshiList[index].isMutualFollow {
+                await sendMutualFollowMessage(to: oshiList[index])
+            }
+            
+            print("✅ \(oshi.name)をフォローしました")
+        } catch {
+            errorMessage = "フォローに失敗しました"
+            print("❌ フォローエラー: \(error)")
+        }
+    }
+
+    /// ユーザーから推しをフォロー解除
+    func unfollowOshi(_ oshi: OshiCharacter) async {
+        guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
+        
+        oshiList[index].isFollowedByUser = false
+        
+        do {
+            try await dbManager.saveOshi(oshiList[index])
+            print("✅ \(oshi.name)のフォローを解除しました")
+        } catch {
+            errorMessage = "フォロー解除に失敗しました"
+            print("❌ フォロー解除エラー: \(error)")
+        }
+    }
+
+    /// 推しからユーザーへのフォロー（自動実行）
+    func oshiFollowsUser(_ oshi: OshiCharacter) async {
+        guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
+        
+        oshiList[index].isFollowingUser = true
+        
+        do {
+            try await dbManager.saveOshi(oshiList[index])
+            
+            // フォロー通知を作成
+            createFollowNotification(from: oshiList[index])
+            
+            // 相互フォローになった場合、挨拶メッセージを送る
+            if oshiList[index].isMutualFollow {
+                await sendMutualFollowMessage(to: oshiList[index])
+            }
+            
+            print("✅ \(oshi.name)があなたをフォローしました")
+        } catch {
+            print("❌ フォローエラー: \(error)")
+        }
+    }
+
+    /// 相互フォローになった時の挨拶メッセージ
+    private func sendMutualFollowMessage(to oshi: OshiCharacter) async {
+        guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { return }
+        
+        do {
+            let greeting = try await aiService.generateGreeting(type: .mutualFollow, by: oshi)
+            
+            let message = Message(
+                content: greeting,
+                isFromUser: false,
+                oshiId: oshi.id
+            )
+            
+            chatRooms[roomIndex].addMessage(message)
+            try await dbManager.addMessage(to: oshi.id, message: message)
+            
+            createChatNotification(oshi: oshi, message: message)
+            
+            print("✅ 相互フォロー挨拶送信: \(oshi.name)")
+        } catch {
+            print("❌ 相互フォロー挨拶エラー: \(error)")
+        }
+    }
+    
+    private func startAutoFollowing() {
+        // 30分〜2時間に1回、ランダムなプリセット推しからフォローされる
+        autoFollowTimer = Timer.scheduledTimer(withTimeInterval: Double.random(in: 1800...7200), repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.randomPresetFollow()
+            }
+        }
+        
+        // 初回実行(30秒〜5分後にランダム実行)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 5...5)) {
+            Task { @MainActor in
+                await self.randomPresetFollow()
+            }
+        }
+    }
+
+    /// ランダムなプリセット推しからフォローされる
+    private func randomPresetFollow() async {
+        // まだフォローしていないプリセット推しを取得
+        let unfollowedPresets = recommendedOshis.filter { preset in
+            !oshiList.contains(where: { $0.id == preset.id })
+        }
+        
+        guard !unfollowedPresets.isEmpty else {
+            print("⚠️ すべてのプリセット推しをフォロー済み")
+            return
+        }
+        
+        // ランダムに1人選択
+        guard let selectedPreset = unfollowedPresets.randomElement() else { return }
+        
+        print("🎉 \(selectedPreset.name)からフォローされました!")
+        
+        // フォロー処理（推しがユーザーをフォロー）
+        var newOshi = selectedPreset
+        newOshi.isFollowingUser = true  // ← 推しがユーザーをフォロー
+        
+        try? await dbManager.saveOshi(newOshi)
+        oshiList.insert(newOshi, at: 0)
+        
+        // チャットルーム作成
+        if !chatRooms.contains(where: { $0.oshiId == newOshi.id }) {
+            let room = ChatRoom(id: UUID(), oshiId: newOshi.id)
+            try? await dbManager.saveChatRoom(room)
+            chatRooms.append(room)
+        }
+        
+        // フォロー通知を作成
+        createFollowNotification(from: newOshi)
+    }
+
+    /// フォロー通知を作成
+    private func createFollowNotification(from oshi: OshiCharacter) {
+        let notification = AppNotification(
+            type: .follow,
+            senderId: oshi.id,
+            senderName: oshi.name,
+            content: ""
+        )
+        addNotification(notification)
+    }
+    
     private convenience init(skipLoadAndTimers: Bool) {
         self.init()
         if skipLoadAndTimers {
@@ -80,9 +258,28 @@ class OshiViewModel: ObservableObject {
             // すでにフォロー済みなら何もしない
             if oshiList.contains(where: { $0.id == preset.id }) { return }
 
+            // ✅ プリセット推しをフォローする = 相互フォロー扱い
+            var followedOshi = preset
+            followedOshi.isMutualFollow = true
+            
+            print("📝 followRecommended: \(followedOshi.name)")
+            print("  - isMutualFollow: \(followedOshi.isMutualFollow)")
+
             // 1) 推しを保存 & リスト反映
-            try await dbManager.saveOshi(preset)
-            oshiList.insert(preset, at: 0)
+            try await dbManager.saveOshi(followedOshi)
+            oshiList.insert(followedOshi, at: 0)
+            
+            // ✅ 保存後に確認
+            print("  - 保存完了、Firebaseから再読み込みして確認...")
+            let reloadedList = try await dbManager.loadOshiList()
+            if let reloaded = reloadedList.first(where: { $0.id == preset.id }) {
+                print("  - Firebase上のisMutualFollow: \(reloaded.isMutualFollow)")
+                
+                // ✅ ローカルリストも更新
+                if let idx = oshiList.firstIndex(where: { $0.id == preset.id }) {
+                    oshiList[idx] = reloaded
+                }
+            }
 
             // 2) チャットルームが無ければ作る(空メッセージでOK)
             if !chatRooms.contains(where: { $0.oshiId == preset.id }) {
@@ -114,6 +311,7 @@ class OshiViewModel: ObservableObject {
 
         } catch {
             self.errorMessage = error.localizedDescription
+            print("❌ followRecommended error: \(error.localizedDescription)")
         }
     }
     

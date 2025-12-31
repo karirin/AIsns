@@ -126,13 +126,19 @@ struct TimelineScreenView: View {
                 .padding(.top)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(viewModel.posts) { post in
+                        ForEach(viewModel.timelinePosts) { post in
                             PostCardView(post: post, viewModel: viewModel)
                             Divider()
                                 .padding(.leading, 64)
                         }
                     }
                     .padding(.bottom, 80)
+                }
+                .onChange(of: viewModel.timelinePosts.count) { newCount in
+                    print("アカウント！！！     ：\(newCount)件")
+                }
+                .onAppear{
+                    print("アカウント！！！     ：\(viewModel.timelinePosts)")
                 }
             }
             .refreshable {
@@ -212,7 +218,7 @@ struct TimelineScreenView: View {
                     
                     HStack(spacing: 16) {
                         HStack(spacing: 4) {
-                            Text("\(viewModel.oshiList.count)")
+                            Text("\(viewModel.followingCount)")  // ← 変更
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.primary)
                             Text("フォロー中")
@@ -221,10 +227,10 @@ struct TimelineScreenView: View {
                         }
                         
                         HStack(spacing: 4) {
-                            Text("\(viewModel.posts.filter { $0.isUserPost }.count)")
+                            Text("\(viewModel.followerCount)")  // ← 追加
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.primary)
-                            Text("投稿")
+                            Text("フォロワー")
                                 .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                         }

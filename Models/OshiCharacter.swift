@@ -61,7 +61,10 @@ struct OshiCharacter: Identifiable, Codable {
     var totalInteractions: Int
     var lastInteractionDate: Date?
     var avatarImageURL: String?
-    
+    var isMutualFollow: Bool
+    var isFollowingUser: Bool  // この推しがユーザーをフォローしているか
+    var isFollowedByUser: Bool
+
     // UIImageに変換
     @MainActor
     var avatarImage: UIImage? {
@@ -88,10 +91,13 @@ struct OshiCharacter: Identifiable, Codable {
         speechCharacteristics: String = "",
         userCallingName: String = "",
         speechStyleText: String = "",
-        avatarImageURL: String? = nil, // ← これを追加
+        avatarImageURL: String? = nil,
         createdAt: Date = Date(),
         totalInteractions: Int = 0,
-        lastInteractionDate: Date? = nil
+        lastInteractionDate: Date? = nil,
+        isMutualFollow: Bool = false,
+        isFollowingUser: Bool = false,  // ← 追加
+        isFollowedByUser: Bool = false  // ← 追加
     ) {
         self.id = id
         self.name = name
@@ -100,10 +106,13 @@ struct OshiCharacter: Identifiable, Codable {
         self.speechCharacteristics = speechCharacteristics
         self.userCallingName = userCallingName
         self.speechStyleText = speechStyleText
-        self.avatarImageURL = avatarImageURL // ← これを追加
+        self.avatarImageURL = avatarImageURL
         self.createdAt = createdAt
         self.totalInteractions = totalInteractions
         self.lastInteractionDate = lastInteractionDate
+        self.isMutualFollow = isMutualFollow
+        self.isFollowingUser = isFollowingUser
+        self.isFollowedByUser = isFollowedByUser
     }
     
     mutating func increaseIntimacy(by amount: Int = 1) {

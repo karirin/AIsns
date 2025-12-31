@@ -17,6 +17,10 @@ class FirebaseDatabaseManager {
 
     func saveOshi(_ oshi: OshiCharacter) async throws {
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshi.id.uuidString)")
+        
+        print("💾 saveOshi: \(oshi.name)")
+        print("  - path: users/\(userId)/oshiList/\(oshi.id.uuidString)")
+        print("  - isMutualFollow: \(oshi.isMutualFollow)")
 
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
@@ -27,7 +31,8 @@ class FirebaseDatabaseManager {
             "speechStyleText": oshi.speechStyleText,
             "createdAt": oshi.createdAt.timeIntervalSince1970,
             "totalInteractions": oshi.totalInteractions,
-            "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0
+            "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0,
+            "isMutualFollow": oshi.isMutualFollow  // ✅ 確実に保存
         ]
 
         if let gender = oshi.gender {
@@ -37,8 +42,12 @@ class FirebaseDatabaseManager {
         if let imageURL = oshi.avatarImageURL {
             oshiData["avatarImageURL"] = imageURL
         }
+        
+        print("  - 保存データ: \(oshiData)")
 
         try await oshiRef.setValue(oshiData)
+        
+        print("  ✅ saveOshi完了")
     }
     
     func saveUserProfile(userName: String, userBio: String, avatarImageURL: String?) async throws {
@@ -426,10 +435,13 @@ class FirebaseDatabaseManager {
         let gender = genderRaw.flatMap { Gender(rawValue: $0) }
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
-        _ = data["intimacyLevel"] as? Int ?? 0
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
+        let isMutualFollow = data["isMutualFollow"] as? Bool ?? false  // ✅ 読み込み
+        
+        print("📖 parseOshiCharacter: \(name)")
+        print("  - isMutualFollow from Firebase: \(isMutualFollow)")
 
         var oshi = OshiCharacter(
             id: id,
@@ -439,14 +451,12 @@ class FirebaseDatabaseManager {
             speechCharacteristics: speechCharacteristics,
             userCallingName: userCallingName,
             speechStyleText: speechStyleText,
-            avatarImageURL: avatarImageURL
+            avatarImageURL: avatarImageURL,
+            isMutualFollow: isMutualFollow  // ✅ 確実に設定
         )
 
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil
-
-        // createdAtTimestamp は OshiCharacter 内で保持されている前提(もし必要ならここで反映)
-        _ = createdAtTimestamp
 
         return oshi
     }

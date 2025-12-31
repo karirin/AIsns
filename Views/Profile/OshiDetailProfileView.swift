@@ -20,6 +20,7 @@ struct OshiProfileDetailView: View {
     @State private var selectedTab: ProfileTab = .posts
     @State private var showingEditSheet = false
     @State private var showingUnfollowAlert = false
+    @State private var isFollowing = false
     
     private let avatarSize: CGFloat = 100
     
@@ -30,6 +31,10 @@ struct OshiProfileDetailView: View {
     // ✅ この推しの投稿をフィルタリング
     var oshiPosts: [Post] {
         viewModel.posts.filter { $0.authorId == oshi.id }
+    }
+    
+    var isAlreadyFollowed: Bool {
+        viewModel.oshiList.contains(where: { $0.id == oshi.id })
     }
     
     // ✅ イニシャライザにisPresetを追加(デフォルトはfalse)
@@ -47,6 +52,8 @@ struct OshiProfileDetailView: View {
                 
                 // プロフィール情報
                 profileInfoSection
+                
+                followButton
                 
                 Divider()
                     .padding(.horizontal, 24)
@@ -213,10 +220,157 @@ struct OshiProfileDetailView: View {
                     .padding(.horizontal, 32)
             }
             
+            if oshi.isMutualFollow {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 12))
+                    Text("相互フォロー")
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
+            } else if oshi.isFollowingUser {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12))
+                    Text("フォローされています")
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
+            }
+            
             // キャラクター属性タグ
             characterTagsView
                 .padding(.top, 4)
         }
+    }
+    
+    private var followButton: some View {
+        Button {
+            Task {
+                if oshi.isFollowedByUser {
+                    await viewModel.unfollowOshi(oshi)
+                } else {
+                    await viewModel.followOshi(oshi)
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: oshi.isFollowedByUser ? "person.fill.checkmark" : "person.fill.badge.plus")
+                    .font(.system(size: 14))
+                Text(oshi.isFollowedByUser ? "フォロー中" : "フォロー")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(oshi.isFollowedByUser ? .primary : .white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .opacity(oshi.isFollowedByUser ? 0 : 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        oshi.isFollowedByUser ? Color(.systemGray4) : Color.clear,
+                        lineWidth: 1
+                    )
+            )
+            .cornerRadius(20)
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    private var followButtonSection: some View {
+        HStack(spacing: 12) {
+            if isAlreadyFollowed {
+                // フォロー中の表示
+                Button {
+                    showingUnfollowAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("フォロー中")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22)
+                            .stroke(Color(.systemGray3), lineWidth: 1.5)
+                    )
+                }
+            } else {
+                // フォローボタン
+                Button {
+                    Task {
+                        isFollowing = true
+                        defer { isFollowing = false }
+                        
+                        print("📲 詳細画面からフォロー: \(oshi.name)")
+                        await viewModel.followRecommended(oshi)
+                        print("  ✅ フォロー完了")
+                    }
+                } label: {
+                    if isFollowing {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [.blue.opacity(0.7), .purple.opacity(0.7)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(22)
+                    } else {
+                        HStack {
+                            Image(systemName: "person.fill.badge.plus")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("フォロー")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(22)
+                    }
+                }
+                .disabled(isFollowing)
+            }
+            
+            // メッセージボタン
+            Button {
+                // チャットへ遷移
+            } label: {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+                    .background(Color(.systemGray6))
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, 24)
     }
     
     private var characterTagsView: some View {
@@ -242,7 +396,6 @@ struct OshiProfileDetailView: View {
         .padding(.horizontal, 24)
     }
 
-    // 「。」や「、」で分割してタグ化
     private func splitTags(_ text: String) -> [String] {
         text.components(separatedBy: CharacterSet(charactersIn: "。、"))
             .map { $0.trimmingCharacters(in: .whitespaces) }

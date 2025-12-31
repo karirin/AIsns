@@ -78,7 +78,16 @@ class AIService {
     
     // おはよう/おやすみメッセージ（OpenAI使用）
     func generateGreeting(type: GreetingType, by oshi: OshiCharacter) async throws -> String {
-        let greetingType = type == .morning ? "朝の挨拶" : "おやすみの挨拶"
+        let greetingType: String
+        
+        switch type {
+        case .morning:
+            greetingType = "朝の挨拶"
+        case .night:
+            greetingType = "おやすみの挨拶"
+        case .mutualFollow:
+            greetingType = "相互フォローになった時の挨拶"
+        }
         
         let prompt = """
         あなたは\(oshi.name)として、\(greetingType)をします。
@@ -139,6 +148,7 @@ struct ConversationContext {
 enum GreetingType {
     case morning
     case night
+    case mutualFollow
 }
 
 // エラー定義
