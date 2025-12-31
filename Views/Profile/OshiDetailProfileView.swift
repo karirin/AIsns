@@ -34,7 +34,11 @@ struct OshiProfileDetailView: View {
     }
     
     var isAlreadyFollowed: Bool {
-        viewModel.oshiList.contains(where: { $0.id == oshi.id })
+        // ✅ oshiListに存在し、かつユーザーがフォローしている状態を確認
+        if let existingOshi = viewModel.oshiList.first(where: { $0.id == oshi.id }) {
+            return existingOshi.isFollowedByUser
+        }
+        return false
     }
     
     // ✅ イニシャライザにisPresetを追加(デフォルトはfalse)
@@ -318,7 +322,16 @@ struct OshiProfileDetailView: View {
                         defer { isFollowing = false }
                         
                         print("📲 詳細画面からフォロー: \(oshi.name)")
-                        await viewModel.followRecommended(oshi)
+                        
+                        // ✅ 修正: プリセットかoshiListにいるかで分岐
+                        if isPreset {
+                            // プリセットの場合はfollowRecommended
+                            await viewModel.followRecommended(oshi)
+                        } else {
+                            // 既にoshiListにいる場合はfollowOshi
+                            await viewModel.followOshi(oshi)
+                        }
+                        
                         print("  ✅ フォロー完了")
                     }
                 } label: {

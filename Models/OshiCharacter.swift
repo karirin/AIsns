@@ -61,9 +61,13 @@ struct OshiCharacter: Identifiable, Codable {
     var totalInteractions: Int
     var lastInteractionDate: Date?
     var avatarImageURL: String?
-    var isMutualFollow: Bool
     var isFollowingUser: Bool  // この推しがユーザーをフォローしているか
     var isFollowedByUser: Bool
+    
+    // ✅ 計算プロパティとして定義(保存しない)
+    var isMutualFollow: Bool {
+        isFollowingUser && isFollowedByUser
+    }
 
     // UIImageに変換
     @MainActor
@@ -95,9 +99,8 @@ struct OshiCharacter: Identifiable, Codable {
         createdAt: Date = Date(),
         totalInteractions: Int = 0,
         lastInteractionDate: Date? = nil,
-        isMutualFollow: Bool = false,
-        isFollowingUser: Bool = false,  // ← 追加
-        isFollowedByUser: Bool = false  // ← 追加
+        isFollowingUser: Bool = false,
+        isFollowedByUser: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -110,7 +113,6 @@ struct OshiCharacter: Identifiable, Codable {
         self.createdAt = createdAt
         self.totalInteractions = totalInteractions
         self.lastInteractionDate = lastInteractionDate
-        self.isMutualFollow = isMutualFollow
         self.isFollowingUser = isFollowingUser
         self.isFollowedByUser = isFollowedByUser
     }

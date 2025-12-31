@@ -20,6 +20,8 @@ class FirebaseDatabaseManager {
         
         print("💾 saveOshi: \(oshi.name)")
         print("  - path: users/\(userId)/oshiList/\(oshi.id.uuidString)")
+        print("  - isFollowingUser: \(oshi.isFollowingUser)")
+        print("  - isFollowedByUser: \(oshi.isFollowedByUser)")
         print("  - isMutualFollow: \(oshi.isMutualFollow)")
 
         var oshiData: [String: Any] = [
@@ -32,7 +34,9 @@ class FirebaseDatabaseManager {
             "createdAt": oshi.createdAt.timeIntervalSince1970,
             "totalInteractions": oshi.totalInteractions,
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0,
-            "isMutualFollow": oshi.isMutualFollow  // ✅ 確実に保存
+            "isFollowingUser": oshi.isFollowingUser,  // ✅ これを保存
+            "isFollowedByUser": oshi.isFollowedByUser // ✅ これを保存
+            // isMutualFollowは計算プロパティなので保存不要
         ]
 
         if let gender = oshi.gender {
@@ -438,10 +442,14 @@ class FirebaseDatabaseManager {
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
-        let isMutualFollow = data["isMutualFollow"] as? Bool ?? false  // ✅ 読み込み
+        
+        // ✅ isFollowingUserとisFollowedByUserを読み込み
+        let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
+        let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
         
         print("📖 parseOshiCharacter: \(name)")
-        print("  - isMutualFollow from Firebase: \(isMutualFollow)")
+        print("  - isFollowingUser from Firebase: \(isFollowingUser)")
+        print("  - isFollowedByUser from Firebase: \(isFollowedByUser)")
 
         var oshi = OshiCharacter(
             id: id,
@@ -452,7 +460,8 @@ class FirebaseDatabaseManager {
             userCallingName: userCallingName,
             speechStyleText: speechStyleText,
             avatarImageURL: avatarImageURL,
-            isMutualFollow: isMutualFollow  // ✅ 確実に設定
+            isFollowingUser: isFollowingUser,  // ✅ 追加
+            isFollowedByUser: isFollowedByUser // ✅ 追加
         )
 
         oshi.totalInteractions = totalInteractions
@@ -496,7 +505,6 @@ class FirebaseDatabaseManager {
     func fetchPresetOshis() async throws -> [OshiCharacter] {
         do {
             let snap = try await ref.child("presets/oshiList").getData()
-            print("🔥 presets exists:", snap.exists(), "children:", snap.childrenCount)
 
             guard snap.exists() else { return [] }
 
@@ -504,22 +512,14 @@ class FirebaseDatabaseManager {
 
             for child in snap.children {
                 guard let c = child as? DataSnapshot else {
-                    print("❌ presets child cast failed:", child)
                     continue
                 }
 
                 guard let v = c.value as? [String: Any] else {
-                    print("❌ presets value is not dict. key=\(c.key) type=\(type(of: c.value))")
                     continue
                 }
 
                 let keys = Array(v.keys).sorted()
-                print("🧾 presets item key=\(c.key) keys=\(keys)")
-                print("👤 presets gender raw:", v["gender"] ?? "nil")
-
-                if v["id"] == nil || v["name"] == nil || v["personalityText"] == nil || v["speechStyleText"] == nil {
-                    print("❌ presets missing required fields. key=\(c.key) id=\(v["id"] ?? "nil") name=\(v["name"] ?? "nil")")
-                }
 
                 guard
                     let idStr = v["id"] as? String,
@@ -531,13 +531,11 @@ class FirebaseDatabaseManager {
                     let userCallingName = v["userCallingName"] as? String,
                     let speechStyleText = v["speechStyleText"] as? String
                 else {
-                    print("❌ presets guard failed. key=\(c.key) id=\(v["id"] ?? "nil") gender=\(v["gender"] ?? "nil")")
                     continue
                 }
 
                 let gender = Gender(rawValue: genderStr)
                 if gender == nil {
-                    print("❌ Gender(rawValue:) failed. raw=\(genderStr)")
                     continue
                 }
 
@@ -562,11 +560,9 @@ class FirebaseDatabaseManager {
                 items.append((sortOrder, oshi))
             }
 
-            print("✅ presets parsed count:", items.count)
             return items.sorted { $0.0 < $1.0 }.map { $0.1 }
 
         } catch {
-            print("❌ fetchPresetOshis error:", error.localizedDescription)
             throw error
         }
     }

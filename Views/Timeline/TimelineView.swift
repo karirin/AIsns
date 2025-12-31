@@ -134,12 +134,6 @@ struct TimelineScreenView: View {
                     }
                     .padding(.bottom, 80)
                 }
-                .onChange(of: viewModel.timelinePosts.count) { newCount in
-                    print("アカウント！！！     ：\(newCount)件")
-                }
-                .onAppear{
-                    print("アカウント！！！     ：\(viewModel.timelinePosts)")
-                }
             }
             .refreshable {
                 // リフレッシュ処理

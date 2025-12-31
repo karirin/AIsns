@@ -97,7 +97,7 @@ class OshiViewModel: ObservableObject {
     func followOshi(_ oshi: OshiCharacter) async {
         guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
         
-        oshiList[index].isFollowedByUser = true
+        oshiList[index].isFollowedByUser = true  // ← これだけ
         
         do {
             try await dbManager.saveOshi(oshiList[index])
@@ -256,22 +256,16 @@ class OshiViewModel: ObservableObject {
             // すでにフォロー済みなら何もしない
             if oshiList.contains(where: { $0.id == preset.id }) { return }
 
-            // ✅ プリセット推しをフォローする = 相互フォロー扱い
+            // ✅ 相互フォロー扱いにする
             var followedOshi = preset
-            followedOshi.isMutualFollow = true
-            
-            print("📝 followRecommended: \(followedOshi.name)")
-            print("  - isMutualFollow: \(followedOshi.isMutualFollow)")
+            followedOshi.isFollowingUser = true  // 推しがユーザーをフォロー
+            followedOshi.isFollowedByUser = true // ユーザーが推しをフォロー
 
             // 1) 推しを保存 & リスト反映
             try await dbManager.saveOshi(followedOshi)
             oshiList.insert(followedOshi, at: 0)
-            
-            // ✅ 保存後に確認
-            print("  - 保存完了、Firebaseから再読み込みして確認...")
             let reloadedList = try await dbManager.loadOshiList()
             if let reloaded = reloadedList.first(where: { $0.id == preset.id }) {
-                print("  - Firebase上のisMutualFollow: \(reloaded.isMutualFollow)")
                 
                 // ✅ ローカルリストも更新
                 if let idx = oshiList.firstIndex(where: { $0.id == preset.id }) {
