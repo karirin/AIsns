@@ -31,9 +31,6 @@ struct TimelineScreenView: View {
                         .transition(.move(edge: .leading))
                         .zIndex(1)
                 }
-                
-                // フローティング投稿ボタン
-                floatingPostButton
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: SidebarDestination.self) { destination in
@@ -109,10 +106,10 @@ struct TimelineScreenView: View {
     // MARK: - Main Content
     
     private var mainContent: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             VStack{
-                HStack{
-                                        Button(action: {
+                HStack {
+                    Button(action: {
                         generateHapticFeedback()
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSidebar.toggle()
@@ -138,6 +135,8 @@ struct TimelineScreenView: View {
             .refreshable {
                 // リフレッシュ処理
             }
+            
+            floatingPostButton
             
             // サイドバー表示時の半透明オーバーレイ
             if showingSidebar {

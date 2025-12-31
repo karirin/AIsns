@@ -43,7 +43,7 @@ enum NotificationType: String, Codable {
     /// 同じ投稿に対する通知をグループ化できるか
     var canGroup: Bool {
         switch self {
-        case .reaction, .comment:
+        case .reaction, .comment, .follow: // ✅ .followを追加
             return true
         default:
             return false

@@ -1,7 +1,17 @@
 import SwiftUI
 
+// タブの識別用Enum
+enum Tab {
+    case timeline
+    case notification
+    case chat
+    case oshi
+}
+
 struct MainTabView: View {
     @StateObject private var viewModel = OshiViewModel()
+    // 選択中のタブを管理
+    @State private var selectedTab: Tab = .timeline
     
     var totalUnreadCount: Int {
         viewModel.chatRooms.reduce(0) { $0 + $1.unreadCount }
@@ -12,28 +22,42 @@ struct MainTabView: View {
     }
     
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             TimelineScreenView(viewModel: viewModel)
                 .tabItem {
-                    Label("タイムライン", systemImage: "house.fill")
+                    // ✅ 文字を削除し、アイコンのみ指定
+                    Image(systemName: "house.fill")
                 }
-            
-            NotificationView(viewModel: viewModel, isPresented: .constant(false))
-                .tabItem {
-                    Label("通知", systemImage: "bell.fill")
-                }
-                .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
-            
-            ChatListView(viewModel: viewModel, isPresented: .constant(false))
-                .tabItem {
-                    Label("チャット", systemImage: "message.fill")
-                }
-                .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
+                .tag(Tab.timeline)
             
             OshiListView(viewModel: viewModel)
                 .tabItem {
-                    Label("推し", systemImage: "star.fill")
+                    // ✅ 文字を削除し、アイコンのみ指定
+                    Image(systemName: "person.2")
                 }
+                .tag(Tab.oshi)
+            
+            // 通知タブ
+            NavigationStack {
+                NotificationView(
+                    viewModel: viewModel,
+                    isPresented: .constant(false)
+                )
+            }
+            .tabItem {
+                // ✅ 文字を削除し、アイコンのみ指定
+                Image(systemName: "bell.fill")
+            }
+            .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
+            .tag(Tab.notification)
+        
+            ChatListView(viewModel: viewModel, isPresented: .constant(false))
+                .tabItem {
+                    // ✅ 文字を削除し、アイコンのみ指定
+                    Image(systemName: "envelope")
+                }
+                .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
+                .tag(Tab.chat)
         }
         .onAppear {
             setupTabBarAppearance()

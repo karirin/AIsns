@@ -46,6 +46,13 @@ struct GroupedNotification: Identifiable {
             } else {
                 return "\(firstSender)と他\(count - 1)人があなたの投稿にコメントしました"
             }
+        case .follow: // ✅ フォローのグループ化表示を追加
+            if count == 2 {
+                let secondSender = notifications[1].senderName
+                return "\(firstSender)と\(secondSender)があなたをフォローしました"
+            } else {
+                return "\(firstSender)と他\(count - 1)人があなたをフォローしました"
+            }
         default:
             return notifications.first?.message ?? ""
         }
@@ -70,27 +77,56 @@ struct NotificationView: View {
         for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
             guard !processed.contains(notification.id) else { continue }
             
-            // グループ化可能かつ関連投稿IDがある場合
-            if notification.type.canGroup,
-               let postId = notification.relatedPostId {
+            // グループ化可能な場合
+            if notification.type.canGroup {
                 
-                // 同じ投稿・同じタイプの通知を探す
-                let relatedNotifications = notifications.filter {
-                    $0.type == notification.type &&
-                    $0.relatedPostId == postId &&
-                    !processed.contains($0.id)
+                // ✅ ケース1: フォロー通知（投稿IDに関係なくタイプでグループ化）
+                if notification.type == .follow {
+                    let relatedNotifications = notifications.filter {
+                        $0.type == .follow &&
+                        !processed.contains($0.id)
+                    }
+                    
+                    let group = GroupedNotification(
+                        type: .follow,
+                        relatedPostId: nil,
+                        notifications: relatedNotifications,
+                        timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
+                    )
+                    
+                    groups.append(group)
+                    relatedNotifications.forEach { processed.insert($0.id) }
+                    
                 }
-                
-                // グループ化
-                let group = GroupedNotification(
-                    type: notification.type,
-                    relatedPostId: postId,
-                    notifications: relatedNotifications,
-                    timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
-                )
-                
-                groups.append(group)
-                relatedNotifications.forEach { processed.insert($0.id) }
+                // ✅ ケース2: 投稿関連の通知（同じ投稿IDでグループ化）
+                else if let postId = notification.relatedPostId {
+                    let relatedNotifications = notifications.filter {
+                        $0.type == notification.type &&
+                        $0.relatedPostId == postId &&
+                        !processed.contains($0.id)
+                    }
+                    
+                    let group = GroupedNotification(
+                        type: notification.type,
+                        relatedPostId: postId,
+                        notifications: relatedNotifications,
+                        timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
+                    )
+                    
+                    groups.append(group)
+                    relatedNotifications.forEach { processed.insert($0.id) }
+                    
+                } else {
+                    // グループ化可能だが条件（投稿IDなど）が合わない場合は単体表示
+                    let group = GroupedNotification(
+                        type: notification.type,
+                        relatedPostId: notification.relatedPostId,
+                        notifications: [notification],
+                        timestamp: notification.timestamp
+                    )
+                    groups.append(group)
+                    processed.insert(notification.id)
+                }
                 
             } else {
                 // グループ化しない通知
@@ -111,8 +147,6 @@ struct NotificationView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // ❌ フィルターバー削除
-            
             // 通知一覧
             if groupedNotifications.isEmpty {
                 emptyStateView
@@ -129,7 +163,7 @@ struct NotificationView: View {
                                 .padding(.leading, 68)
                         }
                     }
-                    .padding(.bottom, 20) // 下部に余白を追加
+                    .padding(.bottom, 20)
                 }
             }
         }
@@ -138,6 +172,8 @@ struct NotificationView: View {
         .navigationBarBackButtonHidden(true)
         .task {
             await viewModel.fetchNotifications()
+            // ✅ 画面を開いたタイミングで既読にする
+            viewModel.markAllNotificationsAsRead()
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
