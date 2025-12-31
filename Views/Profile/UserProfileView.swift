@@ -205,6 +205,51 @@ struct UserProfileView: View {
                 StatRow(label: "いいね", value: "0")
             }
             .background(Color(.systemBackground))
+            
+            // ✅ 追加: 管理者（特定のID）のみ表示されるメニュー
+            if FirebaseConfig.shared.userId == "3248012D-3F48-4449-9F99-D3C0D777D0D0" {
+                adminSection
+            }
+        }
+    }
+    
+    private var adminSection: some View {
+        VStack(spacing: 16) {
+            Divider()
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+
+            Text("管理者メニュー")
+                .font(.headline)
+                .foregroundColor(.red) // 目立つように赤色など
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+
+            VStack(spacing: 0) {
+                // 遷移先には「おすすめアカウント管理画面」のViewを指定してください
+                // 例: PresetManagementView() や OshiListView(isPreset: true) など
+                NavigationLink {
+                    PresetManagementView()
+                } label: {
+                    HStack {
+                        Text("おすすめアカウント管理")
+                            .font(.body)
+                            .foregroundColor(.primary)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "lock.shield") // 管理者っぽいアイコン
+                            .foregroundColor(.secondary)
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+            }
+            .background(Color(.systemBackground))
         }
     }
 }

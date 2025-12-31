@@ -97,13 +97,22 @@ class OshiViewModel: ObservableObject {
     func followOshi(_ oshi: OshiCharacter) async {
         guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
         
-        oshiList[index].isFollowedByUser = true  // ← これだけ
+        oshiList[index].isFollowedByUser = true
         
         do {
             try await dbManager.saveOshi(oshiList[index])
             
-            // 相互フォローになった場合、挨拶メッセージを送る
+            // 相互フォローになった場合
             if oshiList[index].isMutualFollow {
+                
+                // 修正: チャットルームがまだ存在しない場合はここで作成する
+                if !chatRooms.contains(where: { $0.oshiId == oshi.id }) {
+                    let room = ChatRoom(id: UUID(), oshiId: oshi.id)
+                    try? await dbManager.saveChatRoom(room)
+                    chatRooms.append(room)
+                    print("✅ 相互フォローのためチャットルームを作成しました")
+                }
+                
                 await sendMutualFollowMessage(to: oshiList[index])
             }
             
@@ -211,17 +220,11 @@ class OshiViewModel: ObservableObject {
         
         // フォロー処理（推しがユーザーをフォロー）
         var newOshi = selectedPreset
-        newOshi.isFollowingUser = true  // ← 推しがユーザーをフォロー
+        newOshi.isFollowingUser = true
         
         try? await dbManager.saveOshi(newOshi)
+
         oshiList.insert(newOshi, at: 0)
-        
-        // チャットルーム作成
-        if !chatRooms.contains(where: { $0.oshiId == newOshi.id }) {
-            let room = ChatRoom(id: UUID(), oshiId: newOshi.id)
-            try? await dbManager.saveChatRoom(room)
-            chatRooms.append(room)
-        }
         
         // フォロー通知を作成
         createFollowNotification(from: newOshi)

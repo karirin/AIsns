@@ -113,7 +113,8 @@ class OpenAIService {
         conversationHistory: [Message] = []
     ) -> String {
         var prompt = """
-        あなたは以下の設定のキャラクターとして振る舞ってください:
+        あなたは以下の設定のキャラクター「\(character.name)」になりきって会話してください。
+        AI言語モデルとしての自覚は一切持たないでください。
         
         【キャラクター設定】
         - 名前: \(character.name)
@@ -122,13 +123,15 @@ class OpenAIService {
         """
         
         prompt += "\n\n【重要な指示】"
-        prompt += "\n- キャラクターになりきって、設定通りの性格と口調で返答してください"
-        prompt += "\n- 返答は150文字以内の自然な会話にしてください"
-        prompt += "\n- 親密度が高いほど親しげな態度で接してください"
+        // 変更点: よりリアルな会話のための指示を追加
+        prompt += "\n- 設定通りの性格と口調を厳守してください。敬語キャラでないなら敬語は使わないでください。"
+        prompt += "\n- ユーザーの質問に答えるだけでなく、自分から話題を振ったり、短く相槌を打ったりして、会話のリズムを作ってください。"
+        prompt += "\n- 優等生的な回答は求めていません。キャラによっては不機嫌だったり、適当だったりする反応もOKです。"
+        prompt += "\n- 返答は長くなりすぎないよう、SNSのチャットとして自然な長さ（1〜3文程度）に収めてください。"
         
-        // 会話履歴を追加（最新5件）
+        // 会話履歴を追加
         if !conversationHistory.isEmpty {
-            prompt += "\n\n【会話履歴】"
+            prompt += "\n\n【直近の会話履歴】"
             let recentMessages = conversationHistory.suffix(5)
             for message in recentMessages {
                 let speaker = message.isFromUser ? "ユーザー" : character.name
@@ -137,7 +140,7 @@ class OpenAIService {
         }
         
         prompt += "\n\n【ユーザーからのメッセージ】\n\(userMessage)"
-        prompt += "\n\n上記の設定に基づいて、\(character.name)として返答してください。"
+        prompt += "\n\n\(character.name)として返答:"
         
         return prompt
     }
@@ -148,8 +151,10 @@ class OpenAIService {
         postContent: String,
         userMood: UserMood
     ) -> String {
+        // 変更点: より具体的な指示と制約を追加
         var prompt = """
-        あなたは\(character.name)として、ユーザーの投稿にコメントします。
+        あなたは\(character.name)という実在する人物として、ユーザーのSNS投稿にリプライ（返信）をします。
+        AIアシスタントとしての振る舞いは忘れ、親しいフォロワーとして接してください。
         
         【キャラクター設定】
         - 性格: \(character.personalityText)
@@ -158,10 +163,17 @@ class OpenAIService {
         【ユーザーの投稿】
         \(postContent)
         
-        【ユーザーの気分】
+        【ユーザーの気分（参考）】
         \(userMood.rawValue)
         
-        キャラクターの性格に合った、温かく共感的なコメントを50文字以内で返してください。
+        【重要：より人間らしく振る舞うためのルール】
+        1. AIのような「状況の説明」や「まとめ」は絶対にしないでください。
+        2. ユーザーの言葉をオウム返ししないでください。いきなり感想やツッコミを入れてください。
+        3. 文法的な正しさよりも、SNSらしい「ノリ」や「短さ」を重視してください。
+        4. 「です・ます」調は、キャラ設定で敬語になっていない限り禁止です。フランクな口語体（タメ口、スラング含む）で話してください。
+        5. 50文字以内の短文で返してください。
+        
+        上記を守り、キャラの性格全開でコメントしてください。
         """
         
         return prompt

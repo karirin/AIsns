@@ -1,365 +1,296 @@
-// OshiListView.swift - おすすめ削除機能追加版
+//
+//  OshiListView.swift
+//  AIsns
+//
+//  Updated: Removed Mutual Tab & Changed Mutual Icon
+//
 
 import SwiftUI
-import UIKit
-
-enum OshiListTab: String, CaseIterable {
-    case followers = "フォロー中"
-    case recommended = "おすすめ"
-}
 
 struct OshiListView: View {
     @ObservedObject var viewModel: OshiViewModel
-    @State private var showingCreationSheet = false
-    @State private var selectedTab: OshiListTab = .followers
-    private let adminUserId = "3248012D-3F48-4449-9F99-D3C0D777D0D0"
-    private var canEditRecommended: Bool {
-        FirebaseConfig.shared.userId == adminUserId
-    }
-    @State private var followingIds: Set<UUID> = []
-    @State private var deletingIds: Set<UUID> = [] // 削除中のID管理
-
+    
+    // 0: フォロワー, 1: フォロー中
+    @State private var selectedTab: Int = 0
+    @Namespace private var animation
+    
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottomTrailing) {
-                Color(.systemBackground).ignoresSafeArea()
-                
                 VStack(spacing: 0) {
-                    tabBar
+                    // カスタムタブバー (2つ)
+                    HStack(spacing: 0) {
+                        TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
+                        TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
+                    }
+                    .padding(.top, 8)
+                    .background(Color(.systemBackground))
+                    .zIndex(1)
                     
-                    Divider()
-                    
-                    // コンテンツ
+                    // スワイプ可能なコンテンツエリア
                     TabView(selection: $selectedTab) {
-                        followersView
-                            .tag(OshiListTab.followers)
+                        // 0: フォロワー (相手 -> 自分)
+                        OshiListPage(
+                            oshis: viewModel.oshiList.filter { $0.isFollowingUser },
+                            emptyTitle: "フォロワーはいません",
+                            emptySubtitle: "投稿して推しに見つけてもらいましょう",
+                            iconName: "person.2.slash",
+                            viewModel: viewModel
+                        )
+                        .tag(0)
                         
-                        recommendedView
-                            .tag(OshiListTab.recommended)
+                        // 1: フォロー中 (自分 -> 相手)
+                        OshiListPage(
+                            oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
+                            emptyTitle: "フォロー中の推しはいません",
+                            emptySubtitle: "気になる推しを見つけてフォローしましょう",
+                            iconName: "person.slash",
+                            viewModel: viewModel
+                        )
+                        .tag(1)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut(duration: 0.3), value: selectedTab)
                 }
                 
-                // フローティング作成ボタン(フォロー中タブのみ)
-                if selectedTab == .followers {
-                    createButton
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 24)
+                // アカウント追加ボタン
+                NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
                 }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .fullScreenCover(isPresented: $showingCreationSheet) {
-                NavigationStack {
-                    OshiCreationView(viewModel: viewModel)
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button("閉じる") { showingCreationSheet = false }
-                            }
-                        }
-                }
-            }
         }
     }
+}
+
+// リスト表示部分
+struct OshiListPage: View {
+    let oshis: [OshiCharacter]
+    let emptyTitle: String
+    let emptySubtitle: String
+    let iconName: String
+    @ObservedObject var viewModel: OshiViewModel
     
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(OshiListTab.allCases, id: \.self) { tab in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    VStack(spacing: 12) {
-                        Text(tab.rawValue)
-                            .font(.subheadline)
-                            .fontWeight(selectedTab == tab ? .bold : .medium)
-                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
+    var body: some View {
+        if oshis.isEmpty {
+            emptyStateView
+        } else {
+            List {
+                ForEach(oshis) { oshi in
+                    ZStack {
+                        // 詳細画面へ遷移
+                        NavigationLink(destination: OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)) {
+                            EmptyView()
+                        }
+                        .opacity(0)
                         
-                        Capsule()
-                            .fill(selectedTab == tab ? Color.blue : Color.clear)
-                            .frame(width: 60, height: 3)
+                        // 行デザイン
+                        OshiListRowWithButton(oshi: oshi, viewModel: viewModel)
                     }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
                 }
-                .frame(maxWidth: .infinity)
             }
-        }
-        .padding(.top, 8)
-        .background(Color(.systemBackground))
-    }
-    
-    private var createButton: some View {
-        Button(action: { showingCreationSheet = true }) {
-            Image(systemName: "plus")
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.blue)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
-        }
-    }
-
-    // MARK: - Followers
-
-    private var followersView: some View {
-        Group {
-            if viewModel.oshiList.isEmpty {
-                emptyStateView
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.oshiList) { oshi in
-                            NavigationLink(
-                                destination: OshiProfileDetailView(
-                                    oshi: oshi,
-                                    viewModel: viewModel,
-                                    isPreset: false
-                                )
-                            ) {
-                                OshiCell(oshi: oshi)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Divider()
-                                .padding(.leading, 76)
-                        }
-                    }
-                }
-                .background(Color(.systemBackground))
-            }
+            .listStyle(.plain)
         }
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             Spacer()
             
-            Image(systemName: "person.crop.circle.badge.plus")
-                .font(.system(size: 56))
-                .foregroundColor(.secondary)
-            
-            VStack(spacing: 8) {
-                Text("推しを作成しよう")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+            ZStack {
+                Circle()
+                    .fill(Color(.systemGray6))
+                    .frame(width: 80, height: 80)
                 
-                Text("あなた専用のAI推しを作成して\n自分だけのSNSを楽しもう")
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
+                Image(systemName: iconName)
+                    .font(.system(size: 32))
                     .foregroundColor(.secondary)
             }
             
-            Button(action: { showingCreationSheet = true }) {
-                Text("推しを作成")
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.blue)
-                    .cornerRadius(22)
+            VStack(spacing: 8) {
+                Text(emptyTitle)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(emptySubtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(Color(.systemBackground))
-    }
-
-    // MARK: - Recommended
-
-    private var recommendedView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(viewModel.recommendedOshis) { oshi in
-                    HStack(spacing: 12) {
-                        NavigationLink(
-                            destination: OshiProfileDetailView(
-                                oshi: oshi,
-                                viewModel: viewModel,
-                                isPreset: true
-                            )
-                        ) {
-                            OshiCell(oshi: oshi, showChevron: false)
-                        }
-                        .buttonStyle(.plain)
-                        
-                        // 管理者の場合は削除ボタン、それ以外はフォローボタン
-                        if canEditRecommended {
-                            deleteButton(for: oshi)
-                        } else {
-                            followButton(for: oshi)
-                        }
-                    }
-                    .padding(.trailing, 16)
-                    
-                    Divider()
-                        .padding(.leading, 76)
-                }
-            }
-        }
-        .background(Color(.systemBackground))
-    }
-    
-    // 削除ボタン(管理者用)
-    private func deleteButton(for oshi: OshiCharacter) -> some View {
-        Button {
-            Task {
-                deletingIds.insert(oshi.id)
-                await viewModel.deleteRecommendedOshi(oshi)
-                deletingIds.remove(oshi.id)
-            }
-        } label: {
-            if deletingIds.contains(oshi.id) {
-                ProgressView()
-                    .tint(.white)
-                    .frame(width: 76, height: 32)
-                    .background(Color.red)
-                    .cornerRadius(16)
-            } else {
-                Text("削除")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(Color.red)
-                    .cornerRadius(16)
-            }
-        }
-        .disabled(deletingIds.contains(oshi.id))
-    }
-    
-    // フォローボタン(一般ユーザー用)
-    private func followButton(for oshi: OshiCharacter) -> some View {
-        Group {
-            if isAlreadyFollowed(oshi) {
-                Text("フォロー中")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(Color.clear)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color(.systemGray3), lineWidth: 1)
-                    )
-            } else {
-                Button {
-                    Task {
-                        followingIds.insert(oshi.id)
-                        defer { followingIds.remove(oshi.id) }
-                        await viewModel.followRecommended(oshi)
-                    }
-                } label: {
-                    if followingIds.contains(oshi.id) {
-                        ProgressView()
-                            .tint(.white)
-                            .frame(width: 76, height: 32)
-                            .background(Color.black)
-                            .cornerRadius(16)
-                    } else {
-                        Text("フォロー")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(Color.black)
-                            .cornerRadius(16)
-                    }
-                }
-                .disabled(followingIds.contains(oshi.id))
-            }
-        }
-    }
-
-    private func isAlreadyFollowed(_ oshi: OshiCharacter) -> Bool {
-        viewModel.oshiList.contains(where: { $0.id == oshi.id })
+        .padding(.bottom, 100)
     }
 }
 
-struct OshiCell: View {
+// フォローボタン付きの行コンポーネント
+struct OshiListRowWithButton: View {
     let oshi: OshiCharacter
-    var showChevron: Bool = true
-    @State private var avatarImage: UIImage?
-    @State private var isLoadingImage = false
-
+    @ObservedObject var viewModel: OshiViewModel
+    @State private var showingUnfollowAlert = false
+    
     var body: some View {
         HStack(spacing: 12) {
-            // アバター
-            ZStack {
-                if isLoadingImage {
-                    Circle()
-                        .fill(Color(.systemGray5))
-                        .frame(width: 48, height: 48)
-                        .overlay(
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        )
-                } else if let avatarImage = avatarImage {
-                    Image(uiImage: avatarImage)
+            // アイコン
+            if let url = oshi.avatarImageURL, let imageURL = URL(string: url) {
+                AsyncImage(url: imageURL) { image in
+                    image
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.blue, .cyan],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.headline)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        )
+                } placeholder: {
+                    Color(.systemGray5)
                 }
+                .frame(width: 50, height: 50)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color(.systemGray6), lineWidth: 1))
+            } else {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 50, height: 50)
+                    .overlay(
+                        Text(oshi.name.prefix(1))
+                            .font(.headline)
+                            .foregroundColor(.blue)
+                    )
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(oshi.name)
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
-                }
-            }
-
-            Spacer()
             
-            if showChevron {
-                Image(systemName: "chevron.right")
+            // 名前と自己紹介
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(oshi.name)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    // ✅ 変更: 相互フォローの場合はバッジを表示
+                    if oshi.isMutualFollow {
+                        Text("相互")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.8))
+                            .cornerRadius(4)
+                    }
+                }
+                
+                Text(oshi.personalityText.isEmpty ? "自己紹介文なし" : oshi.personalityText)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // フォローボタン
+            Button {
+                if oshi.isFollowedByUser {
+                    showingUnfollowAlert = true
+                } else {
+                    Task {
+                        await viewModel.followOshi(oshi)
+                    }
+                }
+            } label: {
+                Text(oshi.isFollowedByUser ? "フォロー中" : "フォロー")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(oshi.isFollowedByUser ? .primary : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Group {
+                            if oshi.isFollowedByUser {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            } else {
+                                Capsule()
+                                    .fill(Color.blue)
+                            }
+                        }
+                    )
+            }
+            .buttonStyle(PlainButtonStyle()) // リストタップと干渉しないように
+            .alert("フォロー解除", isPresented: $showingUnfollowAlert) {
+                Button("キャンセル", role: .cancel) { }
+                Button("解除", role: .destructive) {
+                    Task {
+                        await viewModel.unfollowOshi(oshi)
+                    }
+                }
+            } message: {
+                Text("\(oshi.name)のフォローを解除しますか?")
             }
         }
-        .padding(.vertical, 12)
         .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Color(.systemBackground))
-        .task(id: oshi.avatarImageURL) {
-            guard let urlString = oshi.avatarImageURL, !urlString.isEmpty else { return }
-            if isLoadingImage { return }        // 多重起動ガード（保険）
-            if avatarImage != nil { return }    // 既にロード済みなら何もしない
+    }
+}
 
-            isLoadingImage = true
-            defer { Task { @MainActor in isLoadingImage = false } }
-
-            do {
-                let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
-                await MainActor.run { avatarImage = image }
-            } catch {
-                // 失敗時は何もしない（必要ならログ）
+// カスタムタブボタン
+struct TabButton: View {
+    let title: String
+    let tag: Int
+    @Binding var selectedTab: Int
+    var namespace: Namespace.ID
+    
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                selectedTab = tag
+            }
+        } label: {
+            VStack(spacing: 12) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(selectedTab == tag ? .bold : .medium)
+                    .foregroundColor(selectedTab == tag ? .primary : .secondary)
+                
+                ZStack {
+                    Capsule()
+                        .fill(Color.gray.opacity(0.1))
+                        .frame(height: 2)
+                    
+                    if selectedTab == tag {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.blue, .purple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 3)
+                            .matchedGeometryEffect(id: "TabIndicator", in: namespace)
+                    }
+                }
             }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 

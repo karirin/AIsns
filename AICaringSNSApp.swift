@@ -22,7 +22,7 @@ struct OshiSNSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            LaunchScreenView()
         }
     }
 }

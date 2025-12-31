@@ -273,7 +273,7 @@ struct LaunchScreenView: View {
         // 2.5秒後にメインアプリを表示
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation(.easeOut(duration: 0.5)) {
-//                showMainApp = true
+                showMainApp = true
             }
         }
     }
