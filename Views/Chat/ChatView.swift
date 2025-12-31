@@ -24,7 +24,6 @@ struct ChatListView: View {
             }
             .listStyle(.plain)
             .navigationTitle("チャット")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if isPresented {

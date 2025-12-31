@@ -584,6 +584,123 @@ class FirebaseDatabaseManager {
 
         return list
     }
+    
+    func saveNotification(_ notification: AppNotification) async throws {
+        let notificationRef = ref.child("users/\(userId)/notifications/\(notification.id.uuidString)")
+        
+        var data: [String: Any] = [
+            "id": notification.id.uuidString,
+            "type": notification.type.rawValue,
+            "senderId": notification.senderId.uuidString,
+            "senderName": notification.senderName,
+            "content": notification.content,
+            "timestamp": notification.timestamp.timeIntervalSince1970,
+            "isRead": notification.isRead
+        ]
+        
+        if let relatedPostId = notification.relatedPostId {
+            data["relatedPostId"] = relatedPostId.uuidString
+        }
+        
+        try await notificationRef.setValue(data)
+    }
+
+    /// 通知を読み込み (limit: 件数制限)
+    func loadNotifications(limit: Int = 100) async throws -> [AppNotification] {
+        let snapshot = try await ref.child("users/\(userId)/notifications")
+            .queryOrdered(byChild: "timestamp")
+            .queryLimited(toLast: UInt(limit))
+            .getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else {
+            return []
+        }
+        
+        var notifications: [AppNotification] = []
+        
+        for (_, data) in value {
+            if let notification = parseNotification(from: data) {
+                notifications.append(notification)
+            }
+        }
+        
+        return notifications.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    /// 古い通知を削除 (例: 30日以上前のデータ)
+    func deleteOldNotifications(olderThan date: Date) async throws {
+        let timestamp = date.timeIntervalSince1970
+        
+        // クエリでフィルタリングを試みる
+        let query = ref.child("users/\(userId)/notifications")
+            .queryOrdered(byChild: "timestamp")
+            .queryEnding(atValue: timestamp)
+            
+        let snapshot = try await query.getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else { return }
+        
+        var deletedCount = 0
+        
+        // 取得したデータを1つずつチェックして削除
+        for (key, data) in value {
+            // 安全策: 本当に古いデータか、timestampフィールドを見て確認する
+            if let itemTimestamp = data["timestamp"] as? TimeInterval {
+                // 指定日時より新しい(未来/現在に近い)データは絶対に消さない
+                if itemTimestamp > timestamp {
+                    continue
+                }
+                
+                // 条件を満たしたものだけ削除
+                try await ref.child("users/\(userId)/notifications/\(key)").removeValue()
+                deletedCount += 1
+            }
+        }
+        
+        if deletedCount > 0 {
+            print("🗑️ \(deletedCount)件の古い通知を削除しました (基準: \(date))")
+        }
+    }
+    
+    /// 全ての通知を削除
+    func clearAllNotifications() async throws {
+        try await ref.child("users/\(userId)/notifications").removeValue()
+    }
+    
+    /// 通知の既読状態を更新
+    func updateNotificationReadStatus(_ notificationId: UUID, isRead: Bool) async throws {
+        try await ref.child("users/\(userId)/notifications/\(notificationId.uuidString)")
+            .updateChildValues(["isRead": isRead])
+    }
+    
+    private func parseNotification(from data: [String: Any]) -> AppNotification? {
+        guard let idString = data["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let typeString = data["type"] as? String,
+              let type = NotificationType(rawValue: typeString),
+              let senderIdString = data["senderId"] as? String,
+              let senderId = UUID(uuidString: senderIdString),
+              let senderName = data["senderName"] as? String,
+              let content = data["content"] as? String,
+              let timestampInterval = data["timestamp"] as? TimeInterval else {
+            return nil
+        }
+        
+        let timestamp = Date(timeIntervalSince1970: timestampInterval)
+        let isRead = data["isRead"] as? Bool ?? false
+        let relatedPostId = (data["relatedPostId"] as? String).flatMap { UUID(uuidString: $0) }
+        
+        return AppNotification(
+            id: id,
+            type: type,
+            senderId: senderId,
+            senderName: senderName,
+            content: content,
+            relatedPostId: relatedPostId,
+            timestamp: timestamp,
+            isRead: isRead
+        )
+    }
 
     // MARK: - Parsers
 

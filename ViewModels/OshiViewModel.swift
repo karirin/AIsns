@@ -97,22 +97,13 @@ class OshiViewModel: ObservableObject {
     func followOshi(_ oshi: OshiCharacter) async {
         guard let index = oshiList.firstIndex(where: { $0.id == oshi.id }) else { return }
         
-        oshiList[index].isFollowedByUser = true
+        oshiList[index].isFollowedByUser = true  // ← これだけ
         
         do {
             try await dbManager.saveOshi(oshiList[index])
             
-            // 相互フォローになった場合
+            // 相互フォローになった場合、挨拶メッセージを送る
             if oshiList[index].isMutualFollow {
-                
-                // 修正: チャットルームがまだ存在しない場合はここで作成する
-                if !chatRooms.contains(where: { $0.oshiId == oshi.id }) {
-                    let room = ChatRoom(id: UUID(), oshiId: oshi.id)
-                    try? await dbManager.saveChatRoom(room)
-                    chatRooms.append(room)
-                    print("✅ 相互フォローのためチャットルームを作成しました")
-                }
-                
                 await sendMutualFollowMessage(to: oshiList[index])
             }
             
@@ -223,7 +214,7 @@ class OshiViewModel: ObservableObject {
         newOshi.isFollowingUser = true
         
         try? await dbManager.saveOshi(newOshi)
-
+    
         oshiList.insert(newOshi, at: 0)
         
         // フォロー通知を作成
@@ -325,9 +316,6 @@ class OshiViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
-
-    
-    // MARK: - Data Loading
     
     func loadData() async {
         isLoading = true
@@ -337,20 +325,23 @@ class OshiViewModel: ObservableObject {
             async let oshiListTask = dbManager.loadOshiList()
             async let postsTask = dbManager.loadPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
-            async let presetsTask = dbManager.fetchPresetOshis()   // ✅ 追加(おすすめも並列で取る)
+            async let presetsTask = dbManager.fetchPresetOshis()
             async let userProfileTask = dbManager.loadUserProfile()
+            // ❌ 通知の読み込み（notificationsTask）をここから削除
 
             let (loadedOshi, loadedPosts, loadedRooms, presets, profile) =
-                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask, userProfileTask)  // ✅ 変更
+                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask, userProfileTask)
 
             oshiList = loadedOshi
-            recommendedOshis = presets    // ✅ ここだけにする(2重ロード削除)
+            recommendedOshis = presets
             posts = loadedPosts
             chatRooms = loadedRooms
-            userProfileName = profile.userName                         // 追加
-            userProfileAvatarURL = profile.avatarImageURL 
+            userProfileName = profile.userName
+            userProfileAvatarURL = profile.avatarImageURL
+            // notifications = loadedNotifications // ❌ ここも削除
 
             print("✅ データ読み込み成功: 推し\(oshiList.count)人, 投稿\(posts.count)件")
+            
         } catch {
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
             print("❌ データ読み込みエラー: \(error)")
@@ -359,7 +350,45 @@ class OshiViewModel: ObservableObject {
         isLoading = false
     }
 
-    
+    /// ✅ 通知だけを個別に読み込む関数を追加
+    func fetchNotifications() async {
+        do {
+            // 1. 最新の通知を取得して表示 (最大100件)
+            let loadedNotifications = try await dbManager.loadNotifications(limit: 100)
+            
+            await MainActor.run {
+                self.notifications = loadedNotifications
+            }
+            
+            // 2. 古いデータの削除を実行 (バックグラウンド)
+            Task {
+                await deleteOldNotifications()
+            }
+            
+        } catch {
+            print("⚠️ 通知の読み込みに失敗: \(error.localizedDescription)")
+        }
+    }
+
+    private func deleteOldNotifications() async {
+        // 現在時刻から30日引く (秒数計算)
+        // 確実に「過去」の日付になっていることを確認
+        let thirtyDaysAgo = Date().addingTimeInterval(-(60 * 60 * 24 * 30))
+        
+        do {
+            // Firebaseから削除
+            try await dbManager.deleteOldNotifications(olderThan: thirtyDaysAgo)
+            
+            // 現在表示中のリストからも、もし古いものが混ざっていれば削除
+            await MainActor.run {
+                notifications.removeAll { notification in
+                    notification.timestamp < thirtyDaysAgo
+                }
+            }
+        } catch {
+            print("⚠️ 古い通知の削除に失敗: \(error)")
+        }
+    }
     // MARK: - 推し管理
     
     func addOshi(_ oshi: OshiCharacter) {
@@ -900,11 +929,21 @@ class OshiViewModel: ObservableObject {
     }
     
     private func addNotification(_ notification: AppNotification) {
+        // ローカルに追加
         notifications.insert(notification, at: 0)
         
-        // 通知が100件を超えたら古いものを削除
+        // 100件を超えたらUI上は古いものを削除
         if notifications.count > 100 {
             notifications = Array(notifications.prefix(100))
+        }
+        
+        // ✅ Firebaseに保存
+        Task {
+            do {
+                try await dbManager.saveNotification(notification)
+            } catch {
+                print("❌ 通知の保存に失敗: \(error)")
+            }
         }
     }
 
@@ -912,19 +951,36 @@ class OshiViewModel: ObservableObject {
     func markNotificationAsRead(_ notificationId: UUID) {
         if let index = notifications.firstIndex(where: { $0.id == notificationId }) {
             notifications[index].isRead = true
+            
+            // ✅ 保存データの既読状態も更新
+            Task {
+                try? await dbManager.updateNotificationReadStatus(notificationId, isRead: true)
+            }
         }
     }
 
     /// すべての通知を既読にする
     func markAllNotificationsAsRead() {
         for index in notifications.indices {
-            notifications[index].isRead = true
+            // まだ既読でないものだけ更新処理へ
+            if !notifications[index].isRead {
+                notifications[index].isRead = true
+                let id = notifications[index].id
+                Task {
+                    try? await dbManager.updateNotificationReadStatus(id, isRead: true)
+                }
+            }
         }
     }
 
     /// すべての通知を削除
     func clearAllNotifications() {
         notifications.removeAll()
+        
+        // ✅ Firebaseからも全削除
+        Task {
+            try? await dbManager.clearAllNotifications()
+        }
     }
 
     /// リアクション通知を作成

@@ -56,37 +56,18 @@ struct GroupedNotification: Identifiable {
 
 struct NotificationView: View {
     @ObservedObject var viewModel: OshiViewModel
-    @State private var selectedFilter: NotificationFilter = .all
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
-    
-    enum NotificationFilter: String, CaseIterable {
-        case all = "すべて"
-        case mentions = "メンション"
-        
-        var icon: String {
-            switch self {
-            case .all: return "bell.fill"
-            case .mentions: return "at"
-            }
-        }
-    }
-    
-    var filteredNotifications: [AppNotification] {
-        switch selectedFilter {
-        case .all:
-            return viewModel.notifications
-        case .mentions:
-            return viewModel.notifications.filter { $0.type == .mention }
-        }
-    }
     
     /// 通知をグループ化
     var groupedNotifications: [GroupedNotification] {
         var groups: [GroupedNotification] = []
         var processed: Set<UUID> = []
         
-        for notification in filteredNotifications.sorted(by: { $0.timestamp > $1.timestamp }) {
+        // ✅ フィルタリングせずにviewModel.notificationsをそのまま使用
+        let notifications = viewModel.notifications
+        
+        for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
             guard !processed.contains(notification.id) else { continue }
             
             // グループ化可能かつ関連投稿IDがある場合
@@ -94,7 +75,7 @@ struct NotificationView: View {
                let postId = notification.relatedPostId {
                 
                 // 同じ投稿・同じタイプの通知を探す
-                let relatedNotifications = filteredNotifications.filter {
+                let relatedNotifications = notifications.filter {
                     $0.type == notification.type &&
                     $0.relatedPostId == postId &&
                     !processed.contains($0.id)
@@ -129,98 +110,66 @@ struct NotificationView: View {
     }
     
     var body: some View {
-            VStack(spacing: 0) {
-                // フィルタータブ
-                filterBar
-                
-                Divider()
-                
-                // 通知一覧
-                if groupedNotifications.isEmpty {
-                    emptyStateView
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(groupedNotifications) { group in
-                                GroupedNotificationRow(
-                                    group: group,
-                                    viewModel: viewModel
-                                )
-                                
-                                Divider()
-                                    .padding(.leading, 68)
-                            }
+        VStack(spacing: 0) {
+            // ❌ フィルターバー削除
+            
+            // 通知一覧
+            if groupedNotifications.isEmpty {
+                emptyStateView
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(groupedNotifications) { group in
+                            GroupedNotificationRow(
+                                group: group,
+                                viewModel: viewModel
+                            )
+                            
+                            Divider()
+                                .padding(.leading, 68)
                         }
                     }
+                    .padding(.bottom, 20) // 下部に余白を追加
                 }
+            }
         }
-            .navigationTitle("通知")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if isPresented {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(.primary)
-                        }
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            viewModel.markAllNotificationsAsRead()
-                        } label: {
-                            Label("すべて既読にする", systemImage: "checkmark.circle")
-                        }
-                        
-                        Button(role: .destructive) {
-                            viewModel.clearAllNotifications()
-                        } label: {
-                            Label("すべて削除", systemImage: "trash")
-                        }
+        .navigationTitle("通知")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .task {
+            await viewModel.fetchNotifications()
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if isPresented {
+                    Button {
+                        dismiss()
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.primary)
                     }
                 }
             }
-    }
-    
-    // MARK: - Filter Bar
-    
-    private var filterBar: some View {
-        HStack(spacing: 0) {
-            ForEach(NotificationFilter.allCases, id: \.self) { filter in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedFilter = filter
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        viewModel.markAllNotificationsAsRead()
+                    } label: {
+                        Label("すべて既読にする", systemImage: "checkmark.circle")
+                    }
+                    
+                    Button(role: .destructive) {
+                        viewModel.clearAllNotifications()
+                    } label: {
+                        Label("すべて削除", systemImage: "trash")
                     }
                 } label: {
-                    VStack(spacing: 12) {
-                        HStack(spacing: 6) {
-                            Image(systemName: filter.icon)
-                                .font(.caption)
-                            Text(filter.rawValue)
-                                .font(.subheadline)
-                        }
-                        .fontWeight(selectedFilter == filter ? .bold : .medium)
-                        .foregroundColor(selectedFilter == filter ? .primary : .secondary)
-                        
-                        // アンダーラインインジケーター
-                        Capsule()
-                            .fill(selectedFilter == filter ? Color.blue : Color.clear)
-                            .frame(width: 60, height: 3)
-                    }
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundColor(.primary)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 8)
-        .background(Color(.systemBackground))
     }
     
     // MARK: - Empty State
