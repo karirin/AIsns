@@ -46,14 +46,12 @@ class OshiViewModel: ObservableObject {
             if post.isUserPost {
                 return true
             }
-            print("他アカウントの投稿1    ：\(post))")
+
             // 推しの投稿は相互フォローの場合のみ表示
             guard let authorId = post.authorId,
                   let oshi = oshiList.first(where: { $0.id == authorId }) else {
                 return false
             }
-            print("他アカウントの投稿2    ：\(post))")
-            print("isMutualFollow=\(oshi.isMutualFollow) followed=\(oshi.isFollowedByUser) following=\(oshi.isFollowingUser)")
 
             return oshi.isMutualFollow
         }

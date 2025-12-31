@@ -53,7 +53,7 @@ struct OshiProfileDetailView: View {
                 // プロフィール情報
                 profileInfoSection
                 
-                followButton
+                followButtonSection
                 
                 Divider()
                     .padding(.horizontal, 24)
