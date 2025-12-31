@@ -47,13 +47,14 @@ class OshiViewModel: ObservableObject {
                 return true
             }
 
-            // 推しの投稿は相互フォローの場合のみ表示
+            // 推しの投稿は自分がフォローしている場合のみ表示
             guard let authorId = post.authorId,
                   let oshi = oshiList.first(where: { $0.id == authorId }) else {
                 return false
             }
 
-            return oshi.isMutualFollow
+            // 変更前: return oshi.isMutualFollow
+            return oshi.isFollowedByUser // ✅ 修正: 自分がフォローしていれば表示
         }
     }
     
@@ -632,7 +633,10 @@ class OshiViewModel: ObservableObject {
                 
                 try await dbManager.savePost(post)
                 
-                createOshiPostNotification(oshi: oshi, post: post)
+                // ✅ 修正: 相互フォローの場合のみ通知を作成
+                if oshi.isMutualFollow {
+                    createOshiPostNotification(oshi: oshi, post: post)
+                }
                 
                 print("✅ 推しの投稿作成成功: \(oshi.name)")
                 

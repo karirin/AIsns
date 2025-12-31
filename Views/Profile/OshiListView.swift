@@ -13,66 +13,80 @@ struct OshiListView: View {
     // 0: フォロワー, 1: フォロー中
     @State private var selectedTab: Int = 0
     @Namespace private var animation
+    @Binding var isPresented: Bool
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                VStack(spacing: 0) {
-                    // カスタムタブバー (2つ)
-                    HStack(spacing: 0) {
-                        TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
-                        TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
-                    }
-                    .padding(.top, 8)
-                    .background(Color(.systemBackground))
-                    .zIndex(1)
-                    
-                    // スワイプ可能なコンテンツエリア
-                    TabView(selection: $selectedTab) {
-                        // 0: フォロワー (相手 -> 自分)
-                        OshiListPage(
-                            oshis: viewModel.oshiList.filter { $0.isFollowingUser },
-                            emptyTitle: "フォロワーはいません",
-                            emptySubtitle: "投稿して推しに見つけてもらいましょう",
-                            iconName: "person.2.slash",
-                            viewModel: viewModel
-                        )
-                        .tag(0)
-                        
-                        // 1: フォロー中 (自分 -> 相手)
-                        OshiListPage(
-                            oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
-                            emptyTitle: "フォロー中の推しはいません",
-                            emptySubtitle: "気になる推しを見つけてフォローしましょう",
-                            iconName: "person.slash",
-                            viewModel: viewModel
-                        )
-                        .tag(1)
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut(duration: 0.3), value: selectedTab)
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                // カスタムタブバー (2つ)
+                HStack(spacing: 0) {
+                    TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
+                    TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
                 }
+                .padding(.top, 8)
+                .background(Color(.systemBackground))
+                .zIndex(1)
                 
-                // アカウント追加ボタン
-                NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
-                    Image(systemName: "person.badge.plus")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            LinearGradient(
-                                colors: [.blue, .purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
+                // スワイプ可能なコンテンツエリア
+                TabView(selection: $selectedTab) {
+                    // 0: フォロワー (相手 -> 自分)
+                    OshiListPage(
+                        oshis: viewModel.oshiList.filter { $0.isFollowingUser },
+                        emptyTitle: "フォロワーはいません",
+                        emptySubtitle: "投稿して推しに見つけてもらいましょう",
+                        iconName: "person.2.slash",
+                        viewModel: viewModel
+                    )
+                    .tag(0)
+                    
+                    // 1: フォロー中 (自分 -> 相手)
+                    OshiListPage(
+                        oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
+                        emptyTitle: "フォロー中の推しはいません",
+                        emptySubtitle: "気になる推しを見つけてフォローしましょう",
+                        iconName: "person.slash",
+                        viewModel: viewModel
+                    )
+                    .tag(1)
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.3), value: selectedTab)
             }
-            .navigationBarTitleDisplayMode(.inline)
+            
+            // アカウント追加ボタン
+            NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
+                Image(systemName: "person.badge.plus")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 56, height: 56)
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 20)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("チャット")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if isPresented {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
         }
     }
 }
@@ -295,5 +309,5 @@ struct TabButton: View {
 }
 
 #Preview {
-    OshiListView(viewModel: OshiViewModel(mock: true))
+    OshiListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false))
 }

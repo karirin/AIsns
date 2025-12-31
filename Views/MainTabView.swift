@@ -30,7 +30,7 @@ struct MainTabView: View {
                 }
                 .tag(Tab.timeline)
             
-            OshiListView(viewModel: viewModel)
+            OshiListView(viewModel: viewModel, isPresented: .constant(false))
                 .tabItem {
                     // ✅ 文字を削除し、アイコンのみ指定
                     Image(systemName: "person.2")

@@ -38,7 +38,7 @@ struct TimelineScreenView: View {
                 case .profile:
                     UserProfileView()
                 case .followers:
-                    OshiListView(viewModel: viewModel)
+                    OshiListView(viewModel: viewModel, isPresented: .constant(true))
                 case .chat:
                     ChatListView(viewModel: viewModel, isPresented: .constant(true) )
                 case .notifications:
