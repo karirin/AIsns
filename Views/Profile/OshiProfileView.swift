@@ -20,7 +20,9 @@ struct OshiProfileView: View {
             VStack(spacing: 0) {
                 // プロフィール画像エリア
                 VStack(spacing: 12) {
-                    Button(action: { showingEditView = true }) {
+                                        Button(action: {
+                        generateHapticFeedback()
+                                            showingEditView = true }) {
                         if let avatarImage = avatarImage {
                             Image(uiImage: avatarImage)
                                 .resizable()
@@ -269,7 +271,9 @@ struct OshiProfileView: View {
                 }
                 
                 // 削除ボタン
-                Button(action: { showingDeleteAlert = true }) {
+                                    Button(action: {
+                        generateHapticFeedback()
+                                        showingDeleteAlert = true }) {
                     Text("推しを削除")
                         .font(.body)
                         .foregroundColor(.red)

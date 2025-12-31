@@ -30,7 +30,9 @@ struct OshiCreationView: View {
                 VStack(spacing: 0) {
                     // プロフィール画像エリア（Editと同じ）
                     VStack(spacing: 12) {
-                        Button(action: { showingImagePicker = true }) {
+                        Button(action: {
+                        generateHapticFeedback()
+                                                showingImagePicker = true }) {
                             Group {
                                 if isLoadingImage {
                                     Circle()

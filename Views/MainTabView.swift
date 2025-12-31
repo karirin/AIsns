@@ -48,6 +48,11 @@ struct MainTabView: View {
     }
 }
 
+func generateHapticFeedback() {
+    let generator = UIImpactFeedbackGenerator(style: .medium)
+    generator.impactOccurred()
+}
+
 // プレビュー
 struct MainTabView_Previews: PreviewProvider {
     static var previews: some View {

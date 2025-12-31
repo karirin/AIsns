@@ -332,6 +332,21 @@ class OshiViewModel: ObservableObject {
             }
         }
     }
+    
+    func deleteRecommendedOshi(_ oshi: OshiCharacter) async {
+        do {
+            // Firestoreから削除
+            try await dbManager.deletePresetOshi(oshi.id)
+            
+            // ローカルリストから削除
+            recommendedOshis.removeAll { $0.id == oshi.id }
+            
+            print("✅ おすすめ削除成功: \(oshi.name)")
+        } catch {
+            print("❌ おすすめ削除エラー: \(error)")
+            errorMessage = "おすすめの削除に失敗しました"
+        }
+    }
 
     // ✅ 親密度ベースの重み付き抽選システム
     private func selectCommentersWithIntimacy(count: Int) -> [OshiCharacter] {

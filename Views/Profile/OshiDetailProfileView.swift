@@ -2,7 +2,7 @@
 //  OshiProfileDetailView.swift
 //  AIsns
 //
-//  Updated: 2025/12/22 - 投稿表示機能追加
+//  Updated: 2025/12/29 - プリセット判定機能追加
 //
 
 import SwiftUI
@@ -11,6 +11,9 @@ struct OshiProfileDetailView: View {
     let oshi: OshiCharacter
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
+    
+    // ✅ プリセットかどうかを判定するフラグ
+    let isPreset: Bool
     
     @State private var avatarImage: UIImage?
     @State private var isLoadingImage = false
@@ -27,6 +30,13 @@ struct OshiProfileDetailView: View {
     // ✅ この推しの投稿をフィルタリング
     var oshiPosts: [Post] {
         viewModel.posts.filter { $0.authorId == oshi.id }
+    }
+    
+    // ✅ イニシャライザにisPresetを追加(デフォルトはfalse)
+    init(oshi: OshiCharacter, viewModel: OshiViewModel, isPreset: Bool = false) {
+        self.oshi = oshi
+        self.viewModel = viewModel
+        self.isPreset = isPreset
     }
     
     var body: some View {
@@ -68,10 +78,13 @@ struct OshiProfileDetailView: View {
                         Label("プロフィールを編集", systemImage: "pencil")
                     }
                     
-                    Button(role: .destructive) {
-                        showingUnfollowAlert = true
-                    } label: {
-                        Label("フォロー解除", systemImage: "person.badge.minus")
+                    // ✅ プリセットの場合はフォロー解除を表示しない
+                    if !isPreset {
+                        Button(role: .destructive) {
+                            showingUnfollowAlert = true
+                        } label: {
+                            Label("フォロー解除", systemImage: "person.badge.minus")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -82,7 +95,12 @@ struct OshiProfileDetailView: View {
         }
         .sheet(isPresented: $showingEditSheet) {
             NavigationStack {
-                OshiProfileEditView(oshi: oshi, viewModel: viewModel)
+                // ✅ isPresetフラグを渡す
+                OshiProfileEditView(
+                    oshi: oshi,
+                    viewModel: viewModel,
+                    isPreset: isPreset
+                )
             }
         }
         .alert("フォロー解除", isPresented: $showingUnfollowAlert) {
@@ -92,13 +110,28 @@ struct OshiProfileDetailView: View {
                 dismiss()
             }
         } message: {
-            Text("\(oshi.name)のフォローを解除しますか？")
+            Text("\(oshi.name)のフォローを解除しますか?")
         }
         .task {
-            if let urlString = oshi.avatarImageURL {
+            print("🖼️ OshiProfileDetailView: \(oshi.name) (isPreset: \(isPreset))")
+            print("  - avatarImageURL: \(oshi.avatarImageURL ?? "nil")")
+            
+            if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
                 isLoadingImage = true
-                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
-                isLoadingImage = false
+                
+                do {
+                    let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
+                    await MainActor.run {
+                        avatarImage = image
+                        isLoadingImage = false
+                        print("  ✅ 画像読み込み成功")
+                    }
+                } catch {
+                    await MainActor.run {
+                        isLoadingImage = false
+                    }
+                    print("  ❌ 画像読み込み失敗: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -383,11 +416,12 @@ struct TagView: View {
                 name: "さくら",
                 gender: .female,
                 personalityText: "優しくて明るい",
-                speechCharacteristics: "アプリの個人開発してます 🌸 いつも応援ありがとう！開発やマーケティングの気づきを発信します",
+                speechCharacteristics: "アプリの個人開発してます 🌸 いつも応援ありがとう!開発やマーケティングの気づきを発信します",
                 userCallingName: "あなた",
                 speechStyleText: "敬語"
             ),
-            viewModel: OshiViewModel()
+            viewModel: OshiViewModel(),
+            isPreset: false  // ✅ プレビューではfalse
         )
     }
 }

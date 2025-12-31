@@ -1,8 +1,8 @@
 //
-//  OshiProfileEdit.swift
+//  OshiProfileEditView.swift
 //  AIsns
 //
-//  Updated: 2025/12/21 - 画像アップロード機能追加
+//  Updated: 2025/12/29 - プリセット保存分岐のログ強化版
 //
 
 import SwiftUI
@@ -14,7 +14,7 @@ struct OshiProfileEditView: View {
     
     @State private var name: String
     @State private var gender: Gender?
-    @State private var personalityText: String  // 自由入力用
+    @State private var personalityText: String
     @State private var speechCharacteristics: String
     @State private var userCallingName: String
     @State private var speechStyleText: String
@@ -22,26 +22,31 @@ struct OshiProfileEditView: View {
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
     @State private var isLoadingImage = false
+    
+    // ✅ プリセットフラグ
     let isPreset: Bool
 
     init(oshi: OshiCharacter, viewModel: OshiViewModel, isPreset: Bool = false) {
         self.oshi = oshi
         self.viewModel = viewModel
-        self.isPreset = isPreset
+        self.isPreset = isPreset  // ✅ 保存
+        
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
         _personalityText = State(initialValue: oshi.personalityText)
         _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
         _userCallingName = State(initialValue: oshi.userCallingName)
         _speechStyleText = State(initialValue: oshi.speechStyleText)
-
-
         _avatarImage = State(initialValue: nil)
         _showingSaveConfirmation = State(initialValue: false)
         _showingImagePicker = State(initialValue: false)
         _isLoadingImage = State(initialValue: false)
+        
+        // ✅ 初期化時にログ出力
+        print("📝 OshiProfileEditView init")
+        print("  - oshi.name: \(oshi.name)")
+        print("  - isPreset: \(isPreset)")
     }
-
     
     var body: some View {
         ZStack {
@@ -52,7 +57,6 @@ struct OshiProfileEditView: View {
                         Button(action: { showingImagePicker = true }) {
                             Group {
                                 if isLoadingImage {
-                                    // ローディング中
                                     Circle()
                                         .fill(Color.gray.opacity(0.3))
                                         .frame(width: 100, height: 100)
@@ -171,7 +175,7 @@ struct OshiProfileEditView: View {
                             .padding(.bottom, 8)
                         
                         VStack(spacing: 0) {
-                            // 性格（自由入力）
+                            // 性格
                             NavigationLink {
                                 FreeTextEditView(
                                     title: "性格",
@@ -231,7 +235,7 @@ struct OshiProfileEditView: View {
                             Divider()
                                 .padding(.leading, 16)
                             
-                            // 口調（自由入力）
+                            // 口調
                             NavigationLink {
                                 FreeTextEditView(
                                     title: "口調",
@@ -296,7 +300,6 @@ struct OshiProfileEditView: View {
             ImagePickerWithCrop(selectedImage: $avatarImage)
         }
         .task {
-            // 画像を非同期で読み込み
             if let urlString = oshi.avatarImageURL, avatarImage == nil {
                 isLoadingImage = true
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
@@ -305,49 +308,45 @@ struct OshiProfileEditView: View {
         }
     }
     
+    // ✅ 保存処理でプリセット判定
     private func saveChanges() {
+        print("\n💾 saveChanges 開始")
+        print("  - oshi.name: \(oshi.name)")
+        print("  - isPreset: \(isPreset)")
+        
         Task {
             var updatedOshi = oshi
             updatedOshi.name = name
             updatedOshi.gender = gender
-            
-            // 性格: カスタムテキストまたは既存の列挙型から選択
-            if let matchedPersonality = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
-                updatedOshi.personalityText = personalityText
-            } else {
-                updatedOshi.speechStyleText = speechStyleText // 仮のデフォルト
-            }
-            print("💾 saveChanges isPreset=\(isPreset) id=\(updatedOshi.id.uuidString) name=\(updatedOshi.name)")
-
-            
+            updatedOshi.personalityText = personalityText
             updatedOshi.speechCharacteristics = speechCharacteristics
             updatedOshi.userCallingName = userCallingName
+            updatedOshi.speechStyleText = speechStyleText
             
-            // 口調: カスタムテキストまたは既存の列挙型から選択
-            if let matchedStyle = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
-                updatedOshi.speechStyleText = speechStyleText
-            } else {
-                updatedOshi.personalityText = personalityText
-            }
-            
-            // 画像がある場合はStorageにアップロード
+            // 画像アップロード
             if let image = avatarImage {
                 do {
+                    print("  📤 画像アップロード開始...")
                     let imageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(
                         image,
                         oshiId: oshi.id
                     )
                     updatedOshi.avatarImageURL = imageURL
+                    print("  ✅ 画像アップロード成功: \(imageURL)")
                 } catch {
-                    print("画像アップロードエラー: \(error)")
-                    // エラー処理 (必要に応じてアラート表示)
+                    print("  ❌ 画像アップロードエラー: \(error)")
                 }
             }
             
+            // ✅ isPresetで保存先を分岐
             if isPreset {
-                await viewModel.updatePresetOshi(updatedOshi)   // ←新規に用意する
+                print("  🔄 プリセットテーブルに保存中...")
+                await viewModel.updatePresetOshi(updatedOshi)
+                print("  ✅ プリセットテーブル保存完了")
             } else {
+                print("  🔄 通常テーブルに保存中...")
                 await viewModel.updateOshi(updatedOshi)
+                print("  ✅ 通常テーブル保存完了")
             }
             
             // 保存完了の通知を表示
@@ -365,11 +364,13 @@ struct OshiProfileEditView: View {
                     }
                 }
             }
+            
+            print("💾 saveChanges 完了\n")
         }
     }
 }
 
-// 自由テキスト編集画面（汎用）
+// 自由テキスト編集画面
 struct FreeTextEditView: View {
     let title: String
     let placeholder: String
@@ -490,7 +491,8 @@ struct GenderSelectionView: View {
                 userCallingName: "あなた",
                 speechStyleText: "敬語"
             ),
-            viewModel: OshiViewModel()
+            viewModel: OshiViewModel(),
+            isPreset: false
         )
     }
 }

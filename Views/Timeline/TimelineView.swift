@@ -112,7 +112,8 @@ struct TimelineScreenView: View {
         ZStack {
             VStack{
                 HStack{
-                    Button(action: {
+                                        Button(action: {
+                        generateHapticFeedback()
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSidebar.toggle()
                         }
@@ -186,6 +187,7 @@ struct TimelineScreenView: View {
                     HStack {
                         Spacer()
                         Button(action: {
+                        generateHapticFeedback()
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showingSidebar = false
                             }
@@ -319,7 +321,8 @@ struct TimelineScreenView: View {
     // MARK: - Floating Button
     
     private var floatingPostButton: some View {
-        Button(action: {
+                            Button(action: {
+                        generateHapticFeedback()
             showingPostSheet = true
         }) {
             Image(systemName: "square.and.pencil")
@@ -763,7 +766,8 @@ struct PostCardView: View {
 
                         Spacer()
 
-                        Button(action: {}) {
+                        Button(action: {
+                        generateHapticFeedback()}) {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 16))
                                 .foregroundColor(.secondary)

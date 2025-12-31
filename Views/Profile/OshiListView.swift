@@ -1,3 +1,5 @@
+// OshiListView.swift - おすすめ削除機能追加版
+
 import SwiftUI
 import UIKit
 
@@ -15,6 +17,7 @@ struct OshiListView: View {
         FirebaseConfig.shared.userId == adminUserId
     }
     @State private var followingIds: Set<UUID> = []
+    @State private var deletingIds: Set<UUID> = [] // 削除中のID管理
 
     var body: some View {
         NavigationView {
@@ -37,7 +40,7 @@ struct OshiListView: View {
                     .tabViewStyle(.page(indexDisplayMode: .never))
                 }
                 
-                // フローティング作成ボタン（フォロー中タブのみ）
+                // フローティング作成ボタン(フォロー中タブのみ)
                 if selectedTab == .followers {
                     createButton
                         .padding(.trailing, 20)
@@ -72,7 +75,6 @@ struct OshiListView: View {
                             .fontWeight(selectedTab == tab ? .bold : .medium)
                             .foregroundColor(selectedTab == tab ? .primary : .secondary)
                         
-                        // アンダーラインインジケーター
                         Capsule()
                             .fill(selectedTab == tab ? Color.blue : Color.clear)
                             .frame(width: 60, height: 3)
@@ -84,8 +86,6 @@ struct OshiListView: View {
         .padding(.top, 8)
         .background(Color(.systemBackground))
     }
-    
-    // MARK: - フローティング作成ボタン
     
     private var createButton: some View {
         Button(action: { showingCreationSheet = true }) {
@@ -111,7 +111,11 @@ struct OshiListView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(viewModel.oshiList) { oshi in
                             NavigationLink(
-                                destination: OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
+                                destination: OshiProfileDetailView(
+                                    oshi: oshi,
+                                    viewModel: viewModel,
+                                    isPreset: false
+                                )
                             ) {
                                 OshiCell(oshi: oshi)
                             }
@@ -126,8 +130,6 @@ struct OshiListView: View {
             }
         }
     }
-    
-    // MARK: - Empty State
     
     private var emptyStateView: some View {
         VStack(spacing: 24) {
@@ -176,52 +178,19 @@ struct OshiListView: View {
                         NavigationLink(
                             destination: OshiProfileDetailView(
                                 oshi: oshi,
-                                viewModel: viewModel
+                                viewModel: viewModel,
+                                isPreset: true
                             )
                         ) {
                             OshiCell(oshi: oshi, showChevron: false)
                         }
                         .buttonStyle(.plain)
                         
-                        // フォローボタン
-                        if isAlreadyFollowed(oshi) {
-                            Text("フォロー中")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(Color.clear)
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color(.systemGray3), lineWidth: 1)
-                                )
+                        // 管理者の場合は削除ボタン、それ以外はフォローボタン
+                        if canEditRecommended {
+                            deleteButton(for: oshi)
                         } else {
-                            Button {
-                                Task {
-                                    followingIds.insert(oshi.id)
-                                    defer { followingIds.remove(oshi.id) }
-                                    await viewModel.followRecommended(oshi)
-                                }
-                            } label: {
-                                if followingIds.contains(oshi.id) {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .frame(width: 76, height: 32)
-                                        .background(Color.black)
-                                        .cornerRadius(16)
-                                } else {
-                                    Text("フォロー")
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 7)
-                                        .background(Color.black)
-                                        .cornerRadius(16)
-                                }
-                            }
-                            .disabled(followingIds.contains(oshi.id))
+                            followButton(for: oshi)
                         }
                     }
                     .padding(.trailing, 16)
@@ -233,6 +202,80 @@ struct OshiListView: View {
         }
         .background(Color(.systemBackground))
     }
+    
+    // 削除ボタン(管理者用)
+    private func deleteButton(for oshi: OshiCharacter) -> some View {
+        Button {
+            Task {
+                deletingIds.insert(oshi.id)
+                await viewModel.deleteRecommendedOshi(oshi)
+                deletingIds.remove(oshi.id)
+            }
+        } label: {
+            if deletingIds.contains(oshi.id) {
+                ProgressView()
+                    .tint(.white)
+                    .frame(width: 76, height: 32)
+                    .background(Color.red)
+                    .cornerRadius(16)
+            } else {
+                Text("削除")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color.red)
+                    .cornerRadius(16)
+            }
+        }
+        .disabled(deletingIds.contains(oshi.id))
+    }
+    
+    // フォローボタン(一般ユーザー用)
+    private func followButton(for oshi: OshiCharacter) -> some View {
+        Group {
+            if isAlreadyFollowed(oshi) {
+                Text("フォロー中")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color.clear)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color(.systemGray3), lineWidth: 1)
+                    )
+            } else {
+                Button {
+                    Task {
+                        followingIds.insert(oshi.id)
+                        defer { followingIds.remove(oshi.id) }
+                        await viewModel.followRecommended(oshi)
+                    }
+                } label: {
+                    if followingIds.contains(oshi.id) {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(width: 76, height: 32)
+                            .background(Color.black)
+                            .cornerRadius(16)
+                    } else {
+                        Text("フォロー")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color.black)
+                            .cornerRadius(16)
+                    }
+                }
+                .disabled(followingIds.contains(oshi.id))
+            }
+        }
+    }
 
     private func isAlreadyFollowed(_ oshi: OshiCharacter) -> Bool {
         viewModel.oshiList.contains(where: { $0.id == oshi.id })
@@ -243,35 +286,45 @@ struct OshiCell: View {
     let oshi: OshiCharacter
     var showChevron: Bool = true
     @State private var avatarImage: UIImage?
+    @State private var isLoadingImage = false
 
     var body: some View {
         HStack(spacing: 12) {
             // アバター
-            if let avatarImage = avatarImage {
-                Image(uiImage: avatarImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle())
-            } else {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .cyan],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+            ZStack {
+                if isLoadingImage {
+                    Circle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            ProgressView()
+                                .scaleEffect(0.7)
                         )
-                    )
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    )
+                } else if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue, .cyan],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            Text(String(oshi.name.prefix(1)))
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        )
+                }
             }
 
-            // 名前・ユーザーネーム
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(oshi.name)
@@ -293,8 +346,20 @@ struct OshiCell: View {
         .padding(.horizontal, 16)
         .background(Color(.systemBackground))
         .task {
-            if let urlString = oshi.avatarImageURL {
-                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+            if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
+                isLoadingImage = true
+                
+                do {
+                    let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
+                    await MainActor.run {
+                        avatarImage = image
+                        isLoadingImage = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        isLoadingImage = false
+                    }
+                }
             }
         }
     }

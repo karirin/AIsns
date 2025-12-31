@@ -66,6 +66,12 @@ class FirebaseDatabaseManager {
         let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return (name, bio, avatar)
     }
+    
+    func deletePresetOshi(_ oshiId: UUID) async throws {
+        let presetRef = ref.child("presets/oshiList/\(oshiId.uuidString)")
+        try await presetRef.removeValue()
+        print("✅ プリセット推し削除成功: \(oshiId.uuidString)")
+    }
 
     func loadOshiList() async throws -> [OshiCharacter] {
         let snapshot = try await ref.child("users/\(userId)/oshiList").getData()

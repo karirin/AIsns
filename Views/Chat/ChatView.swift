@@ -157,7 +157,8 @@ struct ChatDetailView: View {
             // 入力エリア
             HStack(spacing: 8) {
                 // プラスボタン
-                Button(action: {}) {
+                                    Button(action: {
+                        generateHapticFeedback()}) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
                         .foregroundColor(.secondary)
@@ -169,7 +170,8 @@ struct ChatDetailView: View {
                         .focused($isTextFieldFocused)
                     
                     // スタンプボタン
-                    Button(action: {}) {
+                                        Button(action: {
+                        generateHapticFeedback()}) {
                         Image(systemName: "face.smiling")
                             .foregroundColor(.secondary)
                     }
@@ -203,7 +205,8 @@ struct ChatDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {}) {
+                                    Button(action: {
+                        generateHapticFeedback()}) {
                     Image(systemName: "ellipsis")
                         .foregroundColor(.primary)
                 }
