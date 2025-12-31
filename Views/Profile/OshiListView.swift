@@ -17,77 +17,83 @@ struct OshiListView: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                // カスタムタブバー (2つ)
-                HStack(spacing: 0) {
-                    TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
-                    TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
-                }
-                .padding(.top, 8)
-                .background(Color(.systemBackground))
-                .zIndex(1)
-                
-                // スワイプ可能なコンテンツエリア
-                TabView(selection: $selectedTab) {
-                    // 0: フォロワー (相手 -> 自分)
-                    OshiListPage(
-                        oshis: viewModel.oshiList.filter { $0.isFollowingUser },
-                        emptyTitle: "フォロワーはいません",
-                        emptySubtitle: "投稿して推しに見つけてもらいましょう",
-                        iconName: "person.2.slash",
-                        viewModel: viewModel
-                    )
-                    .tag(0)
+        // ✅ NavigationStack の代わりに NavigationView を使用
+        NavigationView {
+            ZStack(alignment: .bottomTrailing) {
+                VStack(spacing: 0) {
+                    // カスタムタブバー
+                    HStack(spacing: 0) {
+                        TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
+                        TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
+                    }
+                    .padding(.top, 8)
+                    .background(Color(.systemBackground))
+                    .zIndex(1)
                     
-                    // 1: フォロー中 (自分 -> 相手)
-                    OshiListPage(
-                        oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
-                        emptyTitle: "フォロー中の推しはいません",
-                        emptySubtitle: "気になる推しを見つけてフォローしましょう",
-                        iconName: "person.slash",
-                        viewModel: viewModel
-                    )
-                    .tag(1)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.3), value: selectedTab)
-            }
-            
-            // アカウント追加ボタン
-            NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
-                Image(systemName: "person.badge.plus")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .background(
-                        LinearGradient(
-                            colors: [.blue, .purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                    // スワイプ可能なコンテンツエリア
+                    TabView(selection: $selectedTab) {
+                        OshiListPage(
+                            oshis: viewModel.oshiList.filter { $0.isFollowingUser },
+                            emptyTitle: "フォロワーはいません",
+                            emptySubtitle: "投稿して推しに見つけてもらいましょう",
+                            iconName: "person.2.slash",
+                            viewModel: viewModel
                         )
-                    )
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
+                        .tag(0)
+                        
+                        OshiListPage(
+                            oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
+                            emptyTitle: "フォロー中の推しはいません",
+                            emptySubtitle: "気になる推しを見つけてフォローしましょう",
+                            iconName: "person.slash",
+                            viewModel: viewModel
+                        )
+                        .tag(1)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut(duration: 0.3), value: selectedTab)
+                }
+                
+                // アカウント追加ボタン (NavigationLink)
+                // NavigationViewの中なので正常に画面遷移します
+                NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
             }
-            .padding(.trailing, 20)
-            .padding(.bottom, 20)
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle("チャット")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                if isPresented {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.primary)
+            // ✅ ナビゲーションバーの設定は NavigationView の「中身」に対して行う
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    if isPresented {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
             }
         }
+        // ✅ これを指定することで、iPad等でも強制的に全画面表示（スタック形式）になります
+        .navigationViewStyle(.stack)
+        .navigationBarBackButtonHidden(true)
     }
 }
 

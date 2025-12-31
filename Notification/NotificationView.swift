@@ -4,7 +4,10 @@ import SwiftUI
 
 /// グループ化された通知
 struct GroupedNotification: Identifiable {
-    let id = UUID()
+    var id: UUID {
+        notifications.first?.id ?? UUID()
+    }
+
     let type: NotificationType
     let relatedPostId: UUID?
     let notifications: [AppNotification]
