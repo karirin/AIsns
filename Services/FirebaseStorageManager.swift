@@ -11,7 +11,7 @@ import FirebaseStorage
 
 class FirebaseStorageManager {
     static let shared = FirebaseStorageManager()
-    
+    private let imageCache = NSCache<NSString, UIImage>()
     private let storage = Storage.storage()
     private init() {}
     
@@ -81,16 +81,24 @@ class FirebaseStorageManager {
     
     /// URLから画像をダウンロード
     func downloadImage(from urlString: String) async throws -> UIImage {
+        // ✅ 先にキャッシュ確認（ここが重要）
+        if let cached = imageCache.object(forKey: urlString as NSString) {
+            return cached
+        }
+
         guard let url = URL(string: urlString) else {
             throw StorageError.invalidURL
         }
-        
+
         let (data, _) = try await URLSession.shared.data(from: url)
-        
+
         guard let image = UIImage(data: data) else {
             throw StorageError.imageConversionFailed
         }
-        
+
+        // ✅ 取得できたらキャッシュ保存
+        imageCache.setObject(image, forKey: urlString as NSString)
+
         return image
     }
     

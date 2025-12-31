@@ -345,21 +345,19 @@ struct OshiCell: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(Color(.systemBackground))
-        .task {
-            if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
-                isLoadingImage = true
-                
-                do {
-                    let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
-                    await MainActor.run {
-                        avatarImage = image
-                        isLoadingImage = false
-                    }
-                } catch {
-                    await MainActor.run {
-                        isLoadingImage = false
-                    }
-                }
+        .task(id: oshi.avatarImageURL) {
+            guard let urlString = oshi.avatarImageURL, !urlString.isEmpty else { return }
+            if isLoadingImage { return }        // 多重起動ガード（保険）
+            if avatarImage != nil { return }    // 既にロード済みなら何もしない
+
+            isLoadingImage = true
+            defer { Task { @MainActor in isLoadingImage = false } }
+
+            do {
+                let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
+                await MainActor.run { avatarImage = image }
+            } catch {
+                // 失敗時は何もしない（必要ならログ）
             }
         }
     }
