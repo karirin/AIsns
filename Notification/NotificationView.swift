@@ -46,7 +46,7 @@ struct GroupedNotification: Identifiable {
             } else {
                 return "\(firstSender)と他\(count - 1)人があなたの投稿にコメントしました"
             }
-        case .follow: // ✅ フォローのグループ化表示を追加
+        case .follow:
             if count == 2 {
                 let secondSender = notifications[1].senderName
                 return "\(firstSender)と\(secondSender)があなたをフォローしました"
@@ -71,7 +71,6 @@ struct NotificationView: View {
         var groups: [GroupedNotification] = []
         var processed: Set<UUID> = []
         
-        // ✅ フィルタリングせずにviewModel.notificationsをそのまま使用
         let notifications = viewModel.notifications
         
         for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
@@ -80,7 +79,7 @@ struct NotificationView: View {
             // グループ化可能な場合
             if notification.type.canGroup {
                 
-                // ✅ ケース1: フォロー通知（投稿IDに関係なくタイプでグループ化）
+                // ケース1: フォロー通知
                 if notification.type == .follow {
                     let relatedNotifications = notifications.filter {
                         $0.type == .follow &&
@@ -98,7 +97,7 @@ struct NotificationView: View {
                     relatedNotifications.forEach { processed.insert($0.id) }
                     
                 }
-                // ✅ ケース2: 投稿関連の通知（同じ投稿IDでグループ化）
+                // ケース2: 投稿関連の通知
                 else if let postId = notification.relatedPostId {
                     let relatedNotifications = notifications.filter {
                         $0.type == notification.type &&
@@ -117,7 +116,6 @@ struct NotificationView: View {
                     relatedNotifications.forEach { processed.insert($0.id) }
                     
                 } else {
-                    // グループ化可能だが条件（投稿IDなど）が合わない場合は単体表示
                     let group = GroupedNotification(
                         type: notification.type,
                         relatedPostId: notification.relatedPostId,
@@ -172,7 +170,7 @@ struct NotificationView: View {
         .navigationBarBackButtonHidden(true)
         .task {
             await viewModel.fetchNotifications()
-            // ✅ 画面を開いたタイミングで既読にする
+            // 画面を開いたタイミングで既読にする
             viewModel.markAllNotificationsAsRead()
         }
         .toolbar {
@@ -262,90 +260,109 @@ struct GroupedNotificationRow: View {
     }
     
     // 表示するアバター数の制限
-    private let maxAvatarsToShow = 8
+    private let maxAvatarsToShow = 6
     
     var body: some View {
-        Button {
-            // 全ての通知を既読にする
-            group.notifications.forEach { notification in
-                viewModel.markNotificationAsRead(notification.id)
+        // ✅ 投稿がある場合（いいね、コメント、推しの投稿）は投稿詳細へ
+        if let post = relatedPost {
+            NavigationLink {
+                PostDetailView(post: post, viewModel: viewModel)
+                    .onAppear { markAsRead() }
+            } label: {
+                contentView
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 12) {
-                    // 左側: アバター + 通知タイプアイコン
-                    ZStack(alignment: .bottomTrailing) {
-                        // 複数アバターの重なり表示
-                        if group.notifications.count > 1 {
-                            multipleAvatarsView
-                        } else {
-                            // 単一アバター
-                            singleAvatarView
-                        }
-                        
-                        // 通知タイプアイコン
-                        Circle()
-                            .fill(notificationColor)
-                            .frame(width: 24, height: 24)
-                            .overlay(
-                                Image(systemName: group.type.icon)
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(Color(.systemBackground), lineWidth: 2)
-                            )
-                            .offset(x: group.notifications.count > 1 ? 8 : 4, y: 4)
-                    }
-                    .frame(height: 48)
-                    
-                    Spacer()
-                    
-                    // 未読インジケーター
-                    if !group.isRead {
-                        Circle()
-                            .fill(Color.blue)
-                            .frame(width: 8, height: 8)
-                            .padding(.top, 4)
-                    }
+            .buttonStyle(.plain)
+        } else {
+            // ✅ 投稿がない場合（フォローなど）は行自体は遷移せず、既読のみ
+            contentView
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    markAsRead()
                 }
-                .padding(.horizontal)
-                .padding(.top)
-                
-                // 通知内容（アバターの下）
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(group.displayMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                    
-                    // 投稿の内容プレビュー
-                    if let post = relatedPost {
-                        Text(post.content)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
+        }
+    }
+    
+    // ✅ 共通の行コンテンツ
+    private var contentView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                // 左側: アバター + 通知タイプアイコン
+                ZStack(alignment: .bottomTrailing) {
+                    // 複数アバターの重なり表示
+                    if group.notifications.count > 1 {
+                        multipleAvatarsView
+                    } else {
+                        // 単一アバター
+                        singleAvatarView
                     }
                     
-                    // 時刻
-                    XStyleRelativeTimeText(date: group.timestamp)
+                    // 通知タイプアイコン
+                    Circle()
+                        .fill(notificationColor)
+                        .frame(width: 24, height: 24)
+                        .overlay(
+                            Image(systemName: group.type.icon)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color(.systemBackground), lineWidth: 2)
+                        )
+                        .offset(x: group.notifications.count > 1 ? 8 : 4, y: 4)
+                }
+                .frame(height: 48)
+                
+                Spacer()
+                
+                // 未読インジケーター
+                if !group.isRead {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 4)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top)
+            
+            // 通知内容（アバターの下）
+            VStack(alignment: .leading, spacing: 6) {
+                Text(group.displayMessage)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                
+                // 投稿の内容プレビュー
+                if let post = relatedPost {
+                    Text(post.content)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom)
+                
+                // 時刻
+                XStyleRelativeTimeText(date: group.timestamp)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .background(group.isRead ? Color(.systemBackground) : Color(.systemGray6).opacity(0.3))
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom)
         }
-        .buttonStyle(.plain)
+        .background(group.isRead ? Color(.systemBackground) : Color(.systemGray6).opacity(0.3))
         .task {
             await loadAvatars()
+        }
+    }
+    
+    private func markAsRead() {
+        group.notifications.forEach { notification in
+            viewModel.markNotificationAsRead(notification.id)
         }
     }
     
@@ -353,14 +370,21 @@ struct GroupedNotificationRow: View {
     
     @ViewBuilder
     private var singleAvatarView: some View {
-        if let oshi = oshiList.first,
-           let avatarImage = avatarImages[oshi.id] {
-            Image(uiImage: avatarImage)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 48, height: 48)
-                .clipShape(Circle())
+        if let oshi = oshiList.first {
+            // ✅ フォロー通知の場合はアバタータップでプロフィール詳細へ遷移
+            if group.type == .follow {
+                NavigationLink {
+                    OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)
+                        .onAppear { markAsRead() }
+                } label: {
+                    avatarImageContent(oshi: oshi)
+                }
+                .buttonStyle(.plain)
+            } else {
+                avatarImageContent(oshi: oshi)
+            }
         } else {
+            // 削除されたユーザーなどのフォールバック
             Circle()
                 .fill(
                     LinearGradient(
@@ -388,39 +412,28 @@ struct GroupedNotificationRow: View {
             let totalCount = oshiList.count
             
             ForEach(Array(displayOshi.enumerated()), id: \.element.id) { index, oshi in
-                if let avatarImage = avatarImages[oshi.id] {
-                    Image(uiImage: avatarImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Color(.systemBackground), lineWidth: 2)
-                        )
-                        .offset(x: CGFloat(index) * 40, y: 0)
-                } else {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.red, .red.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                Group {
+                    // ✅ フォロー通知の場合は個別のアバターがリンクになる
+                    if group.type == .follow {
+                        NavigationLink {
+                            OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)
+                                .onAppear { markAsRead() }
+                        } label: {
+                            avatarImageContent(oshi: oshi)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color(.systemBackground), lineWidth: 2)
+                                )
+                        }
+                    } else {
+                        avatarImageContent(oshi: oshi)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color(.systemBackground), lineWidth: 2)
                             )
-                        )
-                        .frame(width: 48, height: 48)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.subheadline)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color(.systemBackground), lineWidth: 2)
-                        )
-                        .offset(x: CGFloat(index) * 40, y: 0)
+                    }
                 }
+                .offset(x: CGFloat(index) * 50, y: 0)
             }
             
             // 4人以上の場合は「+N」を表示
@@ -438,10 +451,39 @@ struct GroupedNotificationRow: View {
                         Circle()
                             .stroke(Color(.systemBackground), lineWidth: 2)
                     )
-                    .offset(x: CGFloat(maxAvatarsToShow) * 40, y: 0)
+                    .offset(x: CGFloat(maxAvatarsToShow) * 50, y: 0)
             }
         }
         .frame(width: 100, height: 48, alignment: .leading)
+    }
+    
+    // MARK: - Avatar Image Content Helper
+    
+    @ViewBuilder
+    private func avatarImageContent(oshi: OshiCharacter) -> some View {
+        if let image = avatarImages[oshi.id] {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+        } else {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [.red, .red.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Text(String(oshi.name.prefix(1)))
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                )
+        }
     }
     
     // MARK: - Helper Methods
