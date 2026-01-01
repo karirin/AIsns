@@ -37,7 +37,7 @@ struct TimelineScreenView: View {
             .navigationDestination(for: SidebarDestination.self) { destination in
                 switch destination {
                 case .profile:
-                    UserProfileView()
+                    UserProfileView(viewModel: viewModel)
                 case .followers:
                     OshiListView(viewModel: viewModel, isPresented: .constant(true))
                 case .chat:
@@ -53,16 +53,20 @@ struct TimelineScreenView: View {
                     let profile = try await dbManager.loadUserProfile()
                     userName = profile.userName
 
-                    // 既に viewModel 側でURLを持ってるならそれを優先してもOK
                     if let url = profile.avatarImageURL {
                         isLoadingUserAvatar = true
                         userAvatarImage = try await FirebaseStorageManager.shared.downloadImage(from: url)
                         isLoadingUserAvatar = false
                     }
                     
+                    // ▼▼▼ 追加: リツイートといいねの状態を読み込む ▼▼▼
+                    await viewModel.loadUserReposts() // 既存の関数を呼び出す
+                    await viewModel.loadUserLikes()   // 新しく作る関数（後述）
+                    // ▲▲▲ 追加終わり ▲▲▲
+                    
                     await viewModel.loadUserBookmarks()
                 } catch {
-                    print("❌ TimelineScreenView load user avatar error:", error.localizedDescription)
+                    print("❌ TimelineScreenView load error:", error.localizedDescription)
                     isLoadingUserAvatar = false
                 }
             }
@@ -713,7 +717,7 @@ struct PostCardView: View {
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
             }
             
-            // ✅ ユーザーのアバター画像読み込み
+            // ユーザーのアバター画像読み込み
             if post.isUserPost, let url = viewModel.userProfileAvatarURL {
                 userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
             }
@@ -733,8 +737,13 @@ struct PostCardView: View {
 
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // ✅ リツイート表示ヘッダー（Xスタイル）
+            if viewModel.isReposted(post) && !post.isUserPost {
+                repostHeader
+            }
+            
             HStack(alignment: .top, spacing: 12) {
-                // ✅ ユーザー投稿の場合はNavigationLinkなし
+                // アバター
                 Group {
                     if let oshi = oshi {
                         NavigationLink {
@@ -761,7 +770,6 @@ struct PostCardView: View {
                             }
                             .buttonStyle(.plain)
                         } else {
-                            // ✅ ユーザー投稿の名前表示
                             Text(post.isUserPost ? viewModel.userProfileName : post.authorName)
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.primary)
@@ -784,7 +792,8 @@ struct PostCardView: View {
                         Spacer()
 
                         Button(action: {
-                        generateHapticFeedback()}) {
+                            generateHapticFeedback()
+                        }) {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 16))
                                 .foregroundColor(.secondary)
@@ -810,7 +819,7 @@ struct PostCardView: View {
 
                     // アクションボタン
                     HStack(spacing: 0) {
-                        // ✅ 【修正】コメントボタン: 遷移＆フォーカス指示
+                        // コメントボタン
                         if isNavigable {
                             NavigationLink(destination: PostDetailView(post: post, viewModel: viewModel, focusOnAppear: true)) {
                                 HStack(spacing: 4) {
@@ -834,16 +843,18 @@ struct PostCardView: View {
                             .frame(maxWidth: .infinity)
                         }
 
+                        // リツイートボタン
                         ActionButton(
-                            icon: "arrow.2.squarepath", // リツイートっぽいアイコン
+                            icon: "arrow.2.squarepath",
                             count: post.repostCount,
-                            color: viewModel.isReposted(post) ? .green : .secondary, // リツイート済みなら緑
-                            isFilled: false // 太字にするなら true でも可
+                            color: viewModel.isReposted(post) ? .green : .secondary,
+                            isFilled: false
                         ) {
                             viewModel.toggleRepost(for: post)
                         }
                         .frame(maxWidth: .infinity)
 
+                        // いいねボタン
                         ActionButton(
                             icon: "heart",
                             count: post.reactionCount,
@@ -854,23 +865,24 @@ struct PostCardView: View {
                         }
                         .frame(maxWidth: .infinity)
 
+                        // ブックマークボタン
                         ActionButton(
                             icon: "bookmark",
-                            count: nil, // ブックマーク数は通常表示しないためnil
-                            color: viewModel.isBookmarked(post) ? .blue : .secondary, // 保存済みなら青色
-                            isFilled: viewModel.isBookmarked(post) // 保存済みなら塗りつぶしアイコン
+                            count: nil,
+                            color: viewModel.isBookmarked(post) ? .blue : .secondary,
+                            isFilled: viewModel.isBookmarked(post)
                         ) {
-                            // タップ時のアクション
                             viewModel.toggleBookmark(for: post)
                         }
                         .frame(maxWidth: .infinity)
 
-                        ActionButton(
-                            icon: "square.and.arrow.up",
-                            count: nil,
-                            color: .secondary
-                        ) {}
-                        .frame(maxWidth: .infinity)
+                        // シェアボタン
+//                        ActionButton(
+//                            icon: "square.and.arrow.up",
+//                            count: nil,
+//                            color: .secondary
+//                        ) {}
+//                        .frame(maxWidth: .infinity)
                     }
                     .padding(.top, 8)
 
@@ -911,6 +923,24 @@ struct PostCardView: View {
         .background(Color(.systemBackground))
     }
     
+    // ✅ リツイート表示ヘッダー（Xスタイル）
+    @ViewBuilder
+    private var repostHeader: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.2.squarepath")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            
+            Text("\(viewModel.userProfileName)がリポスト")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+        }
+        .padding(.leading, 56) // アバター幅 + スペース分
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+    
+    // 投稿画像グリッド
     private var postImageGrid: some View {
         let columns: [GridItem] = postImages.count == 1
             ? [GridItem(.flexible())]
@@ -928,7 +958,7 @@ struct PostCardView: View {
         }
     }
     
-    // ✅ アバター表示ロジック修正
+    // アバター表示
     private var avatarView: some View {
         Group {
             if let oshi = oshi {

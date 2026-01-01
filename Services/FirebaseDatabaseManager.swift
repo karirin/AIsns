@@ -863,6 +863,30 @@ class FirebaseDatabaseManager {
         )
     }
 
+    func loadUserLikedPostIDs() async throws -> [UUID] {
+        // 全リアクションデータを取得して、自分のIDが含まれているか探す
+        // path: users/{userId}/reactions/{postId}/{reactorId}
+        let snapshot = try await ref.child("users/\(userId)/reactions").getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else {
+            return []
+        }
+        
+        var likedIDs: [UUID] = []
+        // アプリ内で「自分」を表す固定ID
+        let myPersonaID = "00000000-0000-0000-0000-000000000001"
+        
+        for (postIdStr, reactionsMap) in value {
+            // リアクションした人の中に自分がいるか確認
+            if reactionsMap.keys.contains(myPersonaID) {
+                if let uuid = UUID(uuidString: postIdStr) {
+                    likedIDs.append(uuid)
+                }
+            }
+        }
+        return likedIDs
+    }
+
     private func parseReaction(from data: [String: Any]) -> Reaction? {
         guard let idString = data["id"] as? String,
               let id = UUID(uuidString: idString),

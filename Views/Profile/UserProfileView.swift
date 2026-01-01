@@ -3,92 +3,110 @@
 //  AIsns
 //
 //  Created by Apple on 2025/12/27.
+//  Updated: OshiProfileDetailViewスタイルに全面刷新
 //
 
 import SwiftUI
 
 struct UserProfileView: View {
+    @ObservedObject var viewModel: OshiViewModel
+    @Environment(\.dismiss) var dismiss
+    
     @State private var userName: String = "あなた"
     @State private var userBio: String = ""
     @State private var avatarImage: UIImage?
-    @State private var showingImagePicker = false
     @State private var showingEditSheet = false
     @State private var isLoadingImage = false
-    @Environment(\.dismiss) var dismiss
     @State private var avatarImageURL: String? = nil
-    private let dbManager = FirebaseDatabaseManager.shared
     
+    private let dbManager = FirebaseDatabaseManager.shared
     private let avatarSize: CGFloat = 100
     
     var body: some View {
-//        NavigationView {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    // アバターセクション
-                    avatarSection
-                    
-                    // プロフィール情報
-                    profileInfoSection
-                    
-                    Divider()
-                        .padding(.horizontal, 24)
-                    
-                    // 統計情報
-                    statsSection
-                }
-                .padding(.bottom, 32)
-            }
-            .background(Color(.systemBackground))
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 24) {
+                // アバターセクション
+                avatarSection
                 
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.primary)
-                    }
+                // プロフィール情報
+                profileInfoSection
+                
+                // フォロー統計
+                followStatsSection
+                
+                Divider()
+                    .padding(.horizontal, 24)
+                
+                // コンテンツエリア（投稿など）
+                contentSection
+                
+                // 管理者メニュー（該当者のみ）
+                if FirebaseConfig.shared.userId == "3248012D-3F48-4449-9F99-D3C0D777D0D0" {
+                    adminSection
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+            }
+            .padding(.bottom, 32)
+        }
+        .background(Color(.systemBackground))
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
                     Button {
                         showingEditSheet = true
                     } label: {
-                        Text("編集")
-                            .foregroundColor(.primary)
-                            .fontWeight(.semibold)
+                        Label("プロフィールを編集", systemImage: "pencil")
                     }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(.primary)
                 }
             }
-            .task {
-                await loadProfile()
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            NavigationStack {
+                UserProfileEditView(
+                    userName: $userName,
+                    userBio: $userBio,
+                    avatarImage: $avatarImage
+                )
             }
-            .sheet(isPresented: $showingEditSheet) {
-                NavigationStack {
-                    UserProfileEditView(
-                        userName: $userName,
-                        userBio: $userBio,
-                        avatarImage: $avatarImage
-                    )
-                }
-            }
+        }
+        .task {
+            await loadProfile()
+        }
     }
+    
+    // MARK: - Data Loading
     
     private func loadProfile() async {
         do {
             let profile = try await dbManager.loadUserProfile()
-            userName = profile.userName
-            userBio = profile.userBio
-            avatarImageURL = profile.avatarImageURL
+            await MainActor.run {
+                userName = profile.userName
+                userBio = profile.userBio
+                avatarImageURL = profile.avatarImageURL
+            }
 
-            // URLがあれば画像もDLして表示
             if let url = profile.avatarImageURL {
                 isLoadingImage = true
                 let img = try await FirebaseStorageManager.shared.downloadImage(from: url)
-                avatarImage = img
-                isLoadingImage = false
+                await MainActor.run {
+                    avatarImage = img
+                    isLoadingImage = false
+                }
             }
         } catch {
             print("❌ loadProfile error:", error.localizedDescription)
@@ -104,10 +122,7 @@ struct UserProfileView: View {
                 Circle()
                     .stroke(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.3),
-                                Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.3)
-                            ],
+                            colors: [.pink.opacity(0.3), .purple.opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -118,7 +133,6 @@ struct UserProfileView: View {
                 avatarView
             }
         }
-        .padding(.top, 24)
     }
     
     private var avatarView: some View {
@@ -141,10 +155,7 @@ struct UserProfileView: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.2, green: 0.7, blue: 1.0),
-                                Color(red: 0.5, green: 0.4, blue: 1.0)
-                            ],
+                            colors: [.pink, .purple],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -173,45 +184,71 @@ struct UserProfileView: View {
             if !userBio.isEmpty {
                 Text(userBio)
                     .font(.subheadline)
-                    .foregroundColor(.primary)
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .padding(.horizontal, 32)
-                    .padding(.top, 4)
             }
         }
     }
     
-    // MARK: - Stats Section
+    // MARK: - Follow Stats Section
     
-    private var statsSection: some View {
+    private var followStatsSection: some View {
+        HStack(spacing: 32) {
+            StatColumn(value: viewModel.followerCount, label: "フォロワー")
+            StatColumn(value: viewModel.followingCount, label: "フォロー中")
+            StatColumn(value: viewModel.posts.filter { $0.isUserPost }.count, label: "投稿")
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    // MARK: - Content Section
+    
+    private var contentSection: some View {
         VStack(spacing: 16) {
-            Text("統計")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-            
-            VStack(spacing: 0) {
-                StatRow(label: "投稿", value: "0")
+            // セクションヘッダー
+            HStack {
+                Text("ポスト")
+                    .font(.headline)
+                    .foregroundColor(.primary)
                 
-                Divider()
-                    .padding(.leading, 16)
+                Spacer()
                 
-                StatRow(label: "フォロー中", value: "0")
-                
-                Divider()
-                    .padding(.leading, 16)
-                
-                StatRow(label: "いいね", value: "0")
+                let userPosts = viewModel.posts.filter { $0.isUserPost }
+                if !userPosts.isEmpty {
+                    Text("\(userPosts.count)件")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            .background(Color(.systemBackground))
+            .padding(.horizontal, 24)
             
-            // ✅ 追加: 管理者（特定のID）のみ表示されるメニュー
-            if FirebaseConfig.shared.userId == "3248012D-3F48-4449-9F99-D3C0D777D0D0" {
-                adminSection
+            let userPosts = viewModel.posts.filter { $0.isUserPost }
+            
+            if userPosts.isEmpty {
+                emptyContentView(
+                    icon: "square.and.pencil",
+                    title: "まだポストがありません",
+                    subtitle: "最初の投稿をしてみましょう"
+                )
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(userPosts) { post in
+                        PostCardView(post: post, viewModel: viewModel)
+                        
+                        if post.id != userPosts.last?.id {
+                            Divider()
+                                .padding(.leading, 68)
+                        }
+                    }
+                }
+                .background(Color(.systemBackground))
             }
         }
     }
+    
+    // MARK: - Admin Section
     
     private var adminSection: some View {
         VStack(spacing: 16) {
@@ -219,37 +256,92 @@ struct UserProfileView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
 
-            Text("管理者メニュー")
-                .font(.headline)
-                .foregroundColor(.red) // 目立つように赤色など
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-
-            VStack(spacing: 0) {
-                // 遷移先には「おすすめアカウント管理画面」のViewを指定してください
-                // 例: PresetManagementView() や OshiListView(isPreset: true) など
-                NavigationLink {
-                    PresetManagementView()
-                } label: {
-                    HStack {
-                        Text("おすすめアカウント管理")
-                            .font(.body)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        Image(systemName: "lock.shield") // 管理者っぽいアイコン
-                            .foregroundColor(.secondary)
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                }
+            HStack {
+                Text("管理者メニュー")
+                    .font(.headline)
+                    .foregroundColor(.red)
+                
+                Spacer()
             }
-            .background(Color(.systemBackground))
+            .padding(.horizontal, 24)
+
+            NavigationLink {
+                PresetManagementView()
+            } label: {
+                HStack {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 18))
+                        .foregroundColor(.red)
+                    
+                    Text("おすすめアカウント管理")
+                        .font(.body)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(Color(.systemBackground))
+            }
+        }
+    }
+    
+    // MARK: - Helper Views
+    
+    private func emptyContentView(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+                .frame(height: 40)
+            
+            ZStack {
+                Circle()
+                    .fill(Color(.systemGray6))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 32))
+                    .foregroundColor(.secondary)
+            }
+            
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Spacer()
+                .frame(height: 60)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
+    }
+}
+
+// MARK: - Stat Column Component
+
+struct StatColumn: View {
+    let value: Int
+    let label: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("\(value)")
+                .font(.title3)
+                .fontWeight(.bold)
+            
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 }
@@ -285,8 +377,9 @@ struct UserProfileEditView: View {
                     // プロフィール画像エリア
                     VStack(spacing: 12) {
                         Button(action: {
-                        generateHapticFeedback()
-                                                showingImagePicker = true }) {
+                            generateHapticFeedback()
+                            showingImagePicker = true
+                        }) {
                             Group {
                                 if isLoadingImage {
                                     Circle()
@@ -438,7 +531,7 @@ struct UserProfileEditView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
-                    Task { await saveChanges() }   // ← ここ変更
+                    Task { await saveChanges() }
                 }
                 .foregroundColor(.primary)
                 .fontWeight(.semibold)
@@ -456,7 +549,6 @@ struct UserProfileEditView: View {
         defer { isSaving = false }
 
         do {
-            // 1) 画像があれば Storage にアップロード → URL取得
             let uid = FirebaseConfig.shared.userId
 
             var newAvatarURL: String? = nil
@@ -466,18 +558,15 @@ struct UserProfileEditView: View {
                 isLoadingImage = false
             }
 
-            // 2) Realtime Database に保存
             try await dbManager.saveUserProfile(
                 userName: editingName,
                 userBio: editingBio,
                 avatarImageURL: newAvatarURL
             )
 
-            // 3) 親Viewへ反映
             userName = editingName
             userBio = editingBio
 
-            // 4) トースト→dismiss
             withAnimation { showingSaveConfirmation = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 withAnimation { showingSaveConfirmation = false }
@@ -551,5 +640,7 @@ struct StatRow: View {
 // MARK: - Preview
 
 #Preview {
-    UserProfileView()
+    NavigationStack {
+        UserProfileView(viewModel: OshiViewModel(mock: true))
+    }
 }
