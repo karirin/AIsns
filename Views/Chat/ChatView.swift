@@ -6,7 +6,6 @@ struct ChatListView: View {
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
     
-    // ✅ ローディング状態を追加
     @State private var isLoading = true
     
     var sortedChatRooms: [ChatRoom] {
@@ -18,7 +17,6 @@ struct ChatListView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // ✅ 状態に応じた表示
                 if isLoading {
                     loadingView
                 } else if sortedChatRooms.isEmpty {
@@ -40,10 +38,19 @@ struct ChatListView: View {
                         }
                     }
                 }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        generateHapticFeedback()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                // ✅ データ読み込み
                 await loadChatRooms()
             }
             .refreshable {
@@ -53,16 +60,14 @@ struct ChatListView: View {
         .navigationBarBackButtonHidden(true)
     }
     
-    // MARK: - ✅ Loading View
+    // MARK: - Loading View
     
     private var loadingView: some View {
         VStack(spacing: 0) {
             Spacer()
             
             VStack(spacing: 24) {
-                // アニメーション付きアイコン
                 ZStack {
-                    // 背景の円
                     Circle()
                         .fill(
                             LinearGradient(
@@ -76,7 +81,6 @@ struct ChatListView: View {
                         )
                         .frame(width: 100, height: 100)
                     
-                    // 回転する外側のリング
                     Circle()
                         .trim(from: 0, to: 0.7)
                         .stroke(
@@ -94,7 +98,6 @@ struct ChatListView: View {
                         .rotationEffect(.degrees(-90))
                         .modifier(RotatingModifier())
                     
-                    // 中央のアイコン
                     Image(systemName: "message.fill")
                         .font(.system(size: 32, weight: .medium))
                         .foregroundStyle(
@@ -126,7 +129,7 @@ struct ChatListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // MARK: - ✅ Empty State View
+    // MARK: - Empty State View
     
     private var emptyStateView: some View {
         ScrollView {
@@ -134,7 +137,6 @@ struct ChatListView: View {
                 Spacer()
                     .frame(height: 60)
                 
-                // アイコン
                 ZStack {
                     Circle()
                         .fill(
@@ -175,7 +177,6 @@ struct ChatListView: View {
                         .lineSpacing(4)
                 }
                 
-                // フォロー画面へのボタン
                 if !viewModel.oshiList.isEmpty || !viewModel.recommendedOshis.isEmpty {
                     VStack(spacing: 16) {
                         NavigationLink {
@@ -214,34 +215,40 @@ struct ChatListView: View {
         }
     }
     
-    // MARK: - ✅ Chat List View
+    // MARK: - Chat List View
     
     private var chatListView: some View {
-        List {
-            ForEach(sortedChatRooms) { room in
-                if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
-                    NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel)) {
-                        ChatRoomRow(oshi: oshi, room: room)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(sortedChatRooms) { room in
+                    if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
+                        NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel)) {
+                            ChatRoomRow(oshi: oshi, room: room)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if room.id != sortedChatRooms.last?.id {
+                            Divider()
+                                .padding(.leading, 80)
+                        }
                     }
                 }
             }
         }
-        .listStyle(.plain)
+        .background(Color(.systemBackground))
     }
     
-    // MARK: - ✅ Data Loading
+    // MARK: - Data Loading
     
     private func loadChatRooms() async {
         isLoading = true
         
-        // 既にViewModelでロード済みの場合はスキップ
         if !viewModel.chatRooms.isEmpty {
             isLoading = false
             return
         }
         
-        // 少し待ってからローディングを解除（アニメーション表示のため）
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+        try? await Task.sleep(nanoseconds: 500_000_000)
         
         await MainActor.run {
             isLoading = false
@@ -280,6 +287,8 @@ struct ChatListView: View {
     }
 }
 
+// MARK: - Chat Room Row
+
 struct ChatRoomRow: View {
     let oshi: OshiCharacter
     let room: ChatRoom
@@ -287,6 +296,30 @@ struct ChatRoomRow: View {
     
     var lastMessage: Message? {
         room.messages.last
+    }
+    
+    var timeDisplay: String {
+        guard let date = lastMessage?.timestamp else { return "" }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        
+        if calendar.isDateInToday(date) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        } else if calendar.isDateInYesterday(date) {
+            return "昨日"
+        } else if calendar.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "ja_JP")
+            formatter.dateFormat = "E"
+            return formatter.string(from: date)
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "M/d"
+            return formatter.string(from: date)
+        }
     }
     
     var body: some View {
@@ -297,16 +330,24 @@ struct ChatRoomRow: View {
                     Image(uiImage: avatarImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 56, height: 56)
+                        .frame(width: 60, height: 60)
                         .clipShape(Circle())
                 } else {
                     Circle()
-                        .fill(Color(.red).gradient)
-                        .frame(width: 56, height: 56)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.3, blue: 0.3),
+                                    Color(red: 1.0, green: 0.5, blue: 0.3)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 60, height: 60)
                         .overlay(
                             Text(String(oshi.name.prefix(1)))
-                                .font(.title2)
-                                .fontWeight(.bold)
+                                .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.white)
                         )
                 }
@@ -314,15 +355,24 @@ struct ChatRoomRow: View {
                 // 未読バッジ
                 if room.unreadCount > 0 {
                     Circle()
-                        .fill(Color.red)
-                        .frame(width: 20, height: 20)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.2, blue: 0.4),
+                                    Color(red: 1.0, green: 0.4, blue: 0.5)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 22, height: 22)
                         .overlay(
-                            Text("\(room.unreadCount)")
-                                .font(.caption2)
-                                .fontWeight(.bold)
+                            Text("\(min(room.unreadCount, 99))")
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white)
                         )
-                        .offset(x: 4, y: -4)
+                        .offset(x: 6, y: -6)
+                        .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
                 }
             }
             .task {
@@ -331,31 +381,49 @@ struct ChatRoomRow: View {
                 }
             }
             
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center) {
                     Text(oshi.name)
-                        .font(.headline)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
                     
                     Spacer()
                     
-                    if let lastMessage = lastMessage {
-                        Text(lastMessage.timestamp, style: .time)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    Text(timeDisplay)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
                 }
                 
                 if let lastMessage = lastMessage {
-                    Text(lastMessage.content)
-                        .font(.subheadline)
+                    HStack(spacing: 4) {
+                        if lastMessage.isFromUser {
+                            Text("あなた:")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Text(lastMessage.content)
+                            .font(.system(size: 14))
+                            .foregroundColor(room.unreadCount > 0 ? .primary : .secondary)
+                            .lineLimit(2)
+                    }
+                } else {
+                    Text("まだメッセージがありません")
+                        .font(.system(size: 14))
                         .foregroundColor(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
+        .contentShape(Rectangle())
     }
 }
+
+// MARK: - Chat Detail View
 
 struct ChatDetailView: View {
     let oshi: OshiCharacter
@@ -372,15 +440,16 @@ struct ChatDetailView: View {
             // メッセージエリア
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 16) {
+                    LazyVStack(spacing: 12) {
                         ForEach(chatRoom?.messages ?? []) { message in
                             MessageBubble(message: message, oshi: oshi)
                                 .id(message.id)
                         }
                     }
-                    .padding()
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 16)
                 }
+                .background(Color(.systemGroupedBackground))
                 .onChange(of: chatRoom?.messages.count) { _ in
                     if let lastMessage = chatRoom?.messages.last {
                         withAnimation {
@@ -391,62 +460,106 @@ struct ChatDetailView: View {
             }
             
             // 入力エリア
-            HStack(spacing: 8) {
-                // プラスボタン
-                Button(action: {
-                    generateHapticFeedback()
-                }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-                }
+            VStack(spacing: 0) {
+                Divider()
                 
-                // メッセージ入力欄
-                HStack {
-                    TextField("メッセージを入力", text: $messageText)
-                        .focused($isTextFieldFocused)
-                    
-                    // スタンプボタン
+                HStack(spacing: 12) {
+                    // プラスボタン
                     Button(action: {
                         generateHapticFeedback()
                     }) {
-                        Image(systemName: "face.smiling")
-                            .foregroundColor(.secondary)
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     }
+                    
+                    // メッセージ入力欄
+                    HStack(spacing: 8) {
+                        TextField("メッセージを入力", text: $messageText, axis: .vertical)
+                            .focused($isTextFieldFocused)
+                            .lineLimit(1...5)
+                        
+                        // スタンプボタン
+                        Button(action: {
+                            generateHapticFeedback()
+                        }) {
+                            Image(systemName: "face.smiling")
+                                .font(.system(size: 20))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(22)
+                    
+                    // 送信ボタン
+                    Button(action: {
+                        sendMessage()
+                        generateHapticFeedback()
+                    }) {
+                        Image(systemName: messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "arrow.up.circle.fill" : "paperplane.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(
+                                messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                LinearGradient(
+                                    colors: [Color.gray],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ) :
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(Color(.systemGray6))
-                .cornerRadius(20)
-                
-                // 送信ボタン
-                Button(action: sendMessage) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.title3)
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            Circle()
-                                .fill(
-                                    messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                                    Color.gray : Color.blue
-                                )
-                        )
-                }
-                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
             .background(Color(.systemBackground))
         }
         .navigationTitle(oshi.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    generateHapticFeedback()
-                }) {
-                    Image(systemName: "ellipsis")
+                Menu {
+                    Button {
+                        generateHapticFeedback()
+                    } label: {
+                        Label("検索", systemImage: "magnifyingglass")
+                    }
+                    
+                    Button {
+                        generateHapticFeedback()
+                    } label: {
+                        Label("通知をオフ", systemImage: "bell.slash")
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        generateHapticFeedback()
+                    } label: {
+                        Label("チャットを削除", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 20))
                         .foregroundColor(.primary)
                 }
             }
@@ -465,6 +578,8 @@ struct ChatDetailView: View {
     }
 }
 
+// MARK: - Message Bubble
+
 struct MessageBubble: View {
     let message: Message
     let oshi: OshiCharacter
@@ -473,25 +588,35 @@ struct MessageBubble: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if message.isFromUser {
-                Spacer()
+                Spacer(minLength: 60)
                 
                 VStack(alignment: .trailing, spacing: 4) {
-                    HStack(alignment: .bottom, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 6) {
                         // 既読表示
-                        Text("既読")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
+                        if message.isRead {
+                            Text("既読")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
                         
                         // メッセージバブル
                         Text(message.content)
-                            .padding(.horizontal, 16)
+                            .font(.system(size: 15))
+                            .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             .background(
-                                Color.blue
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                                        Color(red: 0.4, green: 0.5, blue: 1.0)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
                             .foregroundColor(.white)
-                            .cornerRadius(20)
-                            .frame(maxWidth: 260, alignment: .trailing)
+                            .cornerRadius(18)
+                            .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                     }
                 }
             } else {
@@ -501,16 +626,24 @@ struct MessageBubble: View {
                         Image(uiImage: avatarImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 40, height: 40)
+                            .frame(width: 36, height: 36)
                             .clipShape(Circle())
                     } else {
                         Circle()
-                            .fill(Color(.red).gradient)
-                            .frame(width: 40, height: 40)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.3, blue: 0.3),
+                                        Color(red: 1.0, green: 0.5, blue: 0.3)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 36, height: 36)
                             .overlay(
                                 Text(String(oshi.name.prefix(1)))
-                                    .font(.callout)
-                                    .fontWeight(.bold)
+                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
                             )
                     }
@@ -518,17 +651,18 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // 名前
                         Text(oshi.name)
-                            .font(.caption)
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                         
                         // メッセージバブル
                         Text(message.content)
-                            .padding(.horizontal, 16)
+                            .font(.system(size: 15))
+                            .padding(.horizontal, 14)
                             .padding(.vertical, 10)
-                            .background(Color(.systemGray6))
+                            .background(Color(.systemGray5))
                             .foregroundColor(.primary)
-                            .cornerRadius(20)
-                            .frame(maxWidth: 260, alignment: .leading)
+                            .cornerRadius(18)
+                            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                     }
                 }
                 .task {
@@ -537,7 +671,7 @@ struct MessageBubble: View {
                     }
                 }
                 
-                Spacer()
+                Spacer(minLength: 60)
             }
         }
     }
