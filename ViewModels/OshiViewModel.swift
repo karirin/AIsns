@@ -17,6 +17,7 @@ class OshiViewModel: ObservableObject {
     @Published var userProfileAvatarURL: String? = nil
     @Published var bookmarkedPostIDs: Set<UUID> = []
     @Published var bookmarkedPosts: [Post] = []
+    @Published var repostedPostIDs: Set<UUID> = []
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -115,6 +116,58 @@ class OshiViewModel: ObservableObject {
         } catch {
             errorMessage = "フォローに失敗しました"
             print("❌ フォローエラー: \(error)")
+        }
+    }
+    
+    func isReposted(_ post: Post) -> Bool {
+        return repostedPostIDs.contains(post.id)
+    }
+
+    /// リツイート情報の初期読み込み（.taskなどで呼ぶ）
+    func loadUserReposts() async {
+        do {
+            let ids = try await dbManager.loadUserRepostIDs()
+            await MainActor.run {
+                self.repostedPostIDs = Set(ids)
+            }
+        } catch {
+            print("❌ リツイート情報読み込みエラー: \(error)")
+        }
+    }
+
+    /// リツイート切り替え
+    func toggleRepost(for post: Post) {
+        let isCurrentlyReposted = repostedPostIDs.contains(post.id)
+        
+        // 1. UIを即時更新 (楽観的UI更新)
+        if isCurrentlyReposted {
+            repostedPostIDs.remove(post.id)
+            if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                posts[idx].repostCount = max(0, posts[idx].repostCount - 1)
+            }
+        } else {
+            repostedPostIDs.insert(post.id)
+            if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                posts[idx].repostCount += 1
+            }
+        }
+        
+        // 振動フィードバック
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+
+        // 2. 非同期でDB更新
+        Task {
+            do {
+                if isCurrentlyReposted {
+                    try await dbManager.unrepostPost(postId: post.id)
+                } else {
+                    try await dbManager.repostPost(postId: post.id)
+                }
+            } catch {
+                print("❌ リツイート処理エラー: \(error)")
+                // エラー時はUIを戻す処理を入れるのが丁寧ですが、ここでは省略
+            }
         }
     }
 

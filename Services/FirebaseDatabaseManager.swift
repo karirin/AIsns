@@ -139,10 +139,16 @@ class FirebaseDatabaseManager {
             "timestamp": post.timestamp.timeIntervalSince1970,
             "isUserPost": post.isUserPost,
             "reactionCount": post.reactionCount,
-            "commentCount": post.commentCount
+            "commentCount": post.commentCount,
+            "repostCount": post.repostCount // 👈 追加
         ]
-
-        try await postRef.setValue(postData)
+        // 画像URLがあれば追加保存（既存の実装に合わせて調整）
+        if !post.imageURLs.isEmpty {
+             // 簡易的な保存例。本来はpostDataに含めるか別ノード
+             try await postRef.child("imageURLs").setValue(post.imageURLs)
+        }
+        
+        try await postRef.updateChildValues(postData)
     }
 
     /// 投稿リストを取得(軽量・件数のみ)
@@ -784,6 +790,10 @@ class FirebaseDatabaseManager {
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let reactionCount = data["reactionCount"] as? Int ?? 0
         let commentCount = data["commentCount"] as? Int ?? 0
+        let repostCount = data["repostCount"] as? Int ?? 0 // 👈 追加
+
+        // 画像URLの取得 (データ構造に合わせて調整)
+        let imageURLs = data["imageURLs"] as? [String] ?? []
 
         var post = Post(
             id: id,
@@ -791,13 +801,43 @@ class FirebaseDatabaseManager {
             authorName: authorName,
             content: content,
             timestamp: timestamp,
-            isUserPost: isUserPost
+            isUserPost: isUserPost,
+            imageURLs: imageURLs
         )
 
         post.reactionCount = reactionCount
         post.commentCount = commentCount
+        post.repostCount = repostCount // 👈 反映
 
         return post
+    }
+    
+    func repostPost(postId: UUID) async throws {
+        // 1. ユーザーのリツイートリストに追加 (users/{userId}/reposts/{postId})
+        let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
+        try await repostRef.setValue(Date().timeIntervalSince1970)
+
+        // 2. 投稿のrepostCountをインクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/repostCount")
+        try await countRef.setValue(ServerValue.increment(1))
+    }
+
+    /// リツイートを解除する
+    func unrepostPost(postId: UUID) async throws {
+        // 1. ユーザーのリツイートリストから削除
+        let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
+        try await repostRef.removeValue()
+
+        // 2. 投稿のrepostCountをデクリメント
+        let countRef = ref.child("users/\(userId)/posts/\(postId.uuidString)/repostCount")
+        try await countRef.setValue(ServerValue.increment(-1))
+    }
+
+    /// 自分がリツイートした投稿ID一覧を取得
+    func loadUserRepostIDs() async throws -> [UUID] {
+        let snapshot = try await ref.child("users/\(userId)/reposts").getData()
+        guard let value = snapshot.value as? [String: Any] else { return [] }
+        return value.keys.compactMap { UUID(uuidString: $0) }
     }
 
     private func parseMessage(from data: [String: Any]) -> Message? {

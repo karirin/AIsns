@@ -835,10 +835,13 @@ struct PostCardView: View {
                         }
 
                         ActionButton(
-                            icon: "arrow.2.squarepath",
-                            count: 0,
-                            color: .secondary
-                        ) {}
+                            icon: "arrow.2.squarepath", // リツイートっぽいアイコン
+                            count: post.repostCount,
+                            color: viewModel.isReposted(post) ? .green : .secondary, // リツイート済みなら緑
+                            isFilled: false // 太字にするなら true でも可
+                        ) {
+                            viewModel.toggleRepost(for: post)
+                        }
                         .frame(maxWidth: .infinity)
 
                         ActionButton(

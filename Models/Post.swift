@@ -8,17 +8,16 @@ import Foundation
 /// 投稿モデル(画像対応版)
 struct Post: Identifiable, Codable {
     let id: UUID
-    var authorId: UUID? // nil = ユーザー投稿
+    var authorId: UUID?
     var authorName: String
     var content: String
     var timestamp: Date
     var isUserPost: Bool
     
-    // 集計値のみを保持(配列は別テーブルに分離)
     var reactionCount: Int
     var commentCount: Int
+    var repostCount: Int // 👈 追加: リツイート数
     
-    // ✅ 画像URL配列を追加
     var imageURLs: [String]
     
     init(
@@ -28,7 +27,7 @@ struct Post: Identifiable, Codable {
         content: String,
         timestamp: Date = Date(),
         isUserPost: Bool = true,
-        imageURLs: [String] = [] // ✅ デフォルト値を空配列に
+        imageURLs: [String] = []
     ) {
         self.id = id
         self.authorId = authorId
@@ -38,7 +37,8 @@ struct Post: Identifiable, Codable {
         self.isUserPost = isUserPost
         self.reactionCount = 0
         self.commentCount = 0
-        self.imageURLs = imageURLs // ✅ 追加
+        self.repostCount = 0 // 👈 初期化
+        self.imageURLs = imageURLs
     }
 }
 
