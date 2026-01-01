@@ -885,10 +885,13 @@ class OshiViewModel: ObservableObject {
     func toggleUserReaction(on post: Post) {
         Task {
             // 1. UIの即時反映（IDリストの更新）
-            if likedPostIDs.contains(post.id) {
-                likedPostIDs.remove(post.id)
-            } else {
+            // 現在の状態を確認して反転させる
+            let isLiking = !likedPostIDs.contains(post.id)
+            
+            if isLiking {
                 likedPostIDs.insert(post.id)
+            } else {
+                likedPostIDs.remove(post.id)
             }
 
             // 振動フィードバック
@@ -896,32 +899,46 @@ class OshiViewModel: ObservableObject {
             generator.impactOccurred()
 
             do {
-                // ... (既存の userId 定義など) ...
+                // ユーザーを表す固定ID
                 let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
 
-                // 詳細データの更新ロジック（既存のコード）はそのままでOK
-                // DBへの保存処理も既存のままでOK
-                // ...
-                if var details = postDetails[post.id] {
-                    if let existingIndex = details.reactions.firstIndex(where: { $0.oshiId == userId }) {
-                        // 削除処理
-                        let removedReaction = details.reactions.remove(at: existingIndex)
-                        try await dbManager.deleteReaction(removedReaction, from: post.id)
-                        // カウント更新...
-                    } else {
-                        // 追加処理
-                        let reaction = Reaction(oshiId: userId, oshiName: "あなた")
-                        try await dbManager.addReaction(reaction, to: post.id)
-                        // カウント更新...
-                    }
-                } else {
-                    // 詳細がない場合はロードしてから再実行（既存ロジック）
+                // 詳細データがまだない場合はロードする
+                if postDetails[post.id] == nil {
                     await loadPostDetails(for: post.id)
-                    await toggleUserReaction(on: post)
+                }
+
+                // ロード後に再度確認
+                if var details = postDetails[post.id] {
+                    // 既にいいねしているか確認
+                    if let existingIndex = details.reactions.firstIndex(where: { $0.oshiId == userId }) {
+                        // 既にいいね済み -> 削除処理
+                        // (もしUI操作がいいね追加だった場合、ここで矛盾が生じるが、基本的には同期する)
+                        let removedReaction = details.reactions.remove(at: existingIndex)
+                        postDetails[post.id] = details // ローカル更新
+                        
+                        try await dbManager.deleteReaction(removedReaction, from: post.id)
+                        
+                        // 投稿一覧のカウント更新
+                        if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                             posts[idx].reactionCount = max(0, posts[idx].reactionCount - 1)
+                        }
+                    } else {
+                        // いいねしていない -> 追加処理
+                        let reaction = Reaction(oshiId: userId, oshiName: "あなた")
+                        details.reactions.append(reaction)
+                        postDetails[post.id] = details // ローカル更新
+                        
+                        try await dbManager.addReaction(reaction, to: post.id)
+                        
+                        // 投稿一覧のカウント更新
+                         if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                             posts[idx].reactionCount += 1
+                        }
+                    }
                 }
             } catch {
-                // エラー時はUIを戻す（簡易実装）
-                if likedPostIDs.contains(post.id) {
+                // エラー時はUIを元の状態に戻す
+                if isLiking {
                      likedPostIDs.remove(post.id)
                 } else {
                      likedPostIDs.insert(post.id)

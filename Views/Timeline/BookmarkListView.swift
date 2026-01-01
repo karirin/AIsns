@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BookmarkListView: View {
     @ObservedObject var viewModel: OshiViewModel
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
         Group {
@@ -46,6 +47,18 @@ struct BookmarkListView: View {
         }
         .navigationTitle("ブックマーク")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+            }
+        }
         .task {
             // 画面表示時にデータをロード
             await viewModel.fetchBookmarkedPosts()

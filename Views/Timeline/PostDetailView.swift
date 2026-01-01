@@ -12,6 +12,7 @@ struct PostDetailView: View {
     @ObservedObject var viewModel: OshiViewModel
     
     var focusOnAppear: Bool = false
+    @Environment(\.dismiss) var dismiss
 
     // ✅ 入力用Stateを追加
     @State private var commentText = ""
@@ -144,6 +145,18 @@ struct PostDetailView: View {
         }
         .navigationTitle("投稿")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+         .toolbar {
+             ToolbarItem(placement: .navigationBarLeading) {
+                 Button {
+                     dismiss()
+                 } label: {
+                     Image(systemName: "chevron.left")
+                         .font(.system(size: 17, weight: .medium))
+                         .foregroundColor(.primary)
+                 }
+             }
+         }
         .task {
             if viewModel.postDetails[post.id] == nil {
                 await viewModel.loadPostDetails(for: post.id)
