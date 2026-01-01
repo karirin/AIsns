@@ -618,6 +618,7 @@ class OshiViewModel: ObservableObject {
         let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
         
         for oshi in oshiList {
+            try? await Task.sleep(nanoseconds: UInt64.random(in: 5_000_000_000...300_000_000_000))
             // いいね処理 (変更なし)
             if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
                 let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
