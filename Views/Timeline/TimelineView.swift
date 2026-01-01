@@ -59,11 +59,8 @@ struct TimelineScreenView: View {
                         isLoadingUserAvatar = false
                     }
                     
-                    // ▼▼▼ 追加: リツイートといいねの状態を読み込む ▼▼▼
-                    await viewModel.loadUserReposts() // 既存の関数を呼び出す
-                    await viewModel.loadUserLikes()   // 新しく作る関数（後述）
-                    // ▲▲▲ 追加終わり ▲▲▲
-                    
+                    await viewModel.loadUserReposts()
+                    await viewModel.loadUserLikes()
                     await viewModel.loadUserBookmarks()
                 } catch {
                     print("❌ TimelineScreenView load error:", error.localizedDescription)
@@ -116,7 +113,8 @@ struct TimelineScreenView: View {
     
     private var mainContent: some View {
         ZStack(alignment: .bottomTrailing) {
-            VStack{
+            VStack(spacing: 0) {
+                // ヘッダー
                 HStack {
                     Button(action: {
                         generateHapticFeedback()
@@ -130,19 +128,23 @@ struct TimelineScreenView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top)
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.timelinePosts) { post in
-                            PostCardView(post: post, viewModel: viewModel)
-                            Divider()
-                                .padding(.leading, 64)
-                        }
+                
+                // メインコンテンツ
+                Group {
+                    if viewModel.isLoading && viewModel.posts.isEmpty {
+                        // ローディング画面
+                        loadingView
+                    } else if viewModel.timelinePosts.isEmpty {
+                        // エンプティ画面
+                        emptyStateView
+                    } else {
+                        // タイムライン
+                        timelineScrollView
                     }
-                    .padding(.bottom, 80)
                 }
             }
             .refreshable {
-                // リフレッシュ処理
+                await viewModel.loadData()
             }
             
             floatingPostButton
@@ -166,14 +168,12 @@ struct TimelineScreenView: View {
                     let dy = value.translation.height
                     guard abs(dx) > abs(dy) else { return }
 
-                    // 右スワイプで開く（左端からだけにしたいなら startLocation 条件を追加）
                     if dx > 60, !showingSidebar {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSidebar = true
                         }
                     }
 
-                    // 左スワイプで閉じる（任意）
                     if dx < -60, showingSidebar {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSidebar = false
@@ -181,7 +181,246 @@ struct TimelineScreenView: View {
                     }
                 }
         )
+    }
+    
+    // MARK: - Loading View
 
+    private var loadingView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            VStack(spacing: 24) {
+                // アニメーション付きアイコン
+                ZStack {
+                    // 背景の円
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 100, height: 100)
+                    
+                    // 回転する外側のリング
+                    Circle()
+                        .trim(from: 0, to: 0.7)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .frame(width: 80, height: 80)
+                        .rotationEffect(.degrees(-90))
+                        .modifier(RotatingModifier())
+                    
+                    // 中央のアイコン
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 32, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .modifier(PulseModifier())
+                }
+                
+                VStack(spacing: 8) {
+                    Text("タイムラインを読み込み中")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("推しの投稿を取得しています...")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Animation Modifiers
+
+    struct RotatingModifier: ViewModifier {
+        @State private var isRotating = false
+        
+        func body(content: Content) -> some View {
+            content
+                .rotationEffect(.degrees(isRotating ? 360 : 0))
+                .onAppear {
+                    withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                        isRotating = true
+                    }
+                }
+        }
+    }
+
+    struct PulseModifier: ViewModifier {
+        @State private var isPulsing = false
+        
+        func body(content: Content) -> some View {
+            content
+                .scaleEffect(isPulsing ? 1.1 : 1.0)
+                .opacity(isPulsing ? 0.8 : 1.0)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
+                }
+        }
+    }
+    
+    // MARK: - Empty State View
+    
+    private var emptyStateView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer()
+                    .frame(height: 60)
+                
+                // アイコン
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                    
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 50))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                
+                VStack(spacing: 12) {
+                    Text("タイムラインがまだ空です")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.primary)
+                    
+                    Text("推しをフォローして、\nタイムラインを賑やかにしましょう!")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                }
+                
+                VStack(spacing: 16) {
+                    // おすすめから追加ボタン
+                    if !viewModel.recommendedOshis.isEmpty {
+                        Button {
+                            navigationPath.append(SidebarDestination.followers)
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("おすすめから追加")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    // 投稿するボタン
+                    Button {
+                        generateHapticFeedback()
+                        showingPostSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("投稿する")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        .foregroundColor(Color(red: 0.2, green: 0.7, blue: 1.0))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.systemBackground))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.2, green: 0.7, blue: 1.0),
+                                            Color(red: 0.5, green: 0.4, blue: 1.0)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        )
+                        .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 8)
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+    
+    // MARK: - Timeline Scroll View
+    
+    private var timelineScrollView: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.timelinePosts) { post in
+                    PostCardView(post: post, viewModel: viewModel)
+                    Divider()
+                        .padding(.leading, 64)
+                }
+            }
+            .padding(.bottom, 80)
+        }
     }
     
     // MARK: - Sidebar Menu
@@ -220,7 +459,7 @@ struct TimelineScreenView: View {
                     
                     HStack(spacing: 16) {
                         HStack(spacing: 4) {
-                            Text("\(viewModel.followingCount)")  // ← 変更
+                            Text("\(viewModel.followingCount)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.primary)
                             Text("フォロー中")
@@ -229,7 +468,7 @@ struct TimelineScreenView: View {
                         }
                         
                         HStack(spacing: 4) {
-                            Text("\(viewModel.followerCount)")  // ← 追加
+                            Text("\(viewModel.followerCount)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.primary)
                             Text("フォロワー")
@@ -314,7 +553,6 @@ struct TimelineScreenView: View {
                             SidebarMenuItem(
                                 icon: "bookmark.fill",
                                 title: "ブックマーク"
-                                // バッジは不要なら省略
                             )
                         }
                         .buttonStyle(.plain)
@@ -342,8 +580,8 @@ struct TimelineScreenView: View {
     // MARK: - Floating Button
     
     private var floatingPostButton: some View {
-                            Button(action: {
-                        generateHapticFeedback()
+        Button(action: {
+            generateHapticFeedback()
             showingPostSheet = true
         }) {
             Image(systemName: "square.and.pencil")
@@ -724,12 +962,23 @@ struct PostCardView: View {
             
             // 投稿画像読み込み
             if !post.imageURLs.isEmpty {
+                // ✅ 修正1: すでに画像が読み込まれている場合は処理を終了（重複ロード防止）
+                if postImages.count == post.imageURLs.count {
+                    return
+                }
+                
+                // ✅ 修正2: 直接 self.postImages.append() せず、一時配列に入れる
+                var loadedImages: [UIImage] = []
                 for imageURL in post.imageURLs {
                     if let image = try? await FirebaseStorageManager.shared.downloadImage(from: imageURL) {
-                        await MainActor.run {
-                            postImages.append(image)
-                        }
+                        loadedImages.append(image)
                     }
+                }
+                
+                // ✅ 修正3: 配列を一括で上書き（追加ではなく置き換え）
+                let finalImages = loadedImages
+                await MainActor.run {
+                    self.postImages = finalImages
                 }
             }
         }
