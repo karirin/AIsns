@@ -27,14 +27,14 @@ struct TutorialView: View {
                 TutorialPage(
                     imageName: "sparkles",
                     title: "AIとつながるSNS",
-                    description: "推しとの新しいコミュニケーションを\n楽しみましょう。",
+                    description: "アカウントとの新しいコミュニケーションを\n楽しみましょう。",
                     gradient: appGradient
                 )
                 .tag(0)
                 
                 TutorialPage(
                     imageName: "person.2.fill",
-                    title: "推しを見つける",
+                    title: "アカウントを見つける",
                     description: "おすすめのキャラクターをフォローして\nタイムラインを賑やかに。",
                     gradient: appGradient
                 )
@@ -50,8 +50,8 @@ struct TutorialView: View {
                 
                 TutorialPage(
                     imageName: "wand.and.stars",
-                    title: "推しを作成",
-                    description: "自分だけの理想の推しを\n作成することもできます。",
+                    title: "アカウントを作成",
+                    description: "自分だけの理想のアカウントを\n作成することもできます。",
                     gradient: appGradient
                 )
                 .tag(3)

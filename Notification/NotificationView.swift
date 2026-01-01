@@ -231,7 +231,7 @@ struct NotificationView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
                 
-                Text("推しの投稿やメッセージが\nここに表示されます")
+                Text("フォロワーの投稿やメッセージが\nここに表示されます")
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)

@@ -274,7 +274,7 @@ struct OshiProfileView: View {
                                     Button(action: {
                         generateHapticFeedback()
                                         showingDeleteAlert = true }) {
-                    Text("推しを削除")
+                    Text("アカウントを削除")
                         .font(.body)
                         .foregroundColor(.red)
                         .frame(maxWidth: .infinity)
@@ -302,7 +302,7 @@ struct OshiProfileView: View {
                 OshiProfileEditView(oshi: oshi, viewModel: viewModel)
             }
         }
-        .alert("推しを削除しますか?", isPresented: $showingDeleteAlert) {
+        .alert("アカウントを削除しますか?", isPresented: $showingDeleteAlert) {
             Button("キャンセル", role: .cancel) { }
             Button("削除", role: .destructive) {
                 viewModel.deleteOshi(oshi)

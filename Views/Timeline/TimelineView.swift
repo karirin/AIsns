@@ -245,7 +245,7 @@ struct TimelineScreenView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
                     
-                    Text("推しの投稿を取得しています...")
+                    Text("アカウントの投稿を取得しています...")
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                 }
@@ -329,7 +329,7 @@ struct TimelineScreenView: View {
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.primary)
                     
-                    Text("推しをフォローして、\nタイムラインを賑やかにしましょう!")
+                    Text("アカウントをフォローして、\nタイムラインを賑やかにしましょう!")
                         .font(.system(size: 15))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -345,7 +345,7 @@ struct TimelineScreenView: View {
                             HStack {
                                 Image(systemName: "person.badge.plus")
                                     .font(.system(size: 16, weight: .semibold))
-                                Text("おすすめから追加")
+                                Text("アカウントをフォローする")
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .foregroundColor(.white)

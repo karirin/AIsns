@@ -289,7 +289,7 @@ struct OshiCreationView: View {
                 .animation(.spring(response: 0.3), value: showingSaveConfirmation)
             }
         }
-        .navigationTitle("推しを作成")
+        .navigationTitle("アカウントを作成")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

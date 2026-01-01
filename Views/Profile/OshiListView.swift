@@ -35,7 +35,7 @@ struct OshiListView: View {
                         OshiListPage(
                             oshis: viewModel.oshiList.filter { $0.isFollowingUser },
                             emptyTitle: "フォロワーはいません",
-                            emptySubtitle: "投稿して推しに見つけてもらいましょう",
+                            emptySubtitle: "投稿してフォローしてもらいましょう",
                             iconName: "person.2.slash",
                             viewModel: viewModel
                         )
@@ -43,8 +43,8 @@ struct OshiListView: View {
                         
                         OshiListPage(
                             oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
-                            emptyTitle: "フォロー中の推しはいません",
-                            emptySubtitle: "気になる推しを見つけてフォローしましょう",
+                            emptyTitle: "フォロー中のアカウントはいません",
+                            emptySubtitle: "気になるアカウントを見つけてフォローしましょう",
                             iconName: "person.slash",
                             viewModel: viewModel
                         )

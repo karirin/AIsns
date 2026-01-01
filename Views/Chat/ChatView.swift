@@ -1,9 +1,13 @@
+// Views/Chat/ChatView.swift
 import SwiftUI
 
 struct ChatListView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
+    
+    // ✅ ローディング状態を追加
+    @State private var isLoading = true
     
     var sortedChatRooms: [ChatRoom] {
         viewModel.chatRooms.sorted { room1, room2 in
@@ -13,16 +17,16 @@ struct ChatListView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                ForEach(sortedChatRooms) { room in
-                    if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
-                        NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel)) {
-                            ChatRoomRow(oshi: oshi, room: room)
-                        }
-                    }
+            ZStack {
+                // ✅ 状態に応じた表示
+                if isLoading {
+                    loadingView
+                } else if sortedChatRooms.isEmpty {
+                    emptyStateView
+                } else {
+                    chatListView
                 }
             }
-            .listStyle(.plain)
             .navigationTitle("チャット")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -38,8 +42,241 @@ struct ChatListView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // ✅ データ読み込み
+                await loadChatRooms()
+            }
+            .refreshable {
+                await loadChatRooms()
+            }
         }
         .navigationBarBackButtonHidden(true)
+    }
+    
+    // MARK: - ✅ Loading View
+    
+    private var loadingView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            VStack(spacing: 24) {
+                // アニメーション付きアイコン
+                ZStack {
+                    // 背景の円
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 100, height: 100)
+                    
+                    // 回転する外側のリング
+                    Circle()
+                        .trim(from: 0, to: 0.7)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .frame(width: 80, height: 80)
+                        .rotationEffect(.degrees(-90))
+                        .modifier(RotatingModifier())
+                    
+                    // 中央のアイコン
+                    Image(systemName: "message.fill")
+                        .font(.system(size: 32, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .modifier(PulseModifier())
+                }
+                
+                VStack(spacing: 8) {
+                    Text("チャットを読み込み中")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("フォロワーとの会話を取得しています...")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - ✅ Empty State View
+    
+    private var emptyStateView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer()
+                    .frame(height: 60)
+                
+                // アイコン
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                    
+                    Image(systemName: "message.badge")
+                        .font(.system(size: 50))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                
+                VStack(spacing: 12) {
+                    Text("チャットがまだありません")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.primary)
+                    
+                    Text("アカウントをフォローして、\n会話を始めましょう!")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                }
+                
+                // フォロー画面へのボタン
+                if !viewModel.oshiList.isEmpty || !viewModel.recommendedOshis.isEmpty {
+                    VStack(spacing: 16) {
+                        NavigationLink {
+                            OshiListView(viewModel: viewModel, isPresented: .constant(true))
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("フォロワーを見る")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.2, green: 0.7, blue: 1.0),
+                                        Color(red: 0.5, green: 0.4, blue: 1.0)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.top, 8)
+                }
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+    
+    // MARK: - ✅ Chat List View
+    
+    private var chatListView: some View {
+        List {
+            ForEach(sortedChatRooms) { room in
+                if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
+                    NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel)) {
+                        ChatRoomRow(oshi: oshi, room: room)
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+    }
+    
+    // MARK: - ✅ Data Loading
+    
+    private func loadChatRooms() async {
+        isLoading = true
+        
+        // 既にViewModelでロード済みの場合はスキップ
+        if !viewModel.chatRooms.isEmpty {
+            isLoading = false
+            return
+        }
+        
+        // 少し待ってからローディングを解除（アニメーション表示のため）
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+        
+        await MainActor.run {
+            isLoading = false
+        }
+    }
+    
+    // MARK: - Animation Modifiers
+    
+    struct RotatingModifier: ViewModifier {
+        @State private var isRotating = false
+        
+        func body(content: Content) -> some View {
+            content
+                .rotationEffect(.degrees(isRotating ? 360 : 0))
+                .onAppear {
+                    withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                        isRotating = true
+                    }
+                }
+        }
+    }
+    
+    struct PulseModifier: ViewModifier {
+        @State private var isPulsing = false
+        
+        func body(content: Content) -> some View {
+            content
+                .scaleEffect(isPulsing ? 1.1 : 1.0)
+                .opacity(isPulsing ? 0.8 : 1.0)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
+                }
+        }
     }
 }
 
@@ -156,8 +393,9 @@ struct ChatDetailView: View {
             // 入力エリア
             HStack(spacing: 8) {
                 // プラスボタン
-                                    Button(action: {
-                        generateHapticFeedback()}) {
+                Button(action: {
+                    generateHapticFeedback()
+                }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
                         .foregroundColor(.secondary)
@@ -169,8 +407,9 @@ struct ChatDetailView: View {
                         .focused($isTextFieldFocused)
                     
                     // スタンプボタン
-                                        Button(action: {
-                        generateHapticFeedback()}) {
+                    Button(action: {
+                        generateHapticFeedback()
+                    }) {
                         Image(systemName: "face.smiling")
                             .foregroundColor(.secondary)
                     }
@@ -204,8 +443,9 @@ struct ChatDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                                    Button(action: {
-                        generateHapticFeedback()}) {
+                Button(action: {
+                    generateHapticFeedback()
+                }) {
                     Image(systemName: "ellipsis")
                         .foregroundColor(.primary)
                 }
