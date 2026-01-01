@@ -2,6 +2,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 class OshiViewModel: ObservableObject {
@@ -14,6 +15,8 @@ class OshiViewModel: ObservableObject {
     @Published var notifications: [AppNotification] = []
     @Published var userProfileName: String = "あなた"
     @Published var userProfileAvatarURL: String? = nil
+    @Published var bookmarkedPostIDs: Set<UUID> = []
+    @Published var bookmarkedPosts: [Post] = []
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -112,6 +115,75 @@ class OshiViewModel: ObservableObject {
         } catch {
             errorMessage = "フォローに失敗しました"
             print("❌ フォローエラー: \(error)")
+        }
+    }
+
+    // アプリ起動時などに呼び出してブックマーク状態を同期する
+    func loadUserBookmarks() async {
+        do {
+            let ids = try await dbManager.loadBookmarkIDs()
+            await MainActor.run {
+                self.bookmarkedPostIDs = Set(ids)
+            }
+        } catch {
+            print("❌ ブックマークID読み込みエラー: \(error)")
+        }
+    }
+
+    /// 投稿がブックマーク済みかチェック
+    func isBookmarked(_ post: Post) -> Bool {
+        return bookmarkedPostIDs.contains(post.id)
+    }
+
+    /// ブックマークの切り替え（保存/削除）
+    func toggleBookmark(for post: Post) {
+        if bookmarkedPostIDs.contains(post.id) {
+            // 削除処理
+            bookmarkedPostIDs.remove(post.id)
+            // 一覧データからも削除
+            if let index = bookmarkedPosts.firstIndex(where: { $0.id == post.id }) {
+                bookmarkedPosts.remove(at: index)
+            }
+            
+            Task {
+                try? await dbManager.deleteBookmark(postId: post.id)
+            }
+        } else {
+            // 保存処理
+            bookmarkedPostIDs.insert(post.id)
+            
+            Task {
+                try? await dbManager.saveBookmark(postId: post.id)
+            }
+        }
+        // 振動フィードバック
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+    }
+
+    /// ブックマーク一覧画面用のデータを取得（IDリストから投稿実体を取得）
+    func fetchBookmarkedPosts() async {
+        do {
+            // 1. 最新のIDリストを取得
+            let ids = try await dbManager.loadBookmarkIDs()
+            
+            await MainActor.run {
+                self.bookmarkedPostIDs = Set(ids)
+            }
+            
+            guard !ids.isEmpty else {
+                await MainActor.run { self.bookmarkedPosts = [] }
+                return
+            }
+            
+            // 2. 投稿データをDBから取得
+            let posts = try await dbManager.loadPosts(by: ids)
+            
+            await MainActor.run {
+                self.bookmarkedPosts = posts
+            }
+        } catch {
+            print("❌ ブックマーク一覧取得エラー: \(error)")
         }
     }
 
@@ -621,6 +693,51 @@ class OshiViewModel: ObservableObject {
         }
         
         return selected
+    }
+    
+    func addUserComment(to post: Post, content: String) {
+        // ユーザーを表す固定UUID（いいね機能と同じIDを使用）
+        let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+        
+        // Commentモデルを作成（oshiNameには現在のユーザー名を使用）
+        let comment = Comment(
+            oshiId: userId,
+            oshiName: userProfileName,
+            content: content
+        )
+        
+        Task {
+            do {
+                // 1. Firebaseに保存
+                try await dbManager.addComment(comment, to: post.id)
+                
+                // 2. ローカルの表示を即時更新
+                await MainActor.run {
+                    if var details = postDetails[post.id] {
+                        details.comments.append(comment)
+                        postDetails[post.id] = details
+                    } else {
+                        // 詳細が未ロードの場合（稀なケース）
+                        postDetails[post.id] = PostDetails(post: post, comments: [comment])
+                    }
+                    
+                    // 投稿一覧のコメント数カウントも更新
+                    if let idx = posts.firstIndex(where: { $0.id == post.id }) {
+                        posts[idx].commentCount += 1
+                    }
+                }
+                
+                print("✅ コメント投稿成功: \(content)")
+                
+                // 必要であれば、推しからの返信ロジックなどをここに追記可能
+                
+            } catch {
+                print("❌ コメント投稿エラー: \(error)")
+                await MainActor.run {
+                    errorMessage = "コメントの投稿に失敗しました"
+                }
+            }
+        }
     }
     
     func createOshiPost(by oshi: OshiCharacter) {

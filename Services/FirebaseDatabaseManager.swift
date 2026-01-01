@@ -662,6 +662,72 @@ class FirebaseDatabaseManager {
         }
     }
     
+    func saveBookmark(postId: UUID) async throws {
+        // users/{userId}/bookmarks/{postId} に保存 (値はタイムスタンプ)
+        let refPath = "users/\(userId)/bookmarks/\(postId.uuidString)"
+        let timestamp = Date().timeIntervalSince1970
+        try await ref.child(refPath).setValue(timestamp)
+        print("✅ ブックマーク保存: \(postId)")
+    }
+
+    /// ブックマークを削除
+    func deleteBookmark(postId: UUID) async throws {
+        let refPath = "users/\(userId)/bookmarks/\(postId.uuidString)"
+        try await ref.child(refPath).removeValue()
+        print("🗑️ ブックマーク削除: \(postId)")
+    }
+
+    /// ブックマークした投稿ID一覧を取得
+    func loadBookmarkIDs() async throws -> [UUID] {
+        let snapshot = try await ref.child("users/\(userId)/bookmarks").getData()
+        
+        guard let value = snapshot.value as? [String: TimeInterval] else {
+            return []
+        }
+        
+        // タイムスタンプ順（新しい順）にソートしてIDを返す
+        let sortedIDs = value.sorted { $0.value > $1.value }.compactMap { UUID(uuidString: $0.key) }
+        return sortedIDs
+    }
+
+    /// 指定されたIDリストに対応する投稿データを取得（ブックマーク一覧表示用）
+    func loadPosts(by postIds: [UUID]) async throws -> [Post] {
+        var loadedPosts: [Post] = []
+        
+        // Note: Firebase Realtime DBでは "WHERE id IN (...)" ができないため、
+        // IDごとに並列でフェッチします
+        
+        await withTaskGroup(of: Post?.self) { group in
+            for postId in postIds {
+                group.addTask {
+                    do {
+                        // 投稿データを取得
+                        let snapshot = try await self.ref.child("users/\(self.userId)/posts/\(postId.uuidString)").getData()
+                        
+                        guard let data = snapshot.value as? [String: Any],
+                              let post = self.parsePost(from: data) else {
+                            return nil
+                        }
+                        return post
+                    } catch {
+                        print("⚠️ 投稿取得エラー \(postId): \(error)")
+                        return nil
+                    }
+                }
+            }
+            
+            for await post in group {
+                if let post = post {
+                    loadedPosts.append(post)
+                }
+            }
+        }
+        
+        // 元のIDリストの順序（保存した順）に合わせて並び替え直す
+        // または、日付順にするなら $0.timestamp > $1.timestamp
+        return loadedPosts.sorted { $0.timestamp > $1.timestamp }
+    }
+    
     /// 全ての通知を削除
     func clearAllNotifications() async throws {
         try await ref.child("users/\(userId)/notifications").removeValue()

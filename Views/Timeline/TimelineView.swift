@@ -7,6 +7,7 @@ enum SidebarDestination: Hashable {
     case followers
     case chat
     case notifications
+    case bookmarks
 }
 
 struct TimelineScreenView: View {
@@ -43,6 +44,8 @@ struct TimelineScreenView: View {
                     ChatListView(viewModel: viewModel, isPresented: .constant(true) )
                 case .notifications:
                     NotificationView(viewModel: viewModel, isPresented: .constant(true))
+                case .bookmarks:
+                    BookmarkListView(viewModel: viewModel)
                 }
             }
             .task {
@@ -56,6 +59,8 @@ struct TimelineScreenView: View {
                         userAvatarImage = try await FirebaseStorageManager.shared.downloadImage(from: url)
                         isLoadingUserAvatar = false
                     }
+                    
+                    await viewModel.loadUserBookmarks()
                 } catch {
                     print("❌ TimelineScreenView load user avatar error:", error.localizedDescription)
                     isLoadingUserAvatar = false
@@ -296,6 +301,19 @@ struct TimelineScreenView: View {
                         }
                         .buttonStyle(.plain)
                         
+                        Button {
+                            navigationPath.append(SidebarDestination.bookmarks)
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showingSidebar = false
+                            }
+                        } label: {
+                            SidebarMenuItem(
+                                icon: "bookmark.fill",
+                                title: "ブックマーク"
+                                // バッジは不要なら省略
+                            )
+                        }
+                        .buttonStyle(.plain)
                         Divider()
                             .padding(.vertical, 8)
                         
@@ -792,12 +810,29 @@ struct PostCardView: View {
 
                     // アクションボタン
                     HStack(spacing: 0) {
-                        ActionButton(
-                            icon: "bubble.left",
-                            count: post.commentCount,
-                            color: .secondary
-                        ) {}
-                        .frame(maxWidth: .infinity)
+                        // ✅ 【修正】コメントボタン: 遷移＆フォーカス指示
+                        if isNavigable {
+                            NavigationLink(destination: PostDetailView(post: post, viewModel: viewModel, focusOnAppear: true)) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 16))
+                                    if post.commentCount > 0 {
+                                        Text("\(post.commentCount)")
+                                            .font(.system(size: 13))
+                                    }
+                                }
+                                .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            ActionButton(
+                                icon: "bubble.left",
+                                count: post.commentCount,
+                                color: .secondary
+                            ) {}
+                            .frame(maxWidth: .infinity)
+                        }
 
                         ActionButton(
                             icon: "arrow.2.squarepath",
@@ -818,9 +853,13 @@ struct PostCardView: View {
 
                         ActionButton(
                             icon: "bookmark",
-                            count: nil,
-                            color: .secondary
-                        ) {}
+                            count: nil, // ブックマーク数は通常表示しないためnil
+                            color: viewModel.isBookmarked(post) ? .blue : .secondary, // 保存済みなら青色
+                            isFilled: viewModel.isBookmarked(post) // 保存済みなら塗りつぶしアイコン
+                        ) {
+                            // タップ時のアクション
+                            viewModel.toggleBookmark(for: post)
+                        }
                         .frame(maxWidth: .infinity)
 
                         ActionButton(
@@ -995,13 +1034,47 @@ struct CommentRow: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var avatarImage: UIImage?
     
+    // ✅ ユーザー（自分）のコメントかどうか判定
+    var isUser: Bool {
+        comment.oshiId == UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+    }
+    
     var oshi: OshiCharacter? {
         viewModel.oshiList.first { $0.id == comment.oshiId }
     }
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if let oshi = oshi {
+            // ✅ アバター表示の分岐
+            if isUser {
+                // ユーザーのアバター表示
+                if let avatarImage = avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.2, green: 0.7, blue: 1.0),
+                                    Color(red: 0.5, green: 0.4, blue: 1.0)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        )
+                }
+            } else if let oshi = oshi {
+                // 推しのアバター表示 (既存のロジック)
                 if let avatarImage = avatarImage {
                     Image(uiImage: avatarImage)
                         .resizable()
@@ -1027,6 +1100,11 @@ struct CommentRow: View {
                                 .foregroundColor(.white)
                         )
                 }
+            } else {
+                // 不明なユーザー
+                Circle()
+                    .fill(Color.gray)
+                    .frame(width: 36, height: 36)
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -1049,7 +1127,12 @@ struct CommentRow: View {
             Spacer()
         }
         .task {
-            if let oshi = oshi, let urlString = oshi.avatarImageURL {
+            // ✅ 画像読み込みロジックの分岐
+            if isUser {
+                if let url = viewModel.userProfileAvatarURL {
+                    avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
+                }
+            } else if let oshi = oshi, let urlString = oshi.avatarImageURL {
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
             }
         }
