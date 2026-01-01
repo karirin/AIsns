@@ -45,6 +45,10 @@ class OshiViewModel: ObservableObject {
         oshiList.filter { $0.isMutualFollow }.count
     }
     
+    var followingOshiIds: Set<UUID> {
+        Set(oshiList.filter { $0.isFollowedByUser }.map { $0.id })
+    }
+    
     var timelinePosts: [Post] {
         posts.filter { post in
             // ユーザーの投稿は常に表示
