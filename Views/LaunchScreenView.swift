@@ -2,28 +2,72 @@
 //  LaunchScreenView.swift
 //  AIsns
 //
-//  Created: 2025/12/29
-//  起動画面 - AIとつながる新しいSNS体験
+//  Updated: 初回起動時のチュートリアル表示を追加
 //
 
 import SwiftUI
 
 struct LaunchScreenView: View {
     @State private var isAnimating = false
-    @State private var showMainApp = false
+    
+    // ✅ 画面遷移の状態管理（起動画面 -> チュートリアル -> メイン）
+    @State private var navigationState: NavigationState = .launch
+    
+    // ✅ 初回起動フラグ（保存される）
+    @AppStorage("hasSeenTutorial") private var hasSeenTutorial: Bool = false
+    
+    enum NavigationState {
+        case launch
+        case tutorial
+        case main
+    }
     
     var body: some View {
         ZStack {
-            if showMainApp {
-                MainTabView()
-                    .transition(.opacity)
-            } else {
+            switch navigationState {
+            case .launch:
                 launchContent
+                    .transition(.opacity)
+            case .tutorial:
+                // ✅ チュートリアル表示
+                TutorialView {
+                    finishTutorial()
+                }
+                .transition(.opacity)
+            case .main:
+                // ✅ メインアプリ表示
+                MainTabView()
                     .transition(.opacity)
             }
         }
         .onAppear {
             startAnimation()
+        }
+    }
+    
+    private func startAnimation() {
+        withAnimation {
+            isAnimating = true
+        }
+        
+        // 2.5秒後に次の画面へ
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeOut(duration: 0.5)) {
+                // 初回ならチュートリアル、そうでなければメインへ
+                if hasSeenTutorial {
+                    navigationState = .main
+                } else {
+                    navigationState = .tutorial
+                }
+            }
+        }
+    }
+    
+    // ✅ チュートリアル完了処理
+    private func finishTutorial() {
+        withAnimation(.easeOut(duration: 0.5)) {
+            hasSeenTutorial = true
+            navigationState = .main
         }
     }
     
@@ -39,6 +83,8 @@ struct LaunchScreenView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
+            
+            // ... (既存のデザインコードはそのまま維持) ...
             
             // 動的な背景パーティクル
             GeometryReader { geometry in
@@ -264,23 +310,4 @@ struct LaunchScreenView: View {
             }
         }
     }
-    
-    private func startAnimation() {
-        withAnimation {
-            isAnimating = true
-        }
-        
-        // 2.5秒後にメインアプリを表示
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(.easeOut(duration: 0.5)) {
-                showMainApp = true
-            }
-        }
-    }
-}
-
-// MARK: - Preview
-
-#Preview {
-    LaunchScreenView()
 }
