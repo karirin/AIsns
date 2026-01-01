@@ -597,7 +597,7 @@ class OshiViewModel: ObservableObject {
                 try await dbManager.savePost(post)
                 
                 // すべての推しが反応(遅延実行)
-                try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64.random(in: 60_000_000_000...300_000_000_000))
                 await generateReactionsForPost(post)
                 
             } catch {
@@ -633,7 +633,7 @@ class OshiViewModel: ObservableObject {
             // コメント処理
             if selectedCommenters.contains(where: { $0.id == oshi.id }) {
                 do {
-                    try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...5_000_000_000))
+                    try await Task.sleep(nanoseconds: UInt64.random(in: 60_000_000_000...300_000_000_000))
                     
                     // ✅ 修正: mood は String なので .rawValue は不要
                     let commentText = try await aiService.generateComment(
@@ -844,7 +844,7 @@ class OshiViewModel: ObservableObject {
                 print("✅ Firebase保存完了")
                 
                 // すべての推しが反応(遅延実行)
-                let delay = UInt64.random(in: 1_000_000_000...3_000_000_000)
+                let delay = UInt64.random(in: 60_000_000_000...300_000_000_000)
                 print("⏱️ \(Double(delay) / 1_000_000_000)秒後に反応生成開始")
                 try await Task.sleep(nanoseconds: delay)
                 
@@ -1023,7 +1023,7 @@ class OshiViewModel: ObservableObject {
                     try await dbManager.saveOshi(oshiList[oshiIndex])
                 }
                 
-                try await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000_000...3_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000_000...60_000_000_000))
                 
                 // ✅ 修正: userNameを渡す
                 let reply = try await aiService.generateChatReply(
