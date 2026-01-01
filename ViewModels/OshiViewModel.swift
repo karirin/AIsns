@@ -281,20 +281,49 @@ class OshiViewModel: ObservableObject {
 
     /// 相互フォローになった時の挨拶メッセージ
     private func sendMutualFollowMessage(to oshi: OshiCharacter) async {
-        guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { return }
+        // 1. チャットルームを探す、なければ作る
+        var roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id })
+        
+        if roomIndex == nil {
+            // ルームがない場合は新規作成
+            let newRoom = ChatRoom(oshiId: oshi.id)
+            chatRooms.append(newRoom)
+            roomIndex = chatRooms.count - 1 // 追加した末尾のインデックス
+            
+            do {
+                try await dbManager.saveChatRoom(newRoom)
+                print("✅ チャットルームを自動作成しました: \(oshi.name)")
+            } catch {
+                print("❌ チャットルーム作成エラー: \(error)")
+                return
+            }
+        }
+        
+        // インデックスを確定
+        guard let index = roomIndex else { return }
         
         do {
-            // ✅ 修正: userNameを渡す
+            // 2. AIによる挨拶メッセージ生成
             let greeting = try await aiService.generateGreeting(
                 type: .mutualFollow,
                 by: oshi,
                 userName: userProfileName
             )
             
+            // 3. メッセージの作成と保存
             let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
-            chatRooms[roomIndex].addMessage(message)
+            
+            // ローカルのチャットルームに追加
+            chatRooms[index].addMessage(message)
+            
+            // Firebaseに保存
             try await dbManager.addMessage(to: oshi.id, message: message)
+            
+            // 通知を作成
             createChatNotification(oshi: oshi, message: message)
+            
+            print("✅ 相互フォローメッセージ送信完了: \(greeting)")
+            
         } catch {
             print("❌ 相互フォロー挨拶エラー: \(error)")
         }

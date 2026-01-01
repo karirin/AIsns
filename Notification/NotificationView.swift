@@ -74,7 +74,10 @@ struct NotificationView: View {
         var groups: [GroupedNotification] = []
         var processed: Set<UUID> = []
         
-        let notifications = viewModel.notifications
+        // ✅ 修正: 「チャット」と「推しの投稿」を画面表示から除外
+        let notifications = viewModel.notifications.filter {
+            $0.type != .chat && $0.type != .oshiPost
+        }
         
         for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
             guard !processed.contains(notification.id) else { continue }

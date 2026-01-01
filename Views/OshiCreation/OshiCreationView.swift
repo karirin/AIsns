@@ -2,7 +2,7 @@
 //  OshiCreationView.swift
 //  AIsns
 //
-//  Created: 2025/12/21 - OshiProfileEditView と同じデザインに統一
+//  Created: 2025/12/21 - 最新デザインに統一
 //
 
 import SwiftUI
@@ -11,10 +11,10 @@ struct OshiCreationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
 
-    // Edit画面と同じ粒度の入力State
+    // 入力State
     @State private var name: String = ""
     @State private var gender: Gender? = nil
-    @State private var personalityText: String = ""          // 自由入力
+    @State private var personalityText: String = ""
     @State private var speechCharacteristics: String = ""
     @State private var userCallingName: String = ""
     @State private var speechStyleText: String = ""
@@ -26,280 +26,266 @@ struct OshiCreationView: View {
 
     var body: some View {
         ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
+            
             ScrollView {
-                VStack(spacing: 0) {
-                    // プロフィール画像エリア（Editと同じ）
-                    VStack(spacing: 12) {
+                VStack(spacing: 24) {
+                    // プロフィール画像エリア
+                    VStack(spacing: 16) {
                         Button(action: {
-                        generateHapticFeedback()
-                                                showingImagePicker = true }) {
+                            generateHapticFeedback()
+                            showingImagePicker = true
+                        }) {
                             Group {
                                 if isLoadingImage {
                                     Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 100, height: 100)
-                                        .overlay(
-                                            ProgressView()
-                                        )
+                                        .fill(Color(.systemGray5))
+                                        .frame(width: 120, height: 120)
+                                        .overlay(ProgressView())
                                 } else if let avatarImage = avatarImage {
                                     Image(uiImage: avatarImage)
                                         .resizable()
                                         .scaledToFill()
-                                        .frame(width: 100, height: 100)
+                                        .frame(width: 120, height: 120)
                                         .clipShape(Circle())
                                         .overlay(
                                             Circle()
-                                                .stroke(Color.white, lineWidth: 4)
+                                                .stroke(Color(.systemGray4), lineWidth: 1)
                                         )
-                                        .shadow(radius: 5)
                                 } else {
-                                    Circle()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.red, .red.opacity(0.7)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 100, height: 100)
-                                        .overlay(
-                                            Text(String(name.prefix(1).isEmpty ? "?" : name.prefix(1)))
-                                                .font(.system(size: 40, weight: .bold))
-                                                .foregroundColor(.white)
-                                        )
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(.systemGray5))
+                                            .frame(width: 120, height: 120)
+                                        
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "person.crop.circle.badge.plus")
+                                                .font(.system(size: 40))
+                                                .foregroundColor(.secondary)
+                                            
+                                            Text("写真を追加")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
                                 }
                             }
                         }
-
-                        Text("写真を変更")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
+                        .buttonStyle(.plain)
                     }
-                    .padding(.top, 24)
-                    .padding(.bottom, 32)
+                    .padding(.top, 32)
 
-                    // ユーザー情報セクション（Editと同じ）
-                    VStack(spacing: 0) {
-                        Text("ユーザー情報")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
-                            .padding(.bottom, 8)
-
-                        VStack(spacing: 0) {
-                            // 名前
-                            HStack {
-                                Text("名前")
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-
-                                Spacer()
-
-                                TextField("", text: $name)
-                                    .multilineTextAlignment(.trailing)
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.clear)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 14)
-                            .background(Color(.systemBackground))
-
-                            Divider()
-                                .padding(.leading, 16)
-
-                            // 性別
-                            NavigationLink {
-                                GenderSelectionView(selectedGender: $gender)
-                            } label: {
-                                HStack {
-                                    Text("性別")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-
-                                    Spacer()
-
-                                    Text(gender?.rawValue ?? "未設定")
+                    // フォームコンテナ
+                    VStack(spacing: 20) {
+                        // 基本情報セクション
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("基本情報")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 16)
+                            
+                            VStack(spacing: 0) {
+                                // 名前
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("名前")
                                         .font(.subheadline)
-                                        .foregroundColor(gender == nil ? .secondary : .primary)
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
                                         .foregroundColor(.secondary)
+                                    
+                                    TextField("推しの名前を入力", text: $name)
+                                        .textFieldStyle(.plain)
+                                        .font(.body)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(10)
                                 }
-                                .padding(.horizontal)
-                                .padding(.vertical, 14)
-                                .background(Color(.systemBackground))
+                                .padding(16)
+                                
+                                Divider()
+                                    .padding(.leading, 16)
+                                
+                                // 性別
+                                NavigationLink {
+                                    GenderSelectionView(selectedGender: $gender)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("性別")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                            
+                                            Text(gender?.rawValue ?? "未設定")
+                                                .font(.body)
+                                                .foregroundColor(gender == nil ? .secondary : .primary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(16)
+                                }
+                                .buttonStyle(.plain)
                             }
-
-                            Divider()
-                                .padding(.leading, 16)
-                        }
-                        .background(Color(.systemBackground))
-                    }
-
-                    // キャラクター設定セクション（Editと同じ）
-                    VStack(spacing: 0) {
-                        Text("キャラクター設定")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
-                            .padding(.top, 32)
-                            .padding(.bottom, 8)
-
-                        VStack(spacing: 0) {
-                            // 性格（自由入力）
-                            NavigationLink {
-                                FreeTextEditView(
-                                    title: "性格",
-                                    placeholder: "優しい、明るい、ツンデレ など",
-                                    text: $personalityText
-                                )
-                            } label: {
-                                EditRowLabel(
-                                    label: "性格",
-                                    value: personalityText.isEmpty ? "追加" : personalityText,
-                                    valueColor: personalityText.isEmpty ? .secondary : .primary
-                                )
-                            }
-
-                            Divider()
-                                .padding(.leading, 16)
-
-                            // 話し方の特徴
-                            NavigationLink {
-                                FreeTextEditView(
-                                    title: "話し方の特徴",
-                                    placeholder: "柔らかい口調、元気いっぱい など",
-                                    text: $speechCharacteristics
-                                )
-                            } label: {
-                                EditRowLabel(
-                                    label: "話し方の特徴",
-                                    value: speechCharacteristics.isEmpty ? "追加" : speechCharacteristics,
-                                    valueColor: speechCharacteristics.isEmpty ? .secondary : .primary
-                                )
-                            }
-
-                            Divider()
-                                .padding(.leading, 16)
-
-                            // ユーザーへの呼び方
-                            HStack {
-                                Text("ユーザーへの呼び方")
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-
-                                Spacer()
-
-                                TextField("あなた、きみ など", text: $userCallingName)
-                                    .multilineTextAlignment(.trailing)
-                                    .font(.subheadline)
-                                    .foregroundColor(.primary)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.clear)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 14)
                             .background(Color(.systemBackground))
-
-                            Divider()
-                                .padding(.leading, 16)
-
-                            // 口調（自由入力）
-                            NavigationLink {
-                                FreeTextEditView(
-                                    title: "口調",
-                                    placeholder: "丁寧、タメ口、方言 など",
-                                    text: $speechStyleText
-                                )
-                            } label: {
-                                EditRowLabel(
-                                    label: "口調",
-                                    value: speechStyleText.isEmpty ? "追加" : speechStyleText,
-                                    valueColor: speechStyleText.isEmpty ? .secondary : .primary
-                                )
-                            }
-
-                            Divider()
-                                .padding(.leading, 16)
+                            .cornerRadius(12)
                         }
-                        .background(Color(.systemBackground))
+                        
+                        // キャラクター設定セクション
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("キャラクター設定")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 16)
+                            
+                            VStack(spacing: 0) {
+                                // 性格
+                                NavigationLink {
+                                    FreeTextEditView(
+                                        title: "性格",
+                                        placeholder: "優しい、明るい、ツンデレ など",
+                                        text: $personalityText
+                                    )
+                                } label: {
+                                    CharacterSettingRow(
+                                        label: "性格",
+                                        value: personalityText,
+                                        placeholder: "追加"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Divider()
+                                    .padding(.leading, 16)
+                                
+                                // 話し方の特徴
+                                NavigationLink {
+                                    FreeTextEditView(
+                                        title: "話し方の特徴",
+                                        placeholder: "柔らかい口調、元気いっぱい など",
+                                        text: $speechCharacteristics
+                                    )
+                                } label: {
+                                    CharacterSettingRow(
+                                        label: "話し方の特徴",
+                                        value: speechCharacteristics,
+                                        placeholder: "追加"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Divider()
+                                    .padding(.leading, 16)
+                                
+                                // ユーザーへの呼び方
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("ユーザーへの呼び方")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    TextField("あなた、きみ など", text: $userCallingName)
+                                        .textFieldStyle(.plain)
+                                        .font(.body)
+                                        .padding(.vertical, 12)
+                                        .padding(.horizontal, 16)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(10)
+                                }
+                                .padding(16)
+                                
+                                Divider()
+                                    .padding(.leading, 16)
+                                
+                                // 口調
+                                NavigationLink {
+                                    FreeTextEditView(
+                                        title: "口調",
+                                        placeholder: "丁寧、タメ口、方言 など",
+                                        text: $speechStyleText
+                                    )
+                                } label: {
+                                    CharacterSettingRow(
+                                        label: "口調",
+                                        value: speechStyleText,
+                                        placeholder: "追加"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                        }
                     }
-
-                    Spacer(minLength: 140)
+                    .padding(.horizontal, 16)
+                    
+                    Spacer(minLength: 100)
                 }
             }
-            .background(Color(.systemGray6))
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) {
                     Button {
+                        generateHapticFeedback()
                         createOshi()
                     } label: {
-                        Text("登録")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .foregroundColor(.white)
-                    .background(
-                        LinearGradient(
-                            colors: [.blue, .purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.body)
+                            
+                            Text("登録")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? Color(.systemGray4)
+                            : Color.blue
                         )
-                    )
-                    .cornerRadius(14)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
+                        .foregroundColor(.white)
+                        .cornerRadius(14)
+                    }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGroupedBackground))
                 }
             }
-            // トースト通知（Editと同じ）
+            
+            // トースト通知
             if showingSaveConfirmation {
                 VStack {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark")
-                            .font(.subheadline)
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.body)
                             .foregroundColor(.white)
-                        Text("保存しました")
+                        
+                        Text("登録しました")
                             .font(.subheadline)
+                            .fontWeight(.medium)
                             .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
                     .background(
                         Capsule()
                             .fill(Color.black.opacity(0.85))
                     )
+                    .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
                     .padding(.top, 60)
-
+                    
                     Spacer()
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(response: 0.3), value: showingSaveConfirmation)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showingSaveConfirmation)
             }
         }
-        .navigationTitle("アカウントを作成")
+        .navigationTitle("推しを作成")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("登録") {
-                    createOshi()
-                }
-                .foregroundColor(.primary)
-                .fontWeight(.semibold)
-            }
-        }
         .sheet(isPresented: $showingImagePicker) {
             ImagePickerWithCrop(selectedImage: $avatarImage)
         }
@@ -307,7 +293,6 @@ struct OshiCreationView: View {
 
     private func createOshi() {
         Task {
-            // 文字列 -> enum 変換（合わなければデフォルト）
             let personality: PersonalityType = {
                 if let matched = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
                     return matched
@@ -322,18 +307,16 @@ struct OshiCreationView: View {
                 return .polite
             }()
 
-            // 先にキャラを作成（画像URLは後で入れる）
             var newOshi = OshiCharacter(
                 name: name.isEmpty ? "名無し" : name,
                 gender: gender,
-                personalityText: personalityText, 
+                personalityText: personalityText,
                 speechCharacteristics: speechCharacteristics,
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
                 avatarImageURL: nil
             )
 
-            // 画像がある場合はStorageにアップロードしてURLを保存
             if let image = avatarImage {
                 do {
                     let imageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(
@@ -346,8 +329,6 @@ struct OshiCreationView: View {
                 }
             }
 
-            // ここはあなたのViewModelの実装に合わせて呼び出し名を調整してください
-            // 例: viewModel.addOshi(newOshi) / viewModel.createOshi(newOshi) など
             viewModel.addOshi(newOshi)
 
             await MainActor.run {
@@ -368,7 +349,38 @@ struct OshiCreationView: View {
     }
 }
 
-// Color -> Hex
+// MARK: - Components
+
+struct CharacterSettingRow: View {
+    let label: String
+    let value: String
+    let placeholder: String
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text(value.isEmpty ? placeholder : value)
+                    .font(.body)
+                    .foregroundColor(value.isEmpty ? .secondary : .primary)
+                    .lineLimit(2)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(16)
+    }
+}
+
+// MARK: - Extensions
+
 extension Color {
     func toHex() -> String {
         #if canImport(UIKit)
