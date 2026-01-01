@@ -61,15 +61,13 @@ struct OshiCharacter: Identifiable, Codable {
     var totalInteractions: Int
     var lastInteractionDate: Date?
     var avatarImageURL: String?
-    var isFollowingUser: Bool  // この推しがユーザーをフォローしているか
+    var isFollowingUser: Bool
     var isFollowedByUser: Bool
     
-    // ✅ 計算プロパティとして定義(保存しない)
     var isMutualFollow: Bool {
         isFollowingUser && isFollowedByUser
     }
 
-    // UIImageに変換
     @MainActor
     var avatarImage: UIImage? {
         get async {
@@ -78,13 +76,14 @@ struct OshiCharacter: Identifiable, Codable {
         }
     }
     
-    // 親密度に応じた呼び方（既存のロジックは保持）
-    var callingName: String {
+    // ✅ 修正: ユーザー名を受け取り、適切な呼び名を返すメソッドに変更
+    func callingName(userName: String) -> String {
         // カスタム呼び方が設定されていればそれを使用
         if !userCallingName.isEmpty {
             return userCallingName
         }
-        return "\(name)さん"
+        // 設定がない場合はユーザー名を使用（空なら「あなた」）
+        return userName.isEmpty ? "あなた" : "\(userName)さん"
     }
     
     init(

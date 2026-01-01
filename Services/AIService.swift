@@ -6,144 +6,188 @@ class AIService {
     static let shared = AIService()
     private let openAI = OpenAIService.shared
     
-    // 投稿に対するコメント生成（OpenAI使用）
+    // MARK: - Format Helpers
+    
+    /// 会話履歴をAIが理解しやすい文字列形式に変換する
+    private func formatHistory(_ history: [Message]) -> String {
+        // 最近の10件のみを使用（トークン節約のため）
+        let recentMessages = history.suffix(10)
+        return recentMessages.map { message in
+            let sender = message.isFromUser ? "ユーザー" : "キャラクター"
+            return "\(sender): \(message.content)"
+        }.joined(separator: "\n")
+    }
+
+    // MARK: - Comment Generation
+
+    // 投稿に対するコメント生成 (UserMood Enum版 - 既存コード互換)
     func generateComment(for post: Post, by oshi: OshiCharacter, userMood: UserMood) async throws -> String {
+        // 既存のプロンプト生成ロジックを使用
         let prompt = openAI.createCommentPrompt(
             character: oshi,
             postContent: post.content,
             userMood: userMood
         )
         
-        do {
-            let response = try await openAI.generateText(prompt: prompt)
-            return response
-        } catch {
-            print("❌ OpenAI コメント生成エラー: \(error)")
-            // エラー時は例外を再スロー
-            throw AIServiceError.commentGenerationFailed(error)
-        }
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
     }
     
-    func generateInitialGreeting(for oshi: OshiCharacter) async throws -> String {
-         let prompt = """
-         あなたは\(oshi.name)として、初めて会ったユーザーに挨拶をします。
-         
-         【キャラクター設定】
-         - 性格: \(oshi.personalityText)
-         - 口調: \(oshi.speechStyleText)
-         
-         自己紹介を含めた、親しみやすい初回の挨拶を50文字以内で返してください。
-         キャラクターの性格と口調を忠実に再現してください。
-         """
-         
-         do {
-             let response = try await openAI.generateText(prompt: prompt)
-             return response
-         } catch {
-             print("❌ OpenAI 初回挨拶エラー: \(error)")
-             throw AIServiceError.greetingFailed(error)
-         }
-     }
-    
-    // チャットメッセージ生成（OpenAI使用）
-    func generateChatReply(for userMessage: String, by oshi: OshiCharacter,
-                           conversationHistory: [Message]) async throws -> String {
-        let prompt = openAI.createCharacterPrompt(
-            character: oshi,
-            userMessage: userMessage,
-            conversationHistory: conversationHistory
-        )
+    // 投稿に対するコメント生成 (String版 & ユーザー名対応 - 新機能)
+    func generateComment(for post: Post, by oshi: OshiCharacter, userMood: String, userName: String) async throws -> String {
+        let callingName = oshi.callingName(userName: userName)
         
-        do {
-            let response = try await openAI.generateText(prompt: prompt)
-            return response
-        } catch {
-            print("❌ OpenAI チャット返信エラー: \(error)")
-            throw AIServiceError.chatReplyFailed(error)
-        }
+        let prompt = """
+        あなたは「\(oshi.name)」として、ユーザー（\(callingName)）の投稿にコメントしてください。
+        
+        【キャラクター設定】
+        性格: \(oshi.personalityText)
+        口調: \(oshi.speechStyleText)
+        ユーザーの呼び方: \(callingName)
+        
+        【ユーザーの投稿】
+        "\(post.content)"
+        
+        【ユーザーの感情分析】
+        \(userMood)
+        
+        ユーザーの感情に寄り添い、キャラクターらしい反応を短く（30文字以内）返してください。
+        """
+        
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
     }
     
-    // 推しからの自発的投稿生成（OpenAI使用）
-    func generateOshiPost(by oshi: OshiCharacter) async throws -> String {
-        let prompt = openAI.createOshiPostPrompt(character: oshi)
+    // MARK: - Chat Generation
+
+    // チャットメッセージ生成
+    func generateChatReply(for message: String, by oshi: OshiCharacter, conversationHistory: [Message], userName: String) async throws -> String {
+        // 呼び名を決定
+        let callingName = oshi.callingName(userName: userName)
         
-        do {
-            let response = try await openAI.generateText(prompt: prompt)
-            return response
-        } catch {
-            print("❌ OpenAI 投稿生成エラー: \(error)")
-            throw AIServiceError.postGenerationFailed(error)
-        }
+        let prompt = """
+        あなたは「\(oshi.name)」というキャラクターになりきって、ユーザー（\(callingName)）と会話してください。
+        
+        【キャラクター設定】
+        名前: \(oshi.name)
+        性格: \(oshi.personalityText)
+        口調: \(oshi.speechStyleText)
+        話し方の特徴: \(oshi.speechCharacteristics)
+        一人称: 私（またはキャラに合わせる）
+        ユーザーの呼び方: \(callingName)
+        
+        【会話の履歴】
+        \(formatHistory(conversationHistory))
+        
+        【ユーザーの最新メッセージ】
+        \(message)
+        
+        上記のキャラクター設定を厳守し、短めの文章（1〜3文程度）で親しみを込めて返信してください。
+        """
+        
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.chatReplyFailed($0) })
     }
     
-    // おはよう/おやすみメッセージ（OpenAI使用）
-    func generateGreeting(type: GreetingType, by oshi: OshiCharacter) async throws -> String {
-        let greetingType: String
+    // MARK: - Greeting Generation
+    
+    // 挨拶生成 (ユーザー名対応版)
+    func generateGreeting(type: GreetingType, by oshi: OshiCharacter, userName: String = "") async throws -> String {
+        let callingName = oshi.callingName(userName: userName)
         
+        var context = ""
         switch type {
         case .morning:
-            greetingType = "朝の挨拶"
+            context = "朝の挨拶。爽やかに、あるいは眠そうに。"
         case .night:
-            greetingType = "おやすみの挨拶"
+            context = "夜の挨拶。一日の労い、またはおやすみ。"
         case .mutualFollow:
-            greetingType = "相互フォローになった時の挨拶"
+            context = "相互フォローになった時の最初の喜びの挨拶。これから仲良くしたい気持ち。"
         }
         
         let prompt = """
-        あなたは\(oshi.name)として、\(greetingType)をします。
+        あなたは「\(oshi.name)」です。ユーザー（\(callingName)）に対して挨拶をしてください。
         
-        【キャラクター設定】
-        - 性格: \(oshi.personalityText)
-        - 口調: \(oshi.speechStyleText)
+        【設定】
+        性格: \(oshi.personalityText)
+        口調: \(oshi.speechStyleText)
+        ユーザーの呼び方: \(callingName)
+        シチュエーション: \(context)
         
-        性格と口調に合った自然な\(greetingType)を30文字以内で返してください。
+        短く（一言〜二言）、キャラクターらしさを出して話しかけてください。
         """
         
-        do {
-            let response = try await openAI.generateText(prompt: prompt)
-            return response
-        } catch {
-            print("❌ OpenAI 挨拶生成エラー: \(error)")
-            throw AIServiceError.greetingFailed(error)
-        }
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.greetingFailed($0) })
+    }
+    
+    // 初回挨拶生成 (ユーザー名対応版)
+    func generateInitialGreeting(for oshi: OshiCharacter, userName: String) async throws -> String {
+        let callingName = oshi.callingName(userName: userName)
+        
+        let prompt = """
+        あなたは「\(oshi.name)」です。新しく友達になったユーザー（\(callingName)）に最初の挨拶をしてください。
+        
+        【設定】
+        性格: \(oshi.personalityText)
+        口調: \(oshi.speechStyleText)
+        ユーザーの呼び方: \(callingName)
+        
+        自己紹介を含めて、これからの関係を楽しみにしている感じで短く話しかけてください。
+        """
+        
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.greetingFailed($0) })
+    }
+    
+    // MARK: - Other AI Features
+
+    // 推しからの自発的投稿生成
+    func generateOshiPost(by oshi: OshiCharacter) async throws -> String {
+        let prompt = openAI.createOshiPostPrompt(character: oshi)
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.postGenerationFailed($0) })
     }
     
     // ユーザーの気分を投稿から分析
-    func analyzeMood(from content: String) -> UserMood {
+    func analyzeMood(from content: String) -> String {
         let lowerContent = content.lowercased()
         
-        // ネガティブキーワード
+        // 簡易的なキーワードマッチング（必要に応じてAI判定に置き換え可能）
         if lowerContent.contains("疲れ") || lowerContent.contains("つかれ") ||
            lowerContent.contains("だるい") || lowerContent.contains("しんどい") {
-            return .tired
+            return "疲れている"
         }
         if lowerContent.contains("悲しい") || lowerContent.contains("つらい") ||
            lowerContent.contains("辛い") || lowerContent.contains("落ち込") {
-            return .sad
+            return "悲しんでいる"
         }
         if lowerContent.contains("ストレス") || lowerContent.contains("イライラ") ||
            lowerContent.contains("むかつく") {
-            return .stressed
+            return "イライラしている"
         }
         
-        // ポジティブキーワード
         if lowerContent.contains("嬉しい") || lowerContent.contains("うれしい") ||
            lowerContent.contains("楽しい") || lowerContent.contains("幸せ") {
-            return .happy
+            return "喜んでいる"
         }
         if lowerContent.contains("最高") || lowerContent.contains("やった") ||
            lowerContent.contains("テンション") || lowerContent.contains("興奮") {
-            return .excited
+            return "興奮している"
         }
         
-        return .normal
+        return "普通"
+    }
+    
+    // MARK: - Private Helper
+    
+    /// 共通のエラーハンドリングを行う実行メソッド
+    private func generateResponse(prompt: String, errorType: (Error) -> AIServiceError) async throws -> String {
+        do {
+            // ✅ 修正: sendRequest ではなく generateText を使用
+            return try await openAI.generateText(prompt: prompt)
+        } catch {
+            print("❌ OpenAI Error: \(error)")
+            throw errorType(error)
+        }
     }
 }
 
-struct ConversationContext {
-    let mood: UserMood
-    let messageCount: Int
-}
+// MARK: - Enums & Errors
 
 enum GreetingType {
     case morning
@@ -151,7 +195,6 @@ enum GreetingType {
     case mutualFollow
 }
 
-// エラー定義
 enum AIServiceError: LocalizedError {
     case commentGenerationFailed(Error)
     case chatReplyFailed(Error)
