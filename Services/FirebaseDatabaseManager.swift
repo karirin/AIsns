@@ -7,13 +7,88 @@ class FirebaseDatabaseManager {
 
     private let ref: DatabaseReference
     private let userId: String
+    var currentUserId: String { userId }
 
     private init() {
         self.ref = FirebaseConfig.shared.databaseRef
         self.userId = FirebaseConfig.shared.userId
     }
+    
+    func updateContact(userId: String, newContact: String, completion: @escaping (Bool) -> Void) {
+        let contactRef = ref.child("contacts").child(userId)
 
-    // MARK: - Oshi Character
+        contactRef.observeSingleEvent(of: .value) { snapshot in
+            var contacts: [String] = []
+
+            if let currentContacts = snapshot.value as? [String] {
+                contacts = currentContacts
+            }
+
+            contacts.append(newContact)
+
+            contactRef.setValue(contacts) { error, _ in
+                if let error = error {
+                    print("❌ Error updating contact: \(error)")
+                    completion(false)
+                } else {
+                    completion(true)
+                }
+            }
+        } withCancel: { error in
+            print("❌ Error reading contact: \(error.localizedDescription)")
+            completion(false)
+        }
+    }
+    
+    func fetchUserFlag(completion: @escaping (Int?, Error?) -> Void) {
+        let userRef = ref.child("users").child(userId)
+
+        userRef.child("userFlag").observeSingleEvent(of: .value) { snapshot in
+            if let userFlag = snapshot.value as? Int {
+                DispatchQueue.main.async {
+                    completion(userFlag, nil)
+                }
+            } else {
+                // userFlag が存在しない場合は 0
+                DispatchQueue.main.async {
+                    completion(0, nil)
+                }
+            }
+        } withCancel: { error in
+            DispatchQueue.main.async {
+                completion(nil, error)
+            }
+        }
+    }
+    
+    func updateUserFlag(userId: String, userFlag: Int, completion: @escaping (Bool) -> Void) {
+        let userRef = ref.child("users").child(userId)
+        let updates: [String: Any] = ["userFlag": userFlag]
+
+        userRef.updateChildValues(updates) { error, _ in
+            if let error = error {
+                print("❌ Error updating userFlag: \(error)")
+                completion(false)
+            } else {
+                completion(true)
+            }
+        }
+    }
+    
+    func updateUserCsFlag(userId: String, userCsFlag: Int, completion: @escaping (Bool) -> Void) {
+        let userRef = ref.child("users").child(userId)
+        let updates: [String: Any] = ["userCsFlag": userCsFlag]
+        print("🔧 updateUserCsFlag updates:", updates)
+
+        userRef.updateChildValues(updates) { error, _ in
+            if let error = error {
+                print("❌ Error updating userCsFlag: \(error)")
+                completion(false)
+            } else {
+                completion(true)
+            }
+        }
+    }
 
     func saveOshi(_ oshi: OshiCharacter) async throws {
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshi.id.uuidString)")
@@ -452,10 +527,6 @@ class FirebaseDatabaseManager {
         // ✅ isFollowingUserとisFollowedByUserを読み込み
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
-        
-        print("📖 parseOshiCharacter: \(name)")
-        print("  - isFollowingUser from Firebase: \(isFollowingUser)")
-        print("  - isFollowedByUser from Firebase: \(isFollowedByUser)")
 
         var oshi = OshiCharacter(
             id: id,

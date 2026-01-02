@@ -39,7 +39,8 @@ struct TimelineScreenView: View {
     @State private var selectedTab: TimelineTab = .forYou
     @State private var showingSearch = false
     @Namespace private var tabNamespace
-    
+    @State private var helpFlag: Bool = false
+    @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
     
     // フィルタリングされた投稿
@@ -93,6 +94,14 @@ struct TimelineScreenView: View {
                     }
                 )
                 .offset(x: showingSidebar ? 0 : -300)
+                
+                if helpFlag {
+                    HelpModalView(isPresented: $helpFlag)
+                }
+                
+                if customerFlag {
+                    ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
+                }
             }
             .navigationBarHidden(true)
             .navigationDestination(for: SidebarDestination.self) { destination in
@@ -117,6 +126,20 @@ struct TimelineScreenView: View {
             .sheet(isPresented: $showingPostSheet) {
                 PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
             }
+            .onAppear{
+                dbManager.fetchUserFlag { userFlag, error in
+                    if let error = error {
+                        print(error.localizedDescription)
+                    } else if let userFlag = userFlag {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            if userFlag == 0 {
+                                executeProcessEveryfifTimes()
+                                executeProcessEveryThreeTimes()
+                            }
+                        }
+                    }
+                }
+            }
         }
         .gesture(
             DragGesture(minimumDistance: 20, coordinateSpace: .global)
@@ -135,6 +158,31 @@ struct TimelineScreenView: View {
                     }
                 }
         )
+    }
+
+    func executeProcessEveryfifTimes() {
+        // UserDefaultsからカウンターを取得
+        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
+        
+        // カウンターを更新
+        UserDefaults.standard.set(count, forKey: "launchHelpCount")
+
+        if count % 15 == 0 {
+            helpFlag = true
+        }
+    }
+
+    func executeProcessEveryThreeTimes() {
+        // UserDefaultsからカウンターを取得
+        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
+        
+        // カウンターを更新
+        UserDefaults.standard.set(count, forKey: "launchCount")
+        
+        // 3回に1回の割合で処理を実行
+        if count % 10 == 0 {
+            customerFlag = true
+        }
     }
     
     // MARK: - Data Loading
@@ -361,12 +409,12 @@ struct SidebarMenuView: View {
             // メニュー項目
             ScrollView(showsIndicators: false) {
                 VStack(spacing: DesignTokens.Spacing.xxs) {
-                    SidebarMenuItem(icon: "person", title: "プロフィール") {
+                    SidebarMenuItem(icon: "person.crop.circle", title: "プロフィール") {
                         onNavigate(.profile)
                     }
                     
                     SidebarMenuItem(
-                        icon: "star",
+                        icon: "person.2",
                         title: "フォロワー",
                         badge: viewModel.oshiList.count
                     ) {

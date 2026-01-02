@@ -14,6 +14,9 @@ struct OshiListView: View {
     @Namespace private var animation
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
+    @State private var helpFlag: Bool = false
+    @State private var customerFlag: Bool = false
+    private let dbManager = FirebaseDatabaseManager.shared
     
     var body: some View {
         NavigationView {
@@ -67,6 +70,14 @@ struct OshiListView: View {
                 }
                 .padding(.trailing, DesignTokens.Spacing.lg)
                 .padding(.bottom, DesignTokens.Spacing.lg)
+                
+                if helpFlag {
+                    HelpModalView(isPresented: $helpFlag)
+                }
+                
+                if customerFlag {
+                    ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -86,6 +97,45 @@ struct OshiListView: View {
         }
         .navigationViewStyle(.stack)
         .navigationBarBackButtonHidden(true)
+        .onAppear{
+            dbManager.fetchUserFlag { userFlag, error in
+                if let error = error {
+                    print(error.localizedDescription)
+                } else if let userFlag = userFlag {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        if userFlag == 0 {
+                            executeProcessEveryfifTimes()
+                            executeProcessEveryThreeTimes()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    func executeProcessEveryfifTimes() {
+        // UserDefaultsからカウンターを取得
+        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
+        
+        // カウンターを更新
+        UserDefaults.standard.set(count, forKey: "launchHelpCount")
+
+        if count % 15 == 0 {
+            helpFlag = true
+        }
+    }
+
+    func executeProcessEveryThreeTimes() {
+        // UserDefaultsからカウンターを取得
+        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
+        
+        // カウンターを更新
+        UserDefaults.standard.set(count, forKey: "launchCount")
+        
+        // 3回に1回の割合で処理を実行
+        if count % 10 == 0 {
+            customerFlag = true
+        }
     }
 }
 

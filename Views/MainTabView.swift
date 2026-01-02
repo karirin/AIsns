@@ -28,41 +28,43 @@ struct MainTabView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TimelineScreenView(viewModel: viewModel)
+        ZStack{
+            TabView(selection: $selectedTab) {
+                TimelineScreenView(viewModel: viewModel)
+                    .tabItem {
+                        Image(systemName: selectedTab == .timeline ? "house.fill" : "house")
+                            .environment(\.symbolVariants, .none)
+                    }
+                    .tag(Tab.timeline)
+                
+                OshiListView(viewModel: viewModel, isPresented: .constant(false))
+                    .tabItem {
+                        Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
+                            .environment(\.symbolVariants, .none)
+                    }
+                    .tag(Tab.oshi)
+                
+                NavigationStack {
+                    NotificationView(
+                        viewModel: viewModel,
+                        isPresented: .constant(false)
+                    )
+                }
                 .tabItem {
-                    Image(systemName: selectedTab == .timeline ? "house.fill" : "house")
+                    Image(systemName: selectedTab == .notification ? "bell.fill" : "bell")
                         .environment(\.symbolVariants, .none)
                 }
-                .tag(Tab.timeline)
-            
-            OshiListView(viewModel: viewModel, isPresented: .constant(false))
-                .tabItem {
-                    Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
-                        .environment(\.symbolVariants, .none)
-                }
-                .tag(Tab.oshi)
-            
-            NavigationStack {
-                NotificationView(
-                    viewModel: viewModel,
-                    isPresented: .constant(false)
-                )
+                .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
+                .tag(Tab.notification)
+                
+                ChatListView(viewModel: viewModel, isPresented: .constant(false))
+                    .tabItem {
+                        Image(systemName: selectedTab == .chat ? "envelope.fill" : "envelope")
+                            .environment(\.symbolVariants, .none)
+                    }
+                    .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
+                    .tag(Tab.chat)
             }
-            .tabItem {
-                Image(systemName: selectedTab == .notification ? "bell.fill" : "bell")
-                    .environment(\.symbolVariants, .none)
-            }
-            .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
-            .tag(Tab.notification)
-        
-            ChatListView(viewModel: viewModel, isPresented: .constant(false))
-                .tabItem {
-                    Image(systemName: selectedTab == .chat ? "envelope.fill" : "envelope")
-                        .environment(\.symbolVariants, .none)
-                }
-                .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
-                .tag(Tab.chat)
         }
         .tint(AppColors.primary)
         .onAppear {
