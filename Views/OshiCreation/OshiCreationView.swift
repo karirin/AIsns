@@ -92,7 +92,19 @@ struct OshiCreationView: View {
             }
         }
         .navigationTitle("推しを作成")
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(AppColors.textPrimary)
+                }
+            }
+        }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .sheet(isPresented: $showingImagePicker) {
             ImagePickerWithCrop(selectedImage: $avatarImage)

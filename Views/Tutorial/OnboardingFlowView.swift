@@ -2,41 +2,41 @@
 //  OnboardingFlowView.swift
 //  AIsns
 //
-//  Created by Gemini
-//  Updated: プリセット選択機能を追加
+//  Updated: 2026/01/02 - Complete UI/UX Redesign
 //
 
 import SwiftUI
 
 struct OnboardingFlowView: View {
-    // 完了時のコールバック
     var onComplete: () -> Void
     
-    // フローの状態管理
     enum OnboardingStep {
-        case intro      // アプリ紹介
-        case userSetup  // ユーザープロフィール作成
-        case oshiSetup  // 推し作成・選択
+        case intro
+        case userSetup
+        case oshiSetup
     }
     
     @State private var currentStep: OnboardingStep = .intro
-    @StateObject private var viewModel = OshiViewModel() // 推しデータ管理用
+    @StateObject private var viewModel = OshiViewModel()
     
     var body: some View {
         ZStack {
-            // 背景（全ステップ共通）
-            Color(.systemBackground).ignoresSafeArea()
+            AppColors.backgroundPrimary.ignoresSafeArea()
             
             switch currentStep {
             case .intro:
                 IntroSlideView {
-                    withAnimation { currentStep = .userSetup }
+                    withAnimation(DesignTokens.Animation.spring) {
+                        currentStep = .userSetup
+                    }
                 }
                 .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .leading)))
                 
             case .userSetup:
                 OnboardingUserSetupView {
-                    withAnimation { currentStep = .oshiSetup }
+                    withAnimation(DesignTokens.Animation.spring) {
+                        currentStep = .oshiSetup
+                    }
                 }
                 .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                 
@@ -50,65 +50,110 @@ struct OnboardingFlowView: View {
     }
 }
 
-// MARK: - Step 1: Intro Slides
+// MARK: - Intro Slides
+
 struct IntroSlideView: View {
     var onNext: () -> Void
     @State private var currentPage = 0
     
-    private let gradient = LinearGradient(
-        colors: [Color(red: 0.2, green: 0.7, blue: 1.0), Color(red: 0.5, green: 0.4, blue: 1.0)],
-        startPoint: .leading, endPoint: .trailing
-    )
+    private let slides: [(icon: String, title: String, description: String)] = [
+        ("sparkles", "AIとつながるSNS", "AIフォロワーとの新しいコミュニケーションを\n楽しみましょう。"),
+        ("person.2.fill", "自分だけのフォロワー", "理想のキャラクターを作成して\nあなただけのパートナーに。"),
+        ("message.fill", "楽しく会話", "チャットや投稿で話しかけると\nAIが返信してくれます。")
+    ]
     
     var body: some View {
         VStack(spacing: 0) {
             TabView(selection: $currentPage) {
-                slidePage(image: "sparkles", title: "AIとつながるSNS", desc: "AIフォロワーとの新しいコミュニケーションを\n楽しみましょう。").tag(0)
-                slidePage(image: "person.2.fill", title: "自分だけのフォロワー", desc: "理想のキャラクターを作成して\nあなただけのパートナーに。").tag(1)
-                slidePage(image: "message.bubble.fill", title: "楽しく会話", desc: "チャットや投稿で話しかけると\nAIが返信してくれます。").tag(2)
+                ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
+                    introPage(icon: slide.icon, title: slide.title, description: slide.description)
+                        .tag(index)
+                }
             }
             .tabViewStyle(.page)
             .indexViewStyle(.page(backgroundDisplayMode: .always))
             
-            Button(action: {
-                if currentPage < 2 {
-                    withAnimation { currentPage += 1 }
-                } else {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    onNext()
+            // ボタンエリア
+            VStack(spacing: DesignTokens.Spacing.md) {
+                Button(action: {
+                    generateHapticFeedback()
+                    if currentPage < slides.count - 1 {
+                        withAnimation(DesignTokens.Animation.spring) {
+                            currentPage += 1
+                        }
+                    } else {
+                        onNext()
+                    }
+                }) {
+                    Text(currentPage < slides.count - 1 ? "次へ" : "はじめる")
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.Spacing.md)
+                        .background(AppColors.primaryGradientH)
+                        .cornerRadius(DesignTokens.Radius.md)
                 }
-            }) {
-                Text(currentPage < 2 ? "次へ" : "はじめる")
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(gradient)
-                    .cornerRadius(14)
+                
+                if currentPage < slides.count - 1 {
+                    Button(action: {
+                        generateHapticFeedback()
+                        onNext()
+                    }) {
+                        Text("スキップ")
+                            .font(AppTypography.subheadline)
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+                }
             }
-            .padding(24)
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            .padding(.bottom, DesignTokens.Spacing.xxl)
         }
     }
     
-    private func slidePage(image: String, title: String, desc: String) -> some View {
-        VStack(spacing: 32) {
+    private func introPage(icon: String, title: String, description: String) -> some View {
+        VStack(spacing: DesignTokens.Spacing.xxl) {
             Spacer()
-            Image(systemName: image)
-                .font(.system(size: 80))
-                .foregroundStyle(gradient)
             
-            VStack(spacing: 16) {
-                Text(title).font(.title).bold()
-                Text(desc).multilineTextAlignment(.center).foregroundColor(.secondary)
+            // アイコン
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppColors.primary.opacity(0.1),
+                                AppColors.pink.opacity(0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 160, height: 160)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 64, weight: .light))
+                    .foregroundStyle(AppColors.primaryGradient)
             }
+            
+            VStack(spacing: DesignTokens.Spacing.md) {
+                Text(title)
+                    .font(AppTypography.title)
+                    .foregroundColor(AppColors.textPrimary)
+                
+                Text(description)
+                    .font(AppTypography.body)
+                    .foregroundColor(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            
             Spacer()
         }
-        .padding()
+        .padding(.horizontal, DesignTokens.Spacing.xl)
     }
 }
 
-// MARK: - Step 2: User Setup
+// MARK: - User Setup
+
 struct OnboardingUserSetupView: View {
     var onNext: () -> Void
     
@@ -116,65 +161,119 @@ struct OnboardingUserSetupView: View {
     @State private var avatarImage: UIImage?
     @State private var showImagePicker = false
     @State private var isSaving = false
+    @State private var avatarPulse = false
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: DesignTokens.Spacing.xl) {
             Spacer()
             
-            Text("プロフィール設定")
-                .font(.title2).bold()
+            // タイトル
+            VStack(spacing: DesignTokens.Spacing.sm) {
+                Text("プロフィール設定")
+                    .font(AppTypography.title2)
+                    .foregroundColor(AppColors.textPrimary)
+                
+                Text("あなたの名前とアイコンを設定してください。\n（後からいつでも変更できます）")
+                    .font(AppTypography.subheadline)
+                    .foregroundColor(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
             
-            Text("あなたの名前とアイコンを設定してください。\n（後からいつでも変更できます）")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            
-            // アイコン選択
-            Button(action: { showImagePicker = true }) {
+            // アバター選択
+            Button(action: {
+                generateHapticFeedback()
+                showImagePicker = true
+            }) {
                 ZStack {
+                    // グロー効果
+                    Circle()
+                        .fill(AppColors.primaryGradient)
+                        .frame(width: 130, height: 130)
+                        .blur(radius: avatarPulse ? 18 : 14)
+                        .opacity(avatarPulse ? 0.4 : 0.3)
+                        .scaleEffect(avatarPulse ? 1.05 : 1.0)
+                    
                     if let image = avatarImage {
                         Image(uiImage: image)
-                            .resizable().scaledToFill()
+                            .resizable()
+                            .scaledToFill()
                             .frame(width: 120, height: 120)
                             .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(AppColors.primaryGradient, lineWidth: 3)
+                            )
                     } else {
-                        Circle().fill(Color(.systemGray5))
-                            .frame(width: 120, height: 120)
-                        Image(systemName: "camera.fill")
-                            .font(.title)
-                            .foregroundColor(.gray)
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.backgroundSecondary)
+                                .frame(width: 120, height: 120)
+                            
+                            VStack(spacing: DesignTokens.Spacing.xs) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(AppColors.primaryGradient)
+                                
+                                Text("写真を追加")
+                                    .font(AppTypography.caption)
+                                    .foregroundColor(AppColors.primary)
+                            }
+                        }
                     }
                 }
-                .overlay(Circle().stroke(Color.blue.opacity(0.3), lineWidth: 1))
             }
+            .pressableStyle()
             
             // 名前入力
-            TextField("名前を入力 (例: ゆう)", text: $name)
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
-                .padding(.horizontal, 32)
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                Text("名前")
+                    .font(AppTypography.captionMedium)
+                    .foregroundColor(AppColors.textSecondary)
+                
+                TextField("例: ゆう", text: $name)
+                    .font(AppTypography.body)
+                    .padding(DesignTokens.Spacing.md)
+                    .background(AppColors.backgroundSecondary)
+                    .cornerRadius(DesignTokens.Radius.md)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.xxl)
             
             Spacer()
             
+            // 次へボタン
             Button(action: saveAndNext) {
                 if isSaving {
-                    ProgressView().tint(.white)
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.Spacing.md)
+                        .background(AppColors.primary.opacity(0.7))
+                        .cornerRadius(DesignTokens.Radius.md)
                 } else {
                     Text("次へ")
-                        .fontWeight(.bold)
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.Spacing.md)
+                        .background(
+                            name.isEmpty
+                            ? LinearGradient(colors: [.gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
+                            : AppColors.primaryGradientH
+                        )
+                        .cornerRadius(DesignTokens.Radius.md)
                 }
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(name.isEmpty ? Color.gray : Color.blue)
-            .cornerRadius(14)
-            .padding(24)
             .disabled(name.isEmpty || isSaving)
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            .padding(.bottom, DesignTokens.Spacing.xxl)
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePickerWithCrop(selectedImage: $avatarImage)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                avatarPulse = true
+            }
         }
     }
     
@@ -186,7 +285,10 @@ struct OnboardingUserSetupView: View {
             do {
                 var imageURL: String? = nil
                 if let image = avatarImage {
-                    imageURL = try await FirebaseStorageManager.shared.uploadUserAvatar(image, userId: FirebaseConfig.shared.userId)
+                    imageURL = try await FirebaseStorageManager.shared.uploadUserAvatar(
+                        image,
+                        userId: FirebaseConfig.shared.userId
+                    )
                 }
                 
                 try await FirebaseDatabaseManager.shared.saveUserProfile(
@@ -201,129 +303,72 @@ struct OnboardingUserSetupView: View {
                 }
             } catch {
                 print("Error saving user profile: \(error)")
-                await MainActor.run { isSaving = false }
-                onNext()
+                await MainActor.run {
+                    isSaving = false
+                    onNext()
+                }
             }
         }
     }
 }
 
-// MARK: - Step 3: Oshi Creation or Selection
+// MARK: - Oshi Setup
+
 struct OnboardingOshiSetupView: View {
     @ObservedObject var viewModel: OshiViewModel
     var onComplete: () -> Void
     
-    // カスタム作成用の入力State
     @State private var name: String = ""
     @State private var personality: String = ""
     @State private var tone: String = ""
     @State private var avatarImage: UIImage?
     @State private var showImagePicker = false
     @State private var isProcessing = false
+    @State private var avatarPulse = false
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                SizedBox(height: 20)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: DesignTokens.Spacing.xl) {
+                Spacer(minLength: DesignTokens.Spacing.lg)
                 
-                Text("最初のパートナーを選ぶ")
-                    .font(.title2).bold()
+                // タイトル
+                VStack(spacing: DesignTokens.Spacing.sm) {
+                    Text("最初のパートナーを選ぶ")
+                        .font(AppTypography.title2)
+                        .foregroundColor(AppColors.textPrimary)
+                    
+                    Text("気になるキャラクターをフォローするか、\n自分だけの推しを作成しましょう。")
+                        .font(AppTypography.subheadline)
+                        .foregroundColor(AppColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
                 
-                Text("気になるキャラクターをフォローするか、\n自分だけの推しを作成しましょう。")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                
-                // ✅ おすすめプリセットの表示エリア (presetsテーブルのデータを表示)
+                // おすすめプリセット
                 if !viewModel.recommendedOshis.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("おすすめのアカウント")
-                                .font(.headline)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 24)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                // 候補を最大3人表示 (DBのsortOrder順)
-                                ForEach(viewModel.recommendedOshis.prefix(4)) { oshi in
-                                    PresetOshiCard(oshi: oshi) {
-                                        selectPreset(oshi)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 8) // 影のための余白
-                        }
-                    }
-                    .padding(.vertical, 8)
+                    presetSection
                 } else if viewModel.isLoading {
-                    // データ読み込み中の表示
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("おすすめを読み込み中...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(height: 180)
-                    .frame(maxWidth: .infinity)
+                    LoadingView(message: "おすすめを読み込み中...")
+                        .frame(height: 180)
                 }
                 
-                // 「または」の区切り線
+                // 区切り線
                 HStack {
-                    Rectangle().frame(height: 1).foregroundColor(Color(.systemGray5))
-                    Text("または新規作成").font(.caption).foregroundColor(.secondary)
-                    Rectangle().frame(height: 1).foregroundColor(Color(.systemGray5))
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(AppColors.borderLight)
+                    Text("または新規作成")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textSecondary)
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(AppColors.borderLight)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 8)
-
-                // カスタム作成フォーム
-                VStack(spacing: 16) {
-                    // アイコン選択
-                    Button(action: { showImagePicker = true }) {
-                        ZStack {
-                            if let image = avatarImage {
-                                Image(uiImage: image)
-                                    .resizable().scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                    .shadow(radius: 3)
-                            } else {
-                                Circle().fill(LinearGradient(colors: [.pink, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                    .frame(width: 100, height: 100)
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 40, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                    
-                    inputField(title: "推しの名前", placeholder: "例: レン", text: $name)
-                    inputField(title: "性格", placeholder: "例: 優しくて甘えん坊", text: $personality)
-                    inputField(title: "口調", placeholder: "例: タメ口、語尾に「〜だよ」", text: $tone)
-                    
-                    Button(action: createCustomOshi) {
-                        if isProcessing {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("作成してはじめる")
-                                .fontWeight(.bold)
-                        }
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(name.isEmpty ? Color.gray : Color.pink)
-                    .cornerRadius(14)
-                    .padding(.top, 8)
-                    .disabled(name.isEmpty || isProcessing)
-                }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, DesignTokens.Spacing.xl)
                 
-                SizedBox(height: 40)
+                // カスタム作成フォーム
+                customCreationForm
+                
+                Spacer(minLength: DesignTokens.Spacing.xxxl)
             }
         }
         .sheet(isPresented: $showImagePicker) {
@@ -331,29 +376,137 @@ struct OnboardingOshiSetupView: View {
         }
     }
     
-    private func inputField(title: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption).foregroundColor(.secondary)
-            TextField(placeholder, text: text)
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+    // MARK: - Preset Section
+    
+    private var presetSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+            Text("おすすめのアカウント")
+                .font(AppTypography.headline)
+                .foregroundColor(AppColors.textPrimary)
+                .padding(.horizontal, DesignTokens.Spacing.xl)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DesignTokens.Spacing.md) {
+                    ForEach(viewModel.recommendedOshis.prefix(4)) { oshi in
+                        PresetOshiCard(oshi: oshi) {
+                            selectPreset(oshi)
+                        }
+                    }
+                }
+                .padding(.horizontal, DesignTokens.Spacing.xl)
+                .padding(.bottom, DesignTokens.Spacing.xs)
+            }
         }
     }
     
-    // ✅ プリセットを選択した場合の処理
+    // MARK: - Custom Creation Form
+    
+    private var customCreationForm: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
+            // アバター選択
+            Button(action: {
+                generateHapticFeedback()
+                showImagePicker = true
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.pinkGradient)
+                        .frame(width: 110, height: 110)
+                        .blur(radius: avatarPulse ? 16 : 12)
+                        .opacity(avatarPulse ? 0.4 : 0.3)
+                        .scaleEffect(avatarPulse ? 1.05 : 1.0)
+                    
+                    if let image = avatarImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(AppColors.pinkGradient, lineWidth: 3)
+                            )
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.pinkGradient)
+                                .frame(width: 100, height: 100)
+                            
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+            }
+            .pressableStyle()
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
+                    avatarPulse = true
+                }
+            }
+            
+            // 入力フィールド
+            VStack(spacing: DesignTokens.Spacing.sm) {
+                inputField(title: "推しの名前", placeholder: "例: レン", text: $name)
+                inputField(title: "性格", placeholder: "例: 優しくて甘えん坊", text: $personality)
+                inputField(title: "口調", placeholder: "例: タメ口、語尾に「〜だよ」", text: $tone)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            
+            // 作成ボタン
+            Button(action: createCustomOshi) {
+                if isProcessing {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.Spacing.md)
+                        .background(AppColors.pink.opacity(0.7))
+                        .cornerRadius(DesignTokens.Radius.md)
+                } else {
+                    Text("作成してはじめる")
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, DesignTokens.Spacing.md)
+                        .background(
+                            name.isEmpty
+                            ? LinearGradient(colors: [.gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
+                            : AppColors.pinkGradient
+                        )
+                        .cornerRadius(DesignTokens.Radius.md)
+                }
+            }
+            .disabled(name.isEmpty || isProcessing)
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            .padding(.top, DesignTokens.Spacing.xs)
+        }
+    }
+    
+    private func inputField(title: String, placeholder: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+            Text(title)
+                .font(AppTypography.captionMedium)
+                .foregroundColor(AppColors.textSecondary)
+            
+            TextField(placeholder, text: text)
+                .font(AppTypography.body)
+                .padding(DesignTokens.Spacing.sm)
+                .background(AppColors.backgroundSecondary)
+                .cornerRadius(DesignTokens.Radius.sm)
+        }
+    }
+    
+    // MARK: - Actions
+    
     private func selectPreset(_ oshi: OshiCharacter) {
         guard !isProcessing else { return }
         isProcessing = true
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
+        generateHapticFeedback()
         
         Task {
-            // ViewModelの既存メソッドを使ってフォロー＆セットアップ
             await viewModel.followRecommended(oshi)
-            
-            // 処理完了後、少し待ってから画面遷移（ユーザーへのフィードバック用）
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            try? await Task.sleep(nanoseconds: 500_000_000)
             
             await MainActor.run {
                 isProcessing = false
@@ -362,13 +515,12 @@ struct OnboardingOshiSetupView: View {
         }
     }
     
-    // カスタム作成した場合の処理
     private func createCustomOshi() {
         guard !name.isEmpty else { return }
         isProcessing = true
+        generateHapticFeedback()
         
         Task {
-            // 推しキャラのモデル作成
             var newOshi = OshiCharacter(
                 name: name,
                 personalityText: personality,
@@ -377,7 +529,6 @@ struct OnboardingOshiSetupView: View {
                 speechStyleText: tone
             )
             
-            // 画像アップロード
             if let image = avatarImage {
                 do {
                     let url = try await FirebaseStorageManager.shared.uploadOshiAvatar(image, oshiId: newOshi.id)
@@ -389,7 +540,7 @@ struct OnboardingOshiSetupView: View {
             
             viewModel.addOshi(newOshi)
             
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             
             await MainActor.run {
                 isProcessing = false
@@ -399,76 +550,76 @@ struct OnboardingOshiSetupView: View {
     }
 }
 
-// ✅ プリセット表示用のカードビュー
+// MARK: - Preset Oshi Card
+
 struct PresetOshiCard: View {
     let oshi: OshiCharacter
     let onSelect: () -> Void
     
     var body: some View {
         Button(action: onSelect) {
-            VStack(spacing: 12) {
+            VStack(spacing: DesignTokens.Spacing.sm) {
                 // アイコン
-                AsyncImage(url: URL(string: oshi.avatarImageURL ?? "")) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    ZStack {
-                        Color.gray.opacity(0.1)
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.title)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                AsyncAvatarView(
+                    imageURL: oshi.avatarImageURL,
+                    name: oshi.name,
+                    size: 72,
+                    placeholderGradient: AppColors.pinkGradient
+                )
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 
-                VStack(spacing: 4) {
+                VStack(spacing: DesignTokens.Spacing.xxs) {
                     Text(oshi.name)
-                        .font(.headline)
-                        .foregroundColor(.primary)
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(AppColors.textPrimary)
                         .lineLimit(1)
                     
                     Text(oshi.personalityText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
-                        .frame(height: 32) // 高さ固定でレイアウト崩れ防止
+                        .frame(height: 32)
                 }
                 
                 Text("フォローする")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(AppTypography.captionMedium)
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.blue)
-                    .cornerRadius(20)
+                    .padding(.horizontal, DesignTokens.Spacing.md)
+                    .padding(.vertical, DesignTokens.Spacing.xs)
+                    .background(AppColors.primaryGradientH)
+                    .cornerRadius(DesignTokens.Radius.full)
             }
-            .padding(16)
-            .frame(width: 160, height: 220)
-            .background(Color(.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+            .padding(DesignTokens.Spacing.md)
+            .frame(width: 150, height: 200)
+            .background(AppColors.backgroundPrimary)
+            .cornerRadius(DesignTokens.Radius.lg)
+            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color(.systemGray5), lineWidth: 1)
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                    .stroke(AppColors.borderLight, lineWidth: 1)
             )
         }
-        .buttonStyle(ScaleButtonStyle())
+        .pressableStyle()
     }
 }
+
+// MARK: - Scale Button Style (Legacy Support)
 
 struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
-            .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(DesignTokens.Animation.fast, value: configuration.isPressed)
     }
 }
 
-// レイアウト調整用
+// MARK: - Sized Box (Legacy Support)
+
 struct SizedBox: View {
     let height: CGFloat
-    var body: some View { Spacer().frame(height: height) }
+    var body: some View {
+        Spacer().frame(height: height)
+    }
 }

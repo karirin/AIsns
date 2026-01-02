@@ -1,3 +1,10 @@
+//
+//  MainTabView.swift
+//  AIsns
+//
+//  Updated: 2026/01/02 - Complete UI/UX Redesign
+//
+
 import SwiftUI
 
 // タブの識別用Enum
@@ -10,7 +17,6 @@ enum Tab {
 
 struct MainTabView: View {
     @StateObject private var viewModel = OshiViewModel()
-    // 選択中のタブを管理
     @State private var selectedTab: Tab = .timeline
     
     var totalUnreadCount: Int {
@@ -25,19 +31,18 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             TimelineScreenView(viewModel: viewModel)
                 .tabItem {
-                    // ✅ 文字を削除し、アイコンのみ指定
-                    Image(systemName: "house.fill")
+                    Image(systemName: selectedTab == .timeline ? "house.fill" : "house")
+                        .environment(\.symbolVariants, .none)
                 }
                 .tag(Tab.timeline)
             
             OshiListView(viewModel: viewModel, isPresented: .constant(false))
                 .tabItem {
-                    // ✅ 文字を削除し、アイコンのみ指定
-                    Image(systemName: "person.2")
+                    Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
+                        .environment(\.symbolVariants, .none)
                 }
                 .tag(Tab.oshi)
             
-            // 通知タブ
             NavigationStack {
                 NotificationView(
                     viewModel: viewModel,
@@ -45,20 +50,21 @@ struct MainTabView: View {
                 )
             }
             .tabItem {
-                // ✅ 文字を削除し、アイコンのみ指定
-                Image(systemName: "bell.fill")
+                Image(systemName: selectedTab == .notification ? "bell.fill" : "bell")
+                    .environment(\.symbolVariants, .none)
             }
             .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
             .tag(Tab.notification)
         
             ChatListView(viewModel: viewModel, isPresented: .constant(false))
                 .tabItem {
-                    // ✅ 文字を削除し、アイコンのみ指定
-                    Image(systemName: "envelope")
+                    Image(systemName: selectedTab == .chat ? "envelope.fill" : "envelope")
+                        .environment(\.symbolVariants, .none)
                 }
                 .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
                 .tag(Tab.chat)
         }
+        .tint(AppColors.primary)
         .onAppear {
             setupTabBarAppearance()
         }
@@ -67,17 +73,31 @@ struct MainTabView: View {
     private func setupTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor.systemBackground
+        
+        // 選択時のカラー
+        let selectedColor = UIColor(AppColors.primary)
+        let unselectedColor = UIColor.secondaryLabel
+        
+        appearance.stackedLayoutAppearance.selected.iconColor = selectedColor
+        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: selectedColor]
+        appearance.stackedLayoutAppearance.normal.iconColor = unselectedColor
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: unselectedColor]
+        
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 }
+
+// MARK: - Haptic Feedback
 
 func generateHapticFeedback() {
     let generator = UIImpactFeedbackGenerator(style: .medium)
     generator.impactOccurred()
 }
 
-// プレビュー
+// MARK: - Preview
+
 struct MainTabView_Previews: PreviewProvider {
     static var previews: some View {
         MainTabView()

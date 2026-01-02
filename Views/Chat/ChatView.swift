@@ -1,5 +1,13 @@
-// Views/Chat/ChatView.swift
+//
+//  ChatView.swift
+//  AIsns
+//
+//  Updated: 2026/01/02 - Complete UI/UX Redesign
+//
+
 import SwiftUI
+
+// MARK: - Chat List View
 
 struct ChatListView: View {
     @ObservedObject var viewModel: OshiViewModel
@@ -18,11 +26,14 @@ struct ChatListView: View {
         NavigationView {
             ZStack {
                 if isLoading {
-                    loadingView
+                    LoadingView(
+                        message: "チャットを読み込み中",
+                        subtitle: "フォロワーとの会話を取得しています..."
+                    )
                 } else if sortedChatRooms.isEmpty {
-                    emptyStateView
+                    chatEmptyView
                 } else {
-                    chatListView
+                    chatListContent
                 }
             }
             .navigationTitle("チャット")
@@ -34,18 +45,8 @@ struct ChatListView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(.primary)
+                                .foregroundColor(AppColors.textPrimary)
                         }
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        generateHapticFeedback()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.primary)
                     }
                 }
             }
@@ -60,164 +61,26 @@ struct ChatListView: View {
         .navigationBarBackButtonHidden(true)
     }
     
-    // MARK: - Loading View
+    // MARK: - Empty State
     
-    private var loadingView: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 100, height: 100)
-                    
-                    Circle()
-                        .trim(from: 0, to: 0.7)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                        )
-                        .frame(width: 80, height: 80)
-                        .rotationEffect(.degrees(-90))
-                        .modifier(RotatingModifier())
-                    
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .modifier(PulseModifier())
-                }
-                
-                VStack(spacing: 8) {
-                    Text("チャットを読み込み中")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                    Text("フォロワーとの会話を取得しています...")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    // MARK: - Empty State View
-    
-    private var emptyStateView: some View {
+    private var chatEmptyView: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Spacer()
-                    .frame(height: 60)
-                
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0).opacity(0.1),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0).opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 120, height: 120)
-                    
-                    Image(systemName: "message.badge")
-                        .font(.system(size: 50))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.2, green: 0.7, blue: 1.0),
-                                    Color(red: 0.5, green: 0.4, blue: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+            EmptyStateView(
+                icon: "message.badge",
+                title: "チャットがまだありません",
+                subtitle: "アカウントをフォローして、\n会話を始めましょう!",
+                actionTitle: "フォロワーを見る",
+                action: {
+                    // Navigate to followers
                 }
-                
-                VStack(spacing: 12) {
-                    Text("チャットがまだありません")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.primary)
-                    
-                    Text("アカウントをフォローして、\n会話を始めましょう!")
-                        .font(.system(size: 15))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                }
-                
-                if !viewModel.oshiList.isEmpty || !viewModel.recommendedOshis.isEmpty {
-                    VStack(spacing: 16) {
-                        NavigationLink {
-                            OshiListView(viewModel: viewModel, isPresented: .constant(true))
-                        } label: {
-                            HStack {
-                                Image(systemName: "person.2.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("フォロワーを見る")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                                        Color(red: 0.5, green: 0.4, blue: 1.0)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .cornerRadius(12)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 8)
-                }
-                
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
+            )
+            .padding(.top, DesignTokens.Spacing.xxxxl)
         }
     }
     
-    // MARK: - Chat List View
+    // MARK: - Chat List Content
     
-    private var chatListView: some View {
+    private var chatListContent: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(sortedChatRooms) { room in
@@ -228,14 +91,13 @@ struct ChatListView: View {
                         .buttonStyle(.plain)
                         
                         if room.id != sortedChatRooms.last?.id {
-                            Divider()
-                                .padding(.leading, 80)
+                            AppDivider(leadingPadding: 80)
                         }
                     }
                 }
             }
         }
-        .background(Color(.systemBackground))
+        .background(AppColors.backgroundPrimary)
     }
     
     // MARK: - Data Loading
@@ -252,37 +114,6 @@ struct ChatListView: View {
         
         await MainActor.run {
             isLoading = false
-        }
-    }
-    
-    // MARK: - Animation Modifiers
-    
-    struct RotatingModifier: ViewModifier {
-        @State private var isRotating = false
-        
-        func body(content: Content) -> some View {
-            content
-                .rotationEffect(.degrees(isRotating ? 360 : 0))
-                .onAppear {
-                    withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                        isRotating = true
-                    }
-                }
-        }
-    }
-    
-    struct PulseModifier: ViewModifier {
-        @State private var isPulsing = false
-        
-        func body(content: Content) -> some View {
-            content
-                .scaleEffect(isPulsing ? 1.1 : 1.0)
-                .opacity(isPulsing ? 0.8 : 1.0)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                        isPulsing = true
-                    }
-                }
         }
     }
 }
@@ -323,56 +154,20 @@ struct ChatRoomRow: View {
     }
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: DesignTokens.Spacing.sm) {
             // アバター
             ZStack(alignment: .topTrailing) {
-                if let avatarImage = avatarImage {
-                    Image(uiImage: avatarImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 60, height: 60)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 1.0, green: 0.3, blue: 0.3),
-                                    Color(red: 1.0, green: 0.5, blue: 0.3)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Text(String(oshi.name.prefix(1)))
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                }
+                AvatarView(
+                    image: avatarImage,
+                    name: oshi.name,
+                    size: DesignTokens.AvatarSize.xl,
+                    placeholderGradient: AppColors.pinkGradient
+                )
                 
                 // 未読バッジ
                 if room.unreadCount > 0 {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 1.0, green: 0.2, blue: 0.4),
-                                    Color(red: 1.0, green: 0.4, blue: 0.5)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            Text("\(min(room.unreadCount, 99))")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                        )
-                        .offset(x: 6, y: -6)
-                        .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+                    BadgeView(count: room.unreadCount, size: 20, gradient: AppColors.pinkGradient)
+                        .offset(x: 4, y: -4)
                 }
             }
             .task {
@@ -381,44 +176,44 @@ struct ChatRoomRow: View {
                 }
             }
             
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
                 HStack(alignment: .center) {
                     Text(oshi.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(AppColors.textPrimary)
                         .lineLimit(1)
                     
                     Spacer()
                     
                     Text(timeDisplay)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.footnote)
+                        .foregroundColor(AppColors.textSecondary)
                 }
                 
                 if let lastMessage = lastMessage {
                     HStack(spacing: 4) {
                         if lastMessage.isFromUser {
                             Text("あなた:")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
+                                .font(AppTypography.subheadline)
+                                .foregroundColor(AppColors.textSecondary)
                         }
                         
                         Text(lastMessage.content)
-                            .font(.system(size: 14))
-                            .foregroundColor(room.unreadCount > 0 ? .primary : .secondary)
+                            .font(AppTypography.subheadline)
+                            .foregroundColor(room.unreadCount > 0 ? AppColors.textPrimary : AppColors.textSecondary)
                             .lineLimit(2)
                     }
                 } else {
                     Text("まだメッセージがありません")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
+                        .font(AppTypography.subheadline)
+                        .foregroundColor(AppColors.textSecondary)
                         .lineLimit(1)
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
+        .padding(.horizontal, DesignTokens.Spacing.md)
+        .padding(.vertical, DesignTokens.Spacing.sm)
+        .background(AppColors.backgroundPrimary)
         .contentShape(Rectangle())
     }
 }
@@ -440,16 +235,16 @@ struct ChatDetailView: View {
             // メッセージエリア
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: DesignTokens.Spacing.sm) {
                         ForEach(chatRoom?.messages ?? []) { message in
                             MessageBubble(message: message, oshi: oshi)
                                 .id(message.id)
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
+                    .padding(.vertical, DesignTokens.Spacing.md)
                 }
-                .background(Color(.systemGroupedBackground))
+                .background(AppColors.backgroundSecondary)
                 .onChange(of: chatRoom?.messages.count) { _ in
                     if let lastMessage = chatRoom?.messages.last {
                         withAnimation {
@@ -460,113 +255,73 @@ struct ChatDetailView: View {
             }
             
             // 入力エリア
-            VStack(spacing: 0) {
-                Divider()
-                
-                HStack(spacing: 12) {
-                    // プラスボタン
-                    Button(action: {
-                        generateHapticFeedback()
-                    }) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                                        Color(red: 0.5, green: 0.4, blue: 1.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                    
-                    // メッセージ入力欄
-                    HStack(spacing: 8) {
-                        TextField("メッセージを入力", text: $messageText, axis: .vertical)
-                            .focused($isTextFieldFocused)
-                            .lineLimit(1...5)
-                        
-                        // スタンプボタン
-                        Button(action: {
-                            generateHapticFeedback()
-                        }) {
-                            Image(systemName: "face.smiling")
-                                .font(.system(size: 20))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(22)
-                    
-                    // 送信ボタン
-                    Button(action: {
-                        sendMessage()
-                        generateHapticFeedback()
-                    }) {
-                        Image(systemName: messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "arrow.up.circle.fill" : "paperplane.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(
-                                messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                                LinearGradient(
-                                    colors: [Color.gray],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ) :
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                                        Color(red: 0.5, green: 0.4, blue: 1.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                    .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-            }
-            .background(Color(.systemBackground))
+            chatInputBar
         }
         .navigationTitle(oshi.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        generateHapticFeedback()
-                    } label: {
-                        Label("検索", systemImage: "magnifyingglass")
-                    }
-                    
-                    Button {
-                        generateHapticFeedback()
-                    } label: {
-                        Label("通知をオフ", systemImage: "bell.slash")
-                    }
-                    
-                    Divider()
-                    
-                    Button(role: .destructive) {
-                        generateHapticFeedback()
-                    } label: {
-                        Label("チャットを削除", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(.primary)
-                }
-            }
-        }
         .onAppear {
             viewModel.markChatAsRead(oshiId: oshi.id)
         }
+    }
+    
+    // MARK: - Chat Input Bar
+    
+    private var chatInputBar: some View {
+        VStack(spacing: 0) {
+            AppDivider()
+            
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                // プラスボタン
+                Button(action: {
+                    generateHapticFeedback()
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(AppColors.primaryGradient)
+                }
+                
+                // メッセージ入力欄
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    TextField("メッセージを入力", text: $messageText, axis: .vertical)
+                        .focused($isTextFieldFocused)
+                        .font(AppTypography.body)
+                        .lineLimit(1...5)
+                    
+                    // スタンプボタン
+                    Button(action: {
+                        generateHapticFeedback()
+                    }) {
+                        Image(systemName: "face.smiling")
+                            .font(.system(size: 20))
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+                }
+                .padding(.horizontal, DesignTokens.Spacing.sm)
+                .padding(.vertical, DesignTokens.Spacing.xs)
+                .background(AppColors.backgroundSecondary)
+                .cornerRadius(DesignTokens.Radius.xl)
+                
+                // 送信ボタン
+                Button(action: {
+                    sendMessage()
+                    generateHapticFeedback()
+                }) {
+                    Image(systemName: messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          ? "arrow.up.circle.fill"
+                          : "paperplane.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(
+                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? LinearGradient(colors: [.gray], startPoint: .top, endPoint: .bottom)
+                            : AppColors.primaryGradient
+                        )
+                }
+                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.sm)
+        }
+        .background(AppColors.backgroundPrimary)
     }
     
     private func sendMessage() {
@@ -586,7 +341,7 @@ struct MessageBubble: View {
     @State private var avatarImage: UIImage?
     
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: DesignTokens.Spacing.xs) {
             if message.isFromUser {
                 Spacer(minLength: 60)
                 
@@ -595,74 +350,46 @@ struct MessageBubble: View {
                         // 既読表示
                         if message.isRead {
                             Text("既読")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
+                                .font(AppTypography.caption2)
+                                .foregroundColor(AppColors.textSecondary)
                         }
                         
                         // メッセージバブル
                         Text(message.content)
-                            .font(.system(size: 15))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                                        Color(red: 0.4, green: 0.5, blue: 1.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .font(AppTypography.body)
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
+                            .padding(.vertical, DesignTokens.Spacing.sm)
+                            .background(AppColors.primaryGradient)
                             .foregroundColor(.white)
-                            .cornerRadius(18)
-                            .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+                            .cornerRadius(DesignTokens.Radius.lg)
+//                            .cornerRadius(DesignTokens.Radius.xxs, corners: [.bottomRight])
                     }
                 }
             } else {
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .bottom, spacing: DesignTokens.Spacing.xs) {
                     // アバター
-                    if let avatarImage = avatarImage {
-                        Image(uiImage: avatarImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 36, height: 36)
-                            .clipShape(Circle())
-                    } else {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.3, blue: 0.3),
-                                        Color(red: 1.0, green: 0.5, blue: 0.3)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 36, height: 36)
-                            .overlay(
-                                Text(String(oshi.name.prefix(1)))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
-                    }
+                    AvatarView(
+                        image: avatarImage,
+                        name: oshi.name,
+                        size: DesignTokens.AvatarSize.sm + 4,
+                        placeholderGradient: AppColors.pinkGradient
+                    )
                     
                     VStack(alignment: .leading, spacing: 4) {
                         // 名前
                         Text(oshi.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textSecondary)
                         
                         // メッセージバブル
                         Text(message.content)
-                            .font(.system(size: 15))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(18)
-                            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                            .font(AppTypography.body)
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
+                            .padding(.vertical, DesignTokens.Spacing.sm)
+                            .background(AppColors.backgroundTertiary)
+                            .foregroundColor(AppColors.textPrimary)
+                            .cornerRadius(DesignTokens.Radius.lg)
+//                            .cornerRadius(DesignTokens.Radius.xxs, corners: [.bottomLeft])
                     }
                 }
                 .task {
@@ -674,6 +401,28 @@ struct MessageBubble: View {
                 Spacer(minLength: 60)
             }
         }
+    }
+}
+
+// MARK: - Corner Radius Extension
+
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+    
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
     }
 }
 

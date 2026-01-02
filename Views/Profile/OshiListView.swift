@@ -2,7 +2,7 @@
 //  OshiListView.swift
 //  AIsns
 //
-//  Updated: Removed Mutual Tab & Changed Mutual Icon
+//  Updated: 2026/01/02 - Complete UI/UX Redesign
 //
 
 import SwiftUI
@@ -10,14 +10,12 @@ import SwiftUI
 struct OshiListView: View {
     @ObservedObject var viewModel: OshiViewModel
     
-    // 0: フォロワー, 1: フォロー中
     @State private var selectedTab: Int = 0
     @Namespace private var animation
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        // ✅ NavigationStack の代わりに NavigationView を使用
         NavigationView {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
@@ -26,11 +24,11 @@ struct OshiListView: View {
                         TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
                         TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
                     }
-                    .padding(.top, 8)
-                    .background(Color(.systemBackground))
+                    .padding(.top, DesignTokens.Spacing.xs)
+                    .background(AppColors.backgroundPrimary)
                     .zIndex(1)
                     
-                    // スワイプ可能なコンテンツエリア
+                    // コンテンツエリア
                     TabView(selection: $selectedTab) {
                         OshiListPage(
                             oshis: viewModel.oshiList.filter { $0.isFollowingUser },
@@ -51,30 +49,25 @@ struct OshiListView: View {
                         .tag(1)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut(duration: 0.3), value: selectedTab)
+                    .animation(DesignTokens.Animation.spring, value: selectedTab)
                 }
                 
-                // アカウント追加ボタン (NavigationLink)
-                // NavigationViewの中なので正常に画面遷移します
+                // アカウント追加ボタン
                 NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
-                    Image(systemName: "person.badge.plus")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            LinearGradient(
-                                colors: [.blue, .purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 4)
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.primaryGradient)
+                            .frame(width: 56, height: 56)
+                            .shadow(color: AppColors.primary.opacity(0.4), radius: 12, x: 0, y: 6)
+                        
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
+                .padding(.trailing, DesignTokens.Spacing.lg)
+                .padding(.bottom, DesignTokens.Spacing.lg)
             }
-            // ✅ ナビゲーションバーの設定は NavigationView の「中身」に対して行う
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar {
@@ -85,19 +78,19 @@ struct OshiListView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(.primary)
+                                .foregroundColor(AppColors.textPrimary)
                         }
                     }
                 }
             }
         }
-        // ✅ これを指定することで、iPad等でも強制的に全画面表示（スタック形式）になります
         .navigationViewStyle(.stack)
         .navigationBarBackButtonHidden(true)
     }
 }
 
-// リスト表示部分
+// MARK: - Oshi List Page
+
 struct OshiListPage: View {
     let oshis: [OshiCharacter]
     let emptyTitle: String
@@ -107,119 +100,75 @@ struct OshiListPage: View {
     
     var body: some View {
         if oshis.isEmpty {
-            emptyStateView
+            EmptyStateView(
+                icon: iconName,
+                title: emptyTitle,
+                subtitle: emptySubtitle
+            )
         } else {
-            List {
-                ForEach(oshis) { oshi in
-                    ZStack {
-                        // 詳細画面へ遷移
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(oshis) { oshi in
                         NavigationLink(destination: OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)) {
-                            EmptyView()
+                            OshiListRowWithButton(oshi: oshi, viewModel: viewModel)
                         }
-                        .opacity(0)
+                        .buttonStyle(.plain)
                         
-                        // 行デザイン
-                        OshiListRowWithButton(oshi: oshi, viewModel: viewModel)
+                        if oshi.id != oshis.last?.id {
+                            AppDivider(leadingPadding: 78)
+                        }
                     }
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
                 }
             }
-            .listStyle(.plain)
         }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            ZStack {
-                Circle()
-                    .fill(Color(.systemGray6))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: iconName)
-                    .font(.system(size: 32))
-                    .foregroundColor(.secondary)
-            }
-            
-            VStack(spacing: 8) {
-                Text(emptyTitle)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Text(emptySubtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 100)
     }
 }
 
-// フォローボタン付きの行コンポーネント
+// MARK: - Oshi List Row
+
 struct OshiListRowWithButton: View {
     let oshi: OshiCharacter
     @ObservedObject var viewModel: OshiViewModel
     @State private var showingUnfollowAlert = false
+    @State private var avatarImage: UIImage?
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: DesignTokens.Spacing.sm) {
             // アイコン
-            if let url = oshi.avatarImageURL, let imageURL = URL(string: url) {
-                AsyncImage(url: imageURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    Color(.systemGray5)
+            AvatarView(
+                image: avatarImage,
+                name: oshi.name,
+                size: DesignTokens.AvatarSize.lg,
+                placeholderGradient: AppColors.pinkGradient
+            )
+            .task {
+                if let urlString = oshi.avatarImageURL {
+                    avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
                 }
-                .frame(width: 50, height: 50)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color(.systemGray6), lineWidth: 1))
-            } else {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Text(oshi.name.prefix(1))
-                            .font(.headline)
-                            .foregroundColor(.blue)
-                    )
             }
             
             // 名前と自己紹介
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                HStack(spacing: DesignTokens.Spacing.xs) {
                     Text(oshi.name)
-                        .font(.body)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .font(AppTypography.bodyMedium)
+                        .foregroundColor(AppColors.textPrimary)
                     
-                    // ✅ 変更: 相互フォローの場合はバッジを表示
+                    // 相互フォローバッジ
                     if oshi.isMutualFollow {
                         Text("相互")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.8))
-                            .cornerRadius(4)
+                            .background(AppColors.primaryGradientH)
+                            .cornerRadius(DesignTokens.Radius.xs)
                     }
                 }
                 
                 Text(oshi.personalityText.isEmpty ? "自己紹介文なし" : oshi.personalityText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
                     .lineLimit(1)
             }
             
@@ -227,6 +176,7 @@ struct OshiListRowWithButton: View {
             
             // フォローボタン
             Button {
+                generateHapticFeedback()
                 if oshi.isFollowedByUser {
                     showingUnfollowAlert = true
                 } else {
@@ -236,24 +186,23 @@ struct OshiListRowWithButton: View {
                 }
             } label: {
                 Text(oshi.isFollowedByUser ? "フォロー中" : "フォロー")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(oshi.isFollowedByUser ? .primary : .white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .font(AppTypography.captionMedium)
+                    .foregroundColor(oshi.isFollowedByUser ? AppColors.textPrimary : .white)
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
+                    .padding(.vertical, DesignTokens.Spacing.xs)
                     .background(
                         Group {
                             if oshi.isFollowedByUser {
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: DesignTokens.Radius.full)
+                                    .stroke(AppColors.border, lineWidth: 1)
                             } else {
                                 Capsule()
-                                    .fill(Color.blue)
+                                    .fill(AppColors.primaryGradientH)
                             }
                         }
                     )
             }
-            .buttonStyle(PlainButtonStyle()) // リストタップと干渉しないように
+            .buttonStyle(PlainButtonStyle())
             .alert("フォロー解除", isPresented: $showingUnfollowAlert) {
                 Button("キャンセル", role: .cancel) { }
                 Button("解除", role: .destructive) {
@@ -265,13 +214,14 @@ struct OshiListRowWithButton: View {
                 Text("\(oshi.name)のフォローを解除しますか?")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
+        .padding(.horizontal, DesignTokens.Spacing.md)
+        .padding(.vertical, DesignTokens.Spacing.sm)
+        .background(AppColors.backgroundPrimary)
     }
 }
 
-// カスタムタブボタン
+// MARK: - Tab Button
+
 struct TabButton: View {
     let title: String
     let tag: Int
@@ -280,30 +230,24 @@ struct TabButton: View {
     
     var body: some View {
         Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            generateHapticFeedback()
+            withAnimation(DesignTokens.Animation.spring) {
                 selectedTab = tag
             }
         } label: {
-            VStack(spacing: 12) {
+            VStack(spacing: DesignTokens.Spacing.sm) {
                 Text(title)
-                    .font(.subheadline)
-                    .fontWeight(selectedTab == tag ? .bold : .medium)
-                    .foregroundColor(selectedTab == tag ? .primary : .secondary)
+                    .font(selectedTab == tag ? AppTypography.bodyMedium : AppTypography.body)
+                    .foregroundColor(selectedTab == tag ? AppColors.textPrimary : AppColors.textSecondary)
                 
                 ZStack {
                     Capsule()
-                        .fill(Color.gray.opacity(0.1))
+                        .fill(AppColors.borderLight)
                         .frame(height: 2)
                     
                     if selectedTab == tag {
                         Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.blue, .purple],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                            .fill(AppColors.primaryGradientH)
                             .frame(height: 3)
                             .matchedGeometryEffect(id: "TabIndicator", in: namespace)
                     }

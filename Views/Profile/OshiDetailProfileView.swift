@@ -2,7 +2,7 @@
 //  OshiProfileDetailView.swift
 //  AIsns
 //
-//  Updated: 2025/12/29 - プリセット判定機能追加
+//  Updated: 2026/01/02 - Complete UI/UX Redesign
 //
 
 import SwiftUI
@@ -12,36 +12,27 @@ struct OshiProfileDetailView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
     
-    // ✅ プリセットかどうかを判定するフラグ
     let isPreset: Bool
     
     @State private var avatarImage: UIImage?
     @State private var isLoadingImage = false
-    @State private var selectedTab: ProfileTab = .posts
     @State private var showingEditSheet = false
     @State private var showingUnfollowAlert = false
     @State private var isFollowing = false
     
     private let avatarSize: CGFloat = 100
     
-    enum ProfileTab: String, CaseIterable {
-        case posts = "ポスト"
-    }
-    
-    // ✅ この推しの投稿をフィルタリング
     var oshiPosts: [Post] {
         viewModel.posts.filter { $0.authorId == oshi.id }
     }
     
     var isAlreadyFollowed: Bool {
-        // ✅ oshiListに存在し、かつユーザーがフォローしている状態を確認
         if let existingOshi = viewModel.oshiList.first(where: { $0.id == oshi.id }) {
             return existingOshi.isFollowedByUser
         }
         return false
     }
     
-    // ✅ イニシャライザにisPresetを追加(デフォルトはfalse)
     init(oshi: OshiCharacter, viewModel: OshiViewModel, isPreset: Bool = false) {
         self.oshi = oshi
         self.viewModel = viewModel
@@ -50,24 +41,25 @@ struct OshiProfileDetailView: View {
     
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 24) {
-                // アバターセクション
-                avatarSection
+            VStack(spacing: DesignTokens.Spacing.xl) {
+                // ヘッダーエリア（アバター + 統計）
+                profileHeader
                 
                 // プロフィール情報
                 profileInfoSection
                 
+                // フォローボタン
                 followButtonSection
                 
-                Divider()
-                    .padding(.horizontal, 24)
+                AppDivider()
+                    .padding(.horizontal, DesignTokens.Spacing.xl)
                 
-                // コンテンツエリア
-                contentSection
+                // 投稿セクション
+                postsSection
             }
-            .padding(.bottom, 32)
+            .padding(.bottom, DesignTokens.Spacing.xxl)
         }
-        .background(Color(.systemBackground))
+        .background(AppColors.backgroundPrimary)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -77,7 +69,7 @@ struct OshiProfileDetailView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(.primary)
+                        .foregroundColor(AppColors.textPrimary)
                 }
             }
             
@@ -89,7 +81,6 @@ struct OshiProfileDetailView: View {
                         Label("プロフィールを編集", systemImage: "pencil")
                     }
                     
-                    // ✅ プリセットの場合はフォロー解除を表示しない
                     if !isPreset {
                         Button(role: .destructive) {
                             showingUnfollowAlert = true
@@ -100,13 +91,12 @@ struct OshiProfileDetailView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 20))
-                        .foregroundColor(.primary)
+                        .foregroundColor(AppColors.textPrimary)
                 }
             }
         }
         .sheet(isPresented: $showingEditSheet) {
             NavigationStack {
-                // ✅ isPresetフラグを渡す
                 OshiProfileEditView(
                     oshi: oshi,
                     viewModel: viewModel,
@@ -124,194 +114,144 @@ struct OshiProfileDetailView: View {
             Text("\(oshi.name)のフォローを解除しますか?")
         }
         .task {
-            print("🖼️ OshiProfileDetailView: \(oshi.name) (isPreset: \(isPreset))")
-            print("  - avatarImageURL: \(oshi.avatarImageURL ?? "nil")")
-            
-            if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
-                isLoadingImage = true
-                
-                do {
-                    let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
-                    await MainActor.run {
-                        avatarImage = image
-                        isLoadingImage = false
-                        print("  ✅ 画像読み込み成功")
-                    }
-                } catch {
-                    await MainActor.run {
-                        isLoadingImage = false
-                    }
-                    print("  ❌ 画像読み込み失敗: \(error.localizedDescription)")
-                }
-            }
+            await loadAvatar()
         }
     }
     
-    // MARK: - Avatar Section
+    // MARK: - Load Avatar
     
-    private var avatarSection: some View {
-        VStack(spacing: 16) {
+    private func loadAvatar() async {
+        if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
+            isLoadingImage = true
+            avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+            isLoadingImage = false
+        }
+    }
+    
+    // MARK: - Profile Header
+    
+    private var profileHeader: some View {
+        VStack(spacing: DesignTokens.Spacing.lg) {
+            // アバター
             ZStack {
-                // 背景のグラデーションリング
+                // グラデーションリング
                 Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [.pink.opacity(0.3), .purple.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 3
-                    )
+                    .stroke(AppColors.primaryGradient, lineWidth: 3)
                     .frame(width: avatarSize + 12, height: avatarSize + 12)
                 
-                avatarView
+                if isLoadingImage {
+                    SkeletonView(width: avatarSize, height: avatarSize, cornerRadius: avatarSize / 2)
+                } else {
+                    AvatarView(
+                        image: avatarImage,
+                        name: oshi.name,
+                        size: avatarSize,
+                        placeholderGradient: AppColors.pinkGradient
+                    )
+                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 4)
+                }
             }
+            .padding(.top, DesignTokens.Spacing.md)
         }
-    }
-    
-    private var avatarView: some View {
-        Group {
-            if isLoadingImage {
-                Circle()
-                    .fill(Color(.systemGray5))
-                    .frame(width: avatarSize, height: avatarSize)
-                    .overlay(
-                        ProgressView()
-                            .tint(.gray)
-                    )
-            } else if let image = avatarImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: avatarSize, height: avatarSize)
-                    .clipShape(Circle())
-            } else {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.pink, .purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: avatarSize, height: avatarSize)
-                    .overlay(
-                        Text(String(oshi.name.prefix(1)))
-                            .font(.system(size: 40, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                    )
-            }
-        }
-        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 4)
     }
     
     // MARK: - Profile Info Section
     
     private var profileInfoSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: DesignTokens.Spacing.sm) {
             // 名前
             Text(oshi.name)
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(AppTypography.title2)
+                .foregroundColor(AppColors.textPrimary)
             
             // 自己紹介
             if !oshi.speechCharacteristics.isEmpty {
                 Text(oshi.speechCharacteristics)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(AppTypography.subheadline)
+                    .foregroundColor(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, DesignTokens.Spacing.xxl)
             }
             
+            // 相互フォロー表示
             if oshi.isMutualFollow {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.left.arrow.right")
                         .font(.system(size: 12))
                     Text("相互フォロー")
-                        .font(.system(size: 13))
+                        .font(AppTypography.footnote)
                 }
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
+                .foregroundColor(AppColors.textSecondary)
+                .padding(.top, DesignTokens.Spacing.xxs)
             } else if oshi.isFollowingUser {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12))
                     Text("フォローされています")
-                        .font(.system(size: 13))
+                        .font(AppTypography.footnote)
                 }
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
+                .foregroundColor(AppColors.textSecondary)
+                .padding(.top, DesignTokens.Spacing.xxs)
             }
             
-            // キャラクター属性タグ
+            // キャラクタータグ
             characterTagsView
-                .padding(.top, 4)
+                .padding(.top, DesignTokens.Spacing.xs)
         }
     }
     
-    private var followButton: some View {
-        Button {
-            Task {
-                if oshi.isFollowedByUser {
-                    await viewModel.unfollowOshi(oshi)
-                } else {
-                    await viewModel.followOshi(oshi)
+    // MARK: - Character Tags
+    
+    private var characterTagsView: some View {
+        FlowLayout(spacing: DesignTokens.Spacing.xs) {
+            if let gender = oshi.gender {
+                AppTagView(text: gender.rawValue, icon: nil, style: .default)
+            }
+            
+            if !oshi.personalityText.isEmpty {
+                ForEach(splitTags(oshi.personalityText), id: \.self) { tag in
+                    AppTagView(text: tag, icon: "heart.fill", style: .pink)
                 }
             }
-        } label: {
-            HStack {
-                Image(systemName: oshi.isFollowedByUser ? "person.fill.checkmark" : "person.fill.badge.plus")
-                    .font(.system(size: 14))
-                Text(oshi.isFollowedByUser ? "フォロー中" : "フォロー")
-                    .font(.system(size: 15, weight: .semibold))
+            
+            if !oshi.speechStyleText.isEmpty {
+                ForEach(splitTags(oshi.speechStyleText), id: \.self) { tag in
+                    AppTagView(text: tag, icon: "text.bubble.fill", style: .primary)
+                }
             }
-            .foregroundColor(oshi.isFollowedByUser ? .primary : .white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.2, green: 0.7, blue: 1.0),
-                        Color(red: 0.5, green: 0.4, blue: 1.0)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .opacity(oshi.isFollowedByUser ? 0 : 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        oshi.isFollowedByUser ? Color(.systemGray4) : Color.clear,
-                        lineWidth: 1
-                    )
-            )
-            .cornerRadius(20)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, DesignTokens.Spacing.xl)
     }
     
+    private func splitTags(_ text: String) -> [String] {
+        text.components(separatedBy: CharacterSet(charactersIn: "。、"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+    
+    // MARK: - Follow Button Section
+    
     private var followButtonSection: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: DesignTokens.Spacing.sm) {
             if isAlreadyFollowed {
-                // フォロー中の表示
+                // フォロー中
                 Button {
                     showingUnfollowAlert = true
                 } label: {
-                    HStack {
+                    HStack(spacing: DesignTokens.Spacing.xs) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 14, weight: .semibold))
                         Text("フォロー中")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(AppTypography.bodyMedium)
                     }
-                    .foregroundColor(.primary)
+                    .foregroundColor(AppColors.textPrimary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, DesignTokens.Spacing.sm)
                     .background(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 22)
-                            .stroke(Color(.systemGray3), lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: DesignTokens.Radius.xl)
+                            .stroke(AppColors.border, lineWidth: 1.5)
                     )
                 }
             } else {
@@ -321,51 +261,32 @@ struct OshiProfileDetailView: View {
                         isFollowing = true
                         defer { isFollowing = false }
                         
-                        print("📲 詳細画面からフォロー: \(oshi.name)")
-                        
-                        // ✅ 修正: プリセットかoshiListにいるかで分岐
                         if isPreset {
-                            // プリセットの場合はfollowRecommended
                             await viewModel.followRecommended(oshi)
                         } else {
-                            // 既にoshiListにいる場合はfollowOshi
                             await viewModel.followOshi(oshi)
                         }
-                        
-                        print("  ✅ フォロー完了")
                     }
                 } label: {
                     if isFollowing {
                         ProgressView()
                             .tint(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                LinearGradient(
-                                    colors: [.blue.opacity(0.7), .purple.opacity(0.7)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .cornerRadius(22)
+                            .padding(.vertical, DesignTokens.Spacing.sm)
+                            .background(AppColors.primary.opacity(0.7))
+                            .cornerRadius(DesignTokens.Radius.xl)
                     } else {
-                        HStack {
+                        HStack(spacing: DesignTokens.Spacing.xs) {
                             Image(systemName: "person.fill.badge.plus")
                                 .font(.system(size: 14, weight: .semibold))
                             Text("フォロー")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(AppTypography.bodyMedium)
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(
-                                colors: [.blue, .purple],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(22)
+                        .padding(.vertical, DesignTokens.Spacing.sm)
+                        .background(AppColors.primaryGradientH)
+                        .cornerRadius(DesignTokens.Radius.xl)
                     }
                 }
                 .disabled(isFollowing)
@@ -377,123 +298,60 @@ struct OshiProfileDetailView: View {
             } label: {
                 Image(systemName: "message.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundColor(AppColors.textPrimary)
                     .frame(width: 44, height: 44)
-                    .background(Color(.systemGray6))
+                    .background(AppColors.backgroundSecondary)
                     .clipShape(Circle())
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, DesignTokens.Spacing.xl)
     }
     
-    private var characterTagsView: some View {
-        FlowLayout(spacing: 8) {
-            if let gender = oshi.gender {
-                TagView(text: gender.rawValue, icon: gender.icon)
-            }
-            
-            // 性格タグを分割して表示
-            if !oshi.personalityText.isEmpty {
-                ForEach(splitTags(oshi.personalityText), id: \.self) { tag in
-                    TagView(text: tag, icon: "heart.fill")
-                }
-            }
-            
-            // 話し方タグを分割して表示
-            if !oshi.speechStyleText.isEmpty {
-                ForEach(splitTags(oshi.speechStyleText), id: \.self) { tag in
-                    TagView(text: tag, icon: "text.bubble.fill")
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-    }
-
-    private func splitTags(_ text: String) -> [String] {
-        text.components(separatedBy: CharacterSet(charactersIn: "。、"))
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
+    // MARK: - Posts Section
     
-    // MARK: - Content Section
-    
-    private var contentSection: some View {
-        VStack(spacing: 16) {
+    private var postsSection: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
             // セクションヘッダー
-            HStack {
-                Text("ポスト")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                // ✅ 投稿数を表示
-                if !oshiPosts.isEmpty {
-                    Text("\(oshiPosts.count)件")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 24)
+            SectionHeader(
+                title: "ポスト",
+                icon: "square.text.square",
+                iconColor: AppColors.primary
+            )
+            .padding(.horizontal, DesignTokens.Spacing.xl)
             
-            // ✅ 投稿がある場合は表示、ない場合は空状態
+            if !oshiPosts.isEmpty {
+                Text("\(oshiPosts.count)件")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, DesignTokens.Spacing.xl)
+                    .padding(.top, -DesignTokens.Spacing.sm)
+            }
+            
             if oshiPosts.isEmpty {
-                emptyContentView(
+                EmptyStateView(
                     icon: "bubble.left.and.bubble.right",
                     title: "まだポストがありません",
                     subtitle: "チャットを始めると、ここに表示されます"
                 )
+                .frame(height: 250)
             } else {
-                // ✅ 投稿一覧を表示
                 LazyVStack(spacing: 0) {
                     ForEach(oshiPosts) { post in
                         PostCardView(post: post, viewModel: viewModel)
                         
                         if post.id != oshiPosts.last?.id {
-                            Divider()
-                                .padding(.leading, 68)
+                            AppDivider(leadingPadding: 68)
                         }
                     }
                 }
-                .background(Color(.systemBackground))
+                .background(AppColors.backgroundPrimary)
             }
         }
-    }
-    
-    private func emptyContentView(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: 16) {
-            Spacer()
-                .frame(height: 40)
-            
-            ZStack {
-                Circle()
-                    .fill(Color(.systemGray6))
-                    .frame(width: 80, height: 80)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 32))
-                    .foregroundColor(.secondary)
-            }
-            
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Spacer()
-                .frame(height: 60)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 32)
     }
 }
+
+// MARK: - Flow Layout (既存)
 
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
@@ -506,9 +364,11 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
         for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x,
-                                      y: bounds.minY + result.positions[index].y),
-                         proposal: .unspecified)
+            subview.place(
+                at: CGPoint(x: bounds.minX + result.positions[index].x,
+                           y: bounds.minY + result.positions[index].y),
+                proposal: .unspecified
+            )
         }
     }
     
@@ -526,7 +386,6 @@ struct FlowLayout: Layout {
                 let size = subview.sizeThatFits(.unspecified)
                 
                 if x + size.width > maxWidth && x > 0 {
-                    // 次の行へ
                     x = 0
                     y += rowHeight + spacing
                     rowHeight = 0
@@ -543,37 +402,16 @@ struct FlowLayout: Layout {
     }
 }
 
-// MARK: - Tag View
+// MARK: - Tag View (既存互換)
 
 struct TagView: View {
     let text: String
     let icon: String
     
     var body: some View {
-        HStack(spacing: 5) {
-            if icon.count <= 2 {
-                Text(icon)
-                    .font(.caption)
-            } else {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.pink)
-            }
-            
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.systemGray6))
-        )
+        AppTagView(text: text, icon: icon.count <= 2 ? nil : icon, style: .default)
     }
 }
-
-// MARK: - Preview
 
 #Preview {
     NavigationStack {
@@ -582,12 +420,12 @@ struct TagView: View {
                 name: "さくら",
                 gender: .female,
                 personalityText: "優しくて明るい",
-                speechCharacteristics: "アプリの個人開発してます 🌸 いつも応援ありがとう!開発やマーケティングの気づきを発信します",
+                speechCharacteristics: "アプリの個人開発してます 🌸 いつも応援ありがとう!",
                 userCallingName: "あなた",
                 speechStyleText: "敬語"
             ),
             viewModel: OshiViewModel(),
-            isPreset: false  // ✅ プレビューではfalse
+            isPreset: false
         )
     }
 }
