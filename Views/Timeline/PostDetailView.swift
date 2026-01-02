@@ -40,6 +40,9 @@ struct PostDetailView: View {
             commentInputBar
         }
         .background(AppColors.backgroundPrimary)
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
         .navigationTitle("投稿")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -50,26 +53,6 @@ struct PostDetailView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(AppColors.textPrimary)
-                }
-            }
-            
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        // シェア
-                    } label: {
-                        Label("共有", systemImage: "square.and.arrow.up")
-                    }
-                    
-                    Button(role: .destructive) {
-                        // 報告
-                    } label: {
-                        Label("報告する", systemImage: "flag")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 20))
                         .foregroundColor(AppColors.textPrimary)
                 }
             }

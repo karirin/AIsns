@@ -478,6 +478,12 @@ struct ToastView: View {
     }
 }
 
+extension UIApplication {
+    func endEditing() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
 // MARK: - Relative Time Text
 
 /// X/Twitter風の相対時間表示

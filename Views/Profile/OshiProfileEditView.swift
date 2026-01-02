@@ -111,6 +111,9 @@ struct OshiProfileEditView: View {
                 successToast
             }
         }
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
@@ -934,6 +937,9 @@ struct FreeTextEditView: View {
             text: $text,
             iconColor: Color(hex: "6366F1")
         )
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
     }
 }
 

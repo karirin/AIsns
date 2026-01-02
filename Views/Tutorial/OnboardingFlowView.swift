@@ -47,6 +47,9 @@ struct OnboardingFlowView: View {
                 .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .opacity))
             }
         }
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
     }
 }
 

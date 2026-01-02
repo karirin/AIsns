@@ -91,6 +91,9 @@ struct OshiCreationView: View {
                 successToast
             }
         }
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
         .navigationTitle("推しを作成")
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)

@@ -61,6 +61,9 @@ struct UserProfileEditView: View {
                 saveToastOverlay
             }
         }
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
         .navigationTitle("プロフィールを編集")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

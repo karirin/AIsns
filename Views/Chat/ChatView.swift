@@ -257,6 +257,9 @@ struct ChatDetailView: View {
             // 入力エリア
             chatInputBar
         }
+        .onTapGesture {
+            UIApplication.shared.endEditing()
+        }
         .navigationTitle(oshi.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {

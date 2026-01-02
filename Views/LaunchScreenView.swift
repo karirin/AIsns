@@ -14,7 +14,7 @@ struct LaunchScreenView: View {
     @State private var particleOpacity: Double = 0
     
     @State private var navigationState: NavigationState = .launch
-    @AppStorage("hasSeenTutorial") private var hasSeenTutorial: Bool = false
+    @AppStorage("hasSeenTutorial13") private var hasSeenTutorial: Bool = false
     
     enum NavigationState {
         case launch

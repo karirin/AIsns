@@ -850,6 +850,9 @@ struct PostComposerView: View {
                     postButton
                 }
             }
+            .onTapGesture {
+                UIApplication.shared.endEditing()
+            }
             .onAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isTextFieldFocused = true
