@@ -125,6 +125,9 @@ struct TimelineScreenView: View {
                     EmptyView()
                 }
             }
+            .navigationDestination(for: OshiCharacter.self) { oshi in
+                OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
+            }
             .task {
                 await loadInitialData()
             }
@@ -163,6 +166,48 @@ struct TimelineScreenView: View {
                     }
                 }
         )
+    }
+    
+    private var timelineScrollView: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredPosts) { post in
+                    // ★ 修正: onAvatarTap を追加して、アイコンタップ時の処理を渡す
+                    PostCardView(
+                        post: post,
+                        viewModel: viewModel,
+                        onAvatarTap: {
+                            handleAvatarTap(for: post)
+                        }
+                    )
+                    
+                    AppDivider(leadingPadding: 68)
+                }
+            }
+            .padding(.bottom, 100)
+        }
+        .refreshable {
+            await viewModel.loadData()
+        }
+    }
+
+    // 👇 追加: タップ時の遷移ロジック
+    private func handleAvatarTap(for post: Post) {
+        if post.isUserPost {
+            // 自分の投稿なら、自分のプロフィールへ
+            navigationPath.append(SidebarDestination.profile)
+        } else {
+            // 投稿の作者IDから、キャラクター情報を探す
+            // 1. フォロー中の推しから探す
+            if let oshi = viewModel.oshiList.first(where: { $0.id == post.authorId }) {
+                navigationPath.append(oshi)
+            }
+            // 2. おすすめ（未フォロー）の推しから探す
+            else if let preset = viewModel.recommendedOshis.first(where: { $0.id == post.authorId }) {
+                navigationPath.append(preset)
+            }
+            // 見つからない場合は何もしない（またはデータ取得処理を入れる）
+        }
     }
 
     func executeProcessEveryfifTimes() {
@@ -397,24 +442,6 @@ struct TimelineScreenView: View {
             await viewModel.loadData()
         }
     }
-    
-    // MARK: - Timeline Scroll View
-    
-    private var timelineScrollView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(filteredPosts) { post in
-                    PostCardView(post: post, viewModel: viewModel)
-                    
-                    AppDivider(leadingPadding: 68)
-                }
-            }
-            .padding(.bottom, 100)
-        }
-        .refreshable {
-            await viewModel.loadData()
-        }
-    }
 }
 
 // MARK: - Sidebar Menu View
@@ -598,6 +625,7 @@ struct PostCardView: View {
     let post: Post
     @ObservedObject var viewModel: OshiViewModel
     var isNavigable: Bool = true
+    var onAvatarTap: (() -> Void)? = nil
     
     @State private var avatarImage: UIImage?
     @State private var postImages: [UIImage] = []
@@ -726,24 +754,30 @@ struct PostCardView: View {
     // MARK: - Avatar View
     
     private var avatarView: some View {
-        Group {
-            if let oshi = oshi {
-                AvatarView(
-                    image: avatarImage,
-                    name: oshi.name,
-                    size: DesignTokens.AvatarSize.md,
-                    placeholderGradient: AppColors.pinkGradient
-                )
-            } else {
-                AvatarView(
-                    // 👈 修正: 自分の投稿なら userAvatarImage、そうでなければ上でロードした avatarImage を使う
-                    image: post.isUserPost ? userAvatarImage : avatarImage,
-                    name: post.isUserPost ? viewModel.userProfileName : post.authorName,
-                    size: DesignTokens.AvatarSize.md,
-                    placeholderGradient: AppColors.primaryGradient
-                )
+        // ★ 修正: Buttonでラップしてタップ可能にする
+        Button {
+            // コールバックがあれば実行
+            onAvatarTap?()
+        } label: {
+            Group {
+                if let oshi = oshi {
+                    AvatarView(
+                        image: avatarImage,
+                        name: oshi.name,
+                        size: DesignTokens.AvatarSize.md,
+                        placeholderGradient: AppColors.pinkGradient
+                    )
+                } else {
+                    AvatarView(
+                        image: post.isUserPost ? userAvatarImage : avatarImage,
+                        name: post.isUserPost ? viewModel.userProfileName : post.authorName,
+                        size: DesignTokens.AvatarSize.md,
+                        placeholderGradient: AppColors.primaryGradient
+                    )
+                }
             }
         }
+        .buttonStyle(.plain) // 重要: これがないとカード全体のタップ判定と競合します
     }
     
     // MARK: - Post Header

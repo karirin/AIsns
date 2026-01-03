@@ -49,7 +49,7 @@ enum SpeechStyle: String, CaseIterable, Codable {
     }
 }
 
-struct OshiCharacter: Identifiable, Codable {
+struct OshiCharacter: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var gender: Gender?
@@ -76,6 +76,14 @@ struct OshiCharacter: Identifiable, Codable {
             guard let urlString = avatarImageURL else { return nil }
             return try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
         }
+    }
+    
+    static func == (lhs: OshiCharacter, rhs: OshiCharacter) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
     
     func callingName(userName: String) -> String {
