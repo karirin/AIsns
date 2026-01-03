@@ -302,9 +302,28 @@ class FirebaseDatabaseManager {
         return data
     }
     
-    func followRemoteOshi(oshiId: UUID) async throws {
-        let refPath = "users/\(userId)/following/\(oshiId.uuidString)"
+    func followRemoteOshi(oshi: OshiCharacter) async throws {
+        // 1. 既存の処理: フォロー情報の保存
+        let refPath = "users/\(userId)/following/\(oshi.id.uuidString)"
         try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
+        
+        // 2. 追加処理: 通知の送信
+        // 作成者ID (creatorId) がある場合のみ通知を送る
+        guard let creatorId = oshi.creatorId else { return }
+        
+        let (myUserName, _, _) = try await loadUserProfile()
+        
+        let notification = AppNotification(
+            type: .follow,
+            senderId: UUID(uuidString: userId) ?? UUID(),
+            senderName: myUserName,
+            content: "あなたのAIをフォローしました",
+            relatedPostId: nil,
+            category: .createdOshi,
+            targetOshiName: oshi.name
+        )
+        
+        try await sendNotification(to: creatorId, notification: notification)
     }
 
     func unfollowRemoteOshi(oshiId: UUID) async throws {
@@ -325,32 +344,44 @@ class FirebaseDatabaseManager {
     // MARK: - Reactions (Shared)
 
     /// リアクションを追加 (共有対応)
-    func addReaction(_ reaction: Reaction, to postId: UUID) async throws {
-        // 1. リアクションを共有パスに保存 (post-reactions/{postId}/{reactionId})
-        // 誰がリアクションしたか(userId)も記録します
+    func addReaction(_ reaction: Reaction, to postId: UUID, postAuthorId: String, oshiName: String? = nil) async throws {
+        // 1. 既存の処理: リアクション保存
         let reactionRef = ref.child("post-reactions/\(postId.uuidString)/\(reaction.id.uuidString)")
-
         let reactionData: [String: Any] = [
             "id": reaction.id.uuidString,
             "oshiId": reaction.oshiId.uuidString,
             "oshiName": reaction.oshiName,
             "emoji": reaction.emoji,
             "timestamp": reaction.timestamp.timeIntervalSince1970,
-            "userId": userId // ユーザーIDを記録
+            "userId": userId
         ]
-
         var updates: [String: Any] = [:]
         updates["post-reactions/\(postId.uuidString)/\(reaction.id.uuidString)"] = reactionData
-        
-        // 2. 「自分がいいねした投稿リスト」に追加 (users/{userId}/likes/{postId})
         updates["users/\(userId)/likes/\(postId.uuidString)"] = Date().timeIntervalSince1970
-
         try await ref.updateChildValues(updates)
-
-        // 3. 共有投稿のreactionCountをインクリメント
-        // ✅ users/{userId}/posts ではなく root/posts を更新
+        
         let countRef = ref.child("posts/\(postId.uuidString)/reactionCount")
         try await countRef.setValue(ServerValue.increment(1))
+        
+        // 2. 追加処理: 通知の送信
+        // 自分のプロフィールを取得（送信者名として使用）
+        let (myUserName, _, _) = try await loadUserProfile()
+        
+        // カテゴリ判定: AIへのいいねなら .createdOshi、ユーザーへのいいねなら .me
+        let category: NotificationCategory = (oshiName != nil) ? .createdOshi : .me
+        
+        let notification = AppNotification(
+            type: .reaction,
+            senderId: UUID(uuidString: userId) ?? UUID(), // 送信者は自分
+            senderName: myUserName,
+            content: "あなたの投稿にいいねしました", // AppNotification.messageで生成されるので空でも可だが、モデルに合わせて設定
+            relatedPostId: postId,
+            category: category,
+            targetOshiName: oshiName
+        )
+        
+        // 相手（postAuthorId）に通知を送信
+        try await sendNotification(to: postAuthorId, notification: notification)
     }
 
     /// 特定投稿のリアクションを全取得 (共有パスから)
@@ -658,6 +689,38 @@ class FirebaseDatabaseManager {
         print("✅ プリセット保存（公式）: \(oshi.name)")
     }
 
+    func sendNotification(to targetUserId: String, notification: AppNotification) async throws {
+        // 自分のアクションで自分に通知を送らないようにする（必要に応じて）
+        guard targetUserId != userId else { return }
+        
+        let notificationRef = ref.child("users/\(targetUserId)/notifications/\(notification.id.uuidString)")
+        
+        var data: [String: Any] = [
+            "id": notification.id.uuidString,
+            "type": notification.type.rawValue,
+            "senderId": notification.senderId.uuidString,
+            "senderName": notification.senderName, // 送信者は「自分」
+            "content": notification.content,
+            "timestamp": notification.timestamp.timeIntervalSince1970,
+            "isRead": notification.isRead,
+            "category": notification.category.rawValue
+        ]
+        
+        if let relatedPostId = notification.relatedPostId {
+            data["relatedPostId"] = relatedPostId.uuidString
+        }
+        if let targetName = notification.targetOshiName {
+            data["targetOshiName"] = targetName
+        }
+        
+        try await notificationRef.setValue(data)
+    }
+
+    // 既存の saveNotification は「自分への保存」として残すか、上記メソッドを使う形に修正
+    func saveNotification(_ notification: AppNotification) async throws {
+        try await sendNotification(to: userId, notification: notification)
+    }
+
     func fetchPresetOshis() async throws -> [OshiCharacter] {
         do {
             let snap = try await ref.child("presets/oshiList").getData()
@@ -714,32 +777,6 @@ class FirebaseDatabaseManager {
             }
         }
         return list
-    }
-    
-    // MARK: - Notifications
-    
-    func saveNotification(_ notification: AppNotification) async throws {
-        let notificationRef = ref.child("users/\(userId)/notifications/\(notification.id.uuidString)")
-        
-        var data: [String: Any] = [
-            "id": notification.id.uuidString,
-            "type": notification.type.rawValue,
-            "senderId": notification.senderId.uuidString,
-            "senderName": notification.senderName,
-            "content": notification.content,
-            "timestamp": notification.timestamp.timeIntervalSince1970,
-            "isRead": notification.isRead,
-            "category": notification.category.rawValue // 追加
-        ]
-        
-        if let relatedPostId = notification.relatedPostId {
-            data["relatedPostId"] = relatedPostId.uuidString
-        }
-        if let targetName = notification.targetOshiName { // 追加
-            data["targetOshiName"] = targetName
-        }
-        
-        try await notificationRef.setValue(data)
     }
 
     func loadNotifications(limit: Int = 100) async throws -> [AppNotification] {

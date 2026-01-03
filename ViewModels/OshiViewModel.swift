@@ -238,6 +238,7 @@ class OshiViewModel: ObservableObject {
 
             do {
                 // 3. 詳細データの更新 (DB処理)
+                // 自分のID（本来はFirebaseAuth等のID）
                 let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
 
                 if postDetails[post.id] == nil {
@@ -255,12 +256,23 @@ class OshiViewModel: ObservableObject {
                         let reaction = Reaction(oshiId: userId, oshiName: "あなた")
                         details.reactions.append(reaction)
                         postDetails[post.id] = details
-                        try await dbManager.addReaction(reaction, to: post.id)
+                        
+                        // ✅ 修正箇所: 足りない引数 (postAuthorId, oshiName) を追加
+                        // post.authorId が通知先になります
+                        let targetAuthorId = post.authorId?.uuidString ?? ""
+                        // ユーザーの投稿でなければ、AI名として authorName を渡す
+                        let targetOshiName = post.isUserPost ? nil : post.authorName
+                        
+                        try await dbManager.addReaction(
+                            reaction,
+                            to: post.id,
+                            postAuthorId: targetAuthorId,
+                            oshiName: targetOshiName
+                        )
                     }
                 }
             } catch {
                 print("❌ いいね処理エラー: \(error)")
-                // エラー時のロールバック処理などは必要に応じて追加
             }
         }
     }
@@ -631,20 +643,27 @@ class OshiViewModel: ObservableObject {
         isLoading = false
     }
 
-    func toggleFollowRemoteOshi(oshiId: UUID) {
+    // 修正: 引数を oshiId: UUID から oshi: OshiCharacter に変更
+    func toggleFollowRemoteOshi(_ oshi: OshiCharacter) {
+        let oshiId = oshi.id
+        
         if followingRemoteOshiIDs.contains(oshiId) {
-            // 解除
+            // フォロー解除処理
             followingRemoteOshiIDs.remove(oshiId)
             Task {
+                // 解除はIDだけで可能（FirebaseDatabaseManagerのunfollowは変更していないため）
                 try? await dbManager.unfollowRemoteOshi(oshiId: oshiId)
             }
         } else {
-            // フォロー
+            // フォロー処理
             followingRemoteOshiIDs.insert(oshiId)
             Task {
-                try? await dbManager.followRemoteOshi(oshiId: oshiId)
+                // ✅ ここでエラーが出ていた箇所
+                // オブジェクトごと渡すことで、内部でcreatorIdを参照し通知を送れるようになります
+                try? await dbManager.followRemoteOshi(oshi: oshi)
             }
         }
+        
         // 振動フィードバック
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
@@ -799,7 +818,16 @@ class OshiViewModel: ObservableObject {
             // いいね処理 (変更なし)
             if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
                 let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
-                try? await dbManager.addReaction(reaction, to: post.id)
+                let targetAuthorId = post.authorId?.uuidString ?? dbManager.currentUserId
+                let targetOshiName = post.isUserPost ? nil : post.authorName
+                
+                try? await dbManager.addReaction(
+                    reaction,
+                    to: post.id,
+                    postAuthorId: targetAuthorId,
+                    oshiName: targetOshiName
+                )
+                
                 if post.isUserPost { createReactionNotification(oshi: oshi, post: post) }
                 if let idx = posts.firstIndex(where: { $0.id == post.id }) { posts[idx].reactionCount += 1 }
                 if var details = postDetails[post.id] {
