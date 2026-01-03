@@ -587,6 +587,7 @@ class OshiViewModel: ObservableObject {
                 chatRooms[idx] = room
             }
 
+            try? await dbManager.followRemoteOshi(oshi: preset)
         } catch {
             print("❌ followRecommended error: \(error)")
         }
@@ -929,13 +930,14 @@ class OshiViewModel: ObservableObject {
             do {
                 let content = try await aiService.generateOshiPost(by: oshi)
                 
-                // 修正箇所: authorAvatarURL を追加
+                // 修正: Post作成時にcreatorIdを渡す
                 let post = Post(
                     authorId: oshi.id,
                     authorName: oshi.name,
                     content: content,
                     isUserPost: false,
-                    authorAvatarURL: oshi.avatarImageURL // 👈 ここを追加！
+                    authorAvatarURL: oshi.avatarImageURL,
+                    creatorId: oshi.creatorId // 👈 ここを追加！
                 )
                 
                 // UIへの即時反映

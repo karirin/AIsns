@@ -299,6 +299,12 @@ class FirebaseDatabaseManager {
         if !post.imageURLs.isEmpty {
             data["imageURLs"] = post.imageURLs
         }
+        
+        // 👇 追加: creatorIdがあれば保存
+        if let creatorId = post.creatorId {
+            data["creatorId"] = creatorId
+        }
+        
         return data
     }
     
@@ -680,6 +686,11 @@ class FirebaseDatabaseManager {
             "totalInteractions": 0,
             "avatarImageURL": oshi.avatarImageURL ?? "",
         ]
+        
+        // 👇 追加: creatorIdを保存
+        if let creatorId = oshi.creatorId {
+            oshiData["creatorId"] = creatorId
+        }
 
         if let gender = oshi.gender {
             oshiData["gender"] = gender.rawValue
@@ -896,8 +907,10 @@ class FirebaseDatabaseManager {
         let repostCount = data["repostCount"] as? Int ?? 0
         
         let authorAvatarURL = data["authorAvatarURL"] as? String
-
         let imageURLs = data["imageURLs"] as? [String] ?? []
+        
+        // 👇 追加: creatorIdの取得
+        let creatorId = data["creatorId"] as? String
 
         var post = Post(
             id: id,
@@ -907,7 +920,8 @@ class FirebaseDatabaseManager {
             timestamp: timestamp,
             isUserPost: isUserPost,
             authorAvatarURL: authorAvatarURL,
-            imageURLs: imageURLs
+            imageURLs: imageURLs,
+            creatorId: creatorId // 👇 追加
         )
 
         post.reactionCount = reactionCount

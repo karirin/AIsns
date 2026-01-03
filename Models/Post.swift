@@ -16,9 +16,12 @@ struct Post: Identifiable, Codable {
     
     var reactionCount: Int
     var commentCount: Int
-    var repostCount: Int // 👈 追加: リツイート数
+    var repostCount: Int
     var authorAvatarURL: String?
     var imageURLs: [String]
+    
+    // 👇 追加: 作成者ID (通知の送信先)
+    var creatorId: String?
     
     init(
         id: UUID = UUID(),
@@ -28,7 +31,8 @@ struct Post: Identifiable, Codable {
         timestamp: Date = Date(),
         isUserPost: Bool = true,
         authorAvatarURL: String? = nil,
-        imageURLs: [String] = []
+        imageURLs: [String] = [],
+        creatorId: String? = nil // 👇 追加
     ) {
         self.id = id
         self.authorId = authorId
@@ -38,9 +42,10 @@ struct Post: Identifiable, Codable {
         self.isUserPost = isUserPost
         self.reactionCount = 0
         self.commentCount = 0
-        self.repostCount = 0 // 👈 初期化
+        self.repostCount = 0
         self.authorAvatarURL = authorAvatarURL
         self.imageURLs = imageURLs
+        self.creatorId = creatorId // 👇 追加
     }
 }
 
