@@ -32,7 +32,7 @@ struct TimingConfig {
         static let followIntervalRange: ClosedRange<Double> = 1800...7200
         
         // 自動投稿イベントの間隔（秒）
-        static let postInterval: TimeInterval = 5.0
+        static let postInterval: TimeInterval = 30.0
     }
     
     // 秒数をナノ秒に変換するヘルパー

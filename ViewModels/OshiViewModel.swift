@@ -857,7 +857,8 @@ class OshiViewModel: ObservableObject {
                 let post = Post(
                     authorId: oshi.id,
                     authorName: oshi.name,
-                    content: content, isUserPost: false, authorAvatarURL: oshi.avatarImageURL
+                    content: content,
+                    isUserPost: false
                 )
                 
                 // UIへの即時反映
