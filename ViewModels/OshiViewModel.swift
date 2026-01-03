@@ -1,4 +1,4 @@
-// ViewModels/OshiViewModel.swift (修正版 - いいね機能追加)
+// ViewModels/OshiViewModel.swift (修正版 - おすすめタイムライン修正)
 
 import Foundation
 import Combine
@@ -75,22 +75,10 @@ class OshiViewModel: ObservableObject {
         return uniquePosts.sorted { $0.timestamp > $1.timestamp }
     }
     
+    // ✅ 修正: 公開タイムラインの投稿をそのまま返すように変更
+    // これにより、他のユーザーが作成した共有(公開)推しの投稿が表示されるようになります
     var recommendedPosts: [Post] {
-        posts.filter { post in
-            // 自分の投稿は除外
-            if post.isUserPost {
-                return false
-            }
-            
-            // 推しの情報を取得
-            guard let authorId = post.authorId,
-                  let oshi = oshiList.first(where: { $0.id == authorId }) else {
-                return false
-            }
-            
-            // 公式アカウント（プリセット）の場合のみ表示
-            return oshi.isPublic
-        }
+        return publicTimelinePosts.sorted { $0.timestamp > $1.timestamp }
     }
     
     init() {
@@ -863,6 +851,11 @@ class OshiViewModel: ObservableObject {
                 
                 // UIへの即時反映
                 posts.insert(post, at: 0)
+                
+                // ✅ 追加: 公開推しの場合は、公開タイムライン(おすすめ)にも即時反映
+                if oshi.isPublic {
+                    publicTimelinePosts.insert(post, at: 0)
+                }
                 
                 // 保存: ここで isPublic フラグを使用
                 try await dbManager.savePost(post, isPublic: oshi.isPublic)
