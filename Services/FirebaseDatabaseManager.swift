@@ -119,6 +119,11 @@ class FirebaseDatabaseManager {
             oshiData["avatarImageURL"] = imageURL
         }
         
+        // 追加: 作成者ID
+        if let creatorId = oshi.creatorId {
+            oshiData["creatorId"] = creatorId
+        }
+        
         try await oshiRef.setValue(oshiData)
     }
     
@@ -603,6 +608,8 @@ class FirebaseDatabaseManager {
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
         let isPublic = data["isPublic"] as? Bool ?? false
+        
+        let creatorId = data["creatorId"] as? String // 追加
 
         var oshi = OshiCharacter(
             id: id,
@@ -615,7 +622,8 @@ class FirebaseDatabaseManager {
             avatarImageURL: avatarImageURL,
             isFollowingUser: isFollowingUser,
             isFollowedByUser: isFollowedByUser,
-            isPublic: isPublic
+            isPublic: isPublic,
+            creatorId: creatorId
         )
 
         oshi.totalInteractions = totalInteractions
@@ -720,11 +728,15 @@ class FirebaseDatabaseManager {
             "senderName": notification.senderName,
             "content": notification.content,
             "timestamp": notification.timestamp.timeIntervalSince1970,
-            "isRead": notification.isRead
+            "isRead": notification.isRead,
+            "category": notification.category.rawValue // 追加
         ]
         
         if let relatedPostId = notification.relatedPostId {
             data["relatedPostId"] = relatedPostId.uuidString
+        }
+        if let targetName = notification.targetOshiName { // 追加
+            data["targetOshiName"] = targetName
         }
         
         try await notificationRef.setValue(data)
@@ -810,6 +822,11 @@ class FirebaseDatabaseManager {
         let isRead = data["isRead"] as? Bool ?? false
         let relatedPostId = (data["relatedPostId"] as? String).flatMap { UUID(uuidString: $0) }
         
+        // カテゴリの読み込み（後方互換性のため、ない場合は .me）
+        let categoryString = data["category"] as? String
+        let category = categoryString.flatMap { NotificationCategory(rawValue: $0) } ?? .me
+        let targetOshiName = data["targetOshiName"] as? String
+        
         return AppNotification(
             id: id,
             type: type,
@@ -818,7 +835,9 @@ class FirebaseDatabaseManager {
             content: content,
             relatedPostId: relatedPostId,
             timestamp: timestamp,
-            isRead: isRead
+            isRead: isRead,
+            category: category,
+            targetOshiName: targetOshiName
         )
     }
 

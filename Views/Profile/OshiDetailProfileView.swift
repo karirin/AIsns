@@ -261,10 +261,14 @@ struct OshiProfileDetailView: View {
                         isFollowing = true
                         defer { isFollowing = false }
                         
-                        if isPreset {
-                            await viewModel.followRecommended(oshi)
-                        } else {
+                        // 👇 修正: リストに存在するかどうかで処理を分岐
+                        if viewModel.oshiList.contains(where: { $0.id == oshi.id }) {
+                            // 既にリストにある（がフォローフラグが外れている）場合
                             await viewModel.followOshi(oshi)
+                        } else {
+                            // リストにない新規ユーザーの場合（プリセット、または公開投稿のユーザー）
+                            // followRecommended は引数のキャラクターを新規保存してチャットルームを作成してくれるため、ここでも使用できます
+                            await viewModel.followRecommended(oshi)
                         }
                     }
                 } label: {

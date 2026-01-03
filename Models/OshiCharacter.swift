@@ -66,6 +66,9 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
     var isFollowedByUser: Bool
     var isPublic: Bool
     
+    // 追加: 作成者のID（自分の作成したAIへの反応を受け取るために使用）
+    var creatorId: String?
+    
     var isMutualFollow: Bool {
         isFollowingUser && isFollowedByUser
     }
@@ -107,7 +110,8 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         lastInteractionDate: Date? = nil,
         isFollowingUser: Bool = false,
         isFollowedByUser: Bool = false,
-        isPublic: Bool = false // ✅ 初期値
+        isPublic: Bool = false,
+        creatorId: String? = nil // 初期値
     ) {
         self.id = id
         self.name = name
@@ -123,6 +127,7 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         self.isFollowingUser = isFollowingUser
         self.isFollowedByUser = isFollowedByUser
         self.isPublic = isPublic
+        self.creatorId = creatorId
     }
     
     mutating func increaseIntimacy(by amount: Int = 1) {

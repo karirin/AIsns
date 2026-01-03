@@ -15,6 +15,7 @@ struct GroupedNotification: Identifiable {
     }
 
     let type: NotificationType
+    let category: NotificationCategory
     let relatedPostId: UUID?
     let notifications: [AppNotification]
     let timestamp: Date
@@ -34,35 +35,72 @@ struct GroupedNotification: Identifiable {
     var displayMessage: String {
         let count = notifications.count
         let firstSender = notifications.first?.senderName ?? ""
+        let targetOshiName = notifications.first?.targetOshiName ?? "あなたのAI"
         
-        if count == 1 {
-            return notifications.first?.message ?? ""
-        }
-        
-        switch type {
-        case .reaction:
-            if count == 2 {
-                let secondSender = notifications[1].senderName
-                return "\(firstSender)と\(secondSender)があなたの投稿をいいねしました"
-            } else {
-                return "\(firstSender)と他\(count - 1)人があなたの投稿をいいねしました"
+        // メッセージ生成ロジック
+        if category == .createdOshi {
+             // 作成したAI宛ての通知
+             if count == 1 {
+                 return notifications.first?.message ?? ""
+             }
+             
+             switch type {
+             case .reaction:
+                 if count == 2 {
+                     let secondSender = notifications[1].senderName
+                     return "\(firstSender)と\(secondSender)が\(targetOshiName)の投稿をいいねしました"
+                 } else {
+                     return "\(firstSender)と他\(count - 1)人が\(targetOshiName)の投稿をいいねしました"
+                 }
+             case .comment:
+                 if count == 2 {
+                     let secondSender = notifications[1].senderName
+                     return "\(firstSender)と\(secondSender)が\(targetOshiName)の投稿にコメントしました"
+                 } else {
+                     return "\(firstSender)と他\(count - 1)人が\(targetOshiName)の投稿にコメントしました"
+                 }
+             case .follow:
+                 if count == 2 {
+                     let secondSender = notifications[1].senderName
+                     return "\(firstSender)と\(secondSender)が\(targetOshiName)をフォローしました"
+                 } else {
+                     return "\(firstSender)と他\(count - 1)人が\(targetOshiName)をフォローしました"
+                 }
+             default:
+                 return notifications.first?.message ?? ""
+             }
+             
+        } else {
+            // 自分宛ての通知
+            if count == 1 {
+                return notifications.first?.message ?? ""
             }
-        case .comment:
-            if count == 2 {
-                let secondSender = notifications[1].senderName
-                return "\(firstSender)と\(secondSender)があなたの投稿にコメントしました"
-            } else {
-                return "\(firstSender)と他\(count - 1)人があなたの投稿にコメントしました"
+            
+            switch type {
+            case .reaction:
+                if count == 2 {
+                    let secondSender = notifications[1].senderName
+                    return "\(firstSender)と\(secondSender)があなたの投稿をいいねしました"
+                } else {
+                    return "\(firstSender)と他\(count - 1)人があなたの投稿をいいねしました"
+                }
+            case .comment:
+                if count == 2 {
+                    let secondSender = notifications[1].senderName
+                    return "\(firstSender)と\(secondSender)があなたの投稿にコメントしました"
+                } else {
+                    return "\(firstSender)と他\(count - 1)人があなたの投稿にコメントしました"
+                }
+            case .follow:
+                if count == 2 {
+                    let secondSender = notifications[1].senderName
+                    return "\(firstSender)と\(secondSender)があなたをフォローしました"
+                } else {
+                    return "\(firstSender)と他\(count - 1)人があなたをフォローしました"
+                }
+            default:
+                return notifications.first?.message ?? ""
             }
-        case .follow:
-            if count == 2 {
-                let secondSender = notifications[1].senderName
-                return "\(firstSender)と\(secondSender)があなたをフォローしました"
-            } else {
-                return "\(firstSender)と他\(count - 1)人があなたをフォローしました"
-            }
-        default:
-            return notifications.first?.message ?? ""
         }
     }
 }
@@ -74,12 +112,21 @@ struct NotificationView: View {
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
     
+    // タブ選択用
+    @State private var selectedCategory: NotificationCategory = .me
+    
     var groupedNotifications: [GroupedNotification] {
         var groups: [GroupedNotification] = []
         var processed: Set<UUID> = []
         
-        let notifications = viewModel.notifications.filter {
-            $0.type != .chat && $0.type != .oshiPost
+        // カテゴリでフィルタリング
+        let filteredNotifications = viewModel.notifications.filter {
+            $0.category == selectedCategory
+        }
+        
+        // 通知の種類によるフィルタリング (チャットは通知欄には出さずバッジで扱うなどの仕様であれば除外)
+        let notifications = filteredNotifications.filter {
+            $0.type != .chat
         }
         
         for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
@@ -87,12 +134,16 @@ struct NotificationView: View {
             
             if notification.type.canGroup {
                 if notification.type == .follow {
+                    // フォローの場合、同じターゲット（自分 or 同じ推し）へのフォローをまとめる
                     let relatedNotifications = notifications.filter {
-                        $0.type == .follow && !processed.contains($0.id)
+                        $0.type == .follow &&
+                        $0.targetOshiName == notification.targetOshiName && // 同じ対象へのフォローのみ
+                        !processed.contains($0.id)
                     }
                     
                     let group = GroupedNotification(
                         type: .follow,
+                        category: notification.category,
                         relatedPostId: nil,
                         notifications: relatedNotifications,
                         timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
@@ -102,6 +153,7 @@ struct NotificationView: View {
                     relatedNotifications.forEach { processed.insert($0.id) }
                     
                 } else if let postId = notification.relatedPostId {
+                    // 投稿関連（いいね、コメント）は同じPostIDでまとめる
                     let relatedNotifications = notifications.filter {
                         $0.type == notification.type &&
                         $0.relatedPostId == postId &&
@@ -110,6 +162,7 @@ struct NotificationView: View {
                     
                     let group = GroupedNotification(
                         type: notification.type,
+                        category: notification.category,
                         relatedPostId: postId,
                         notifications: relatedNotifications,
                         timestamp: relatedNotifications.map { $0.timestamp }.max() ?? notification.timestamp
@@ -121,6 +174,7 @@ struct NotificationView: View {
                 } else {
                     let group = GroupedNotification(
                         type: notification.type,
+                        category: notification.category,
                         relatedPostId: notification.relatedPostId,
                         notifications: [notification],
                         timestamp: notification.timestamp
@@ -132,6 +186,7 @@ struct NotificationView: View {
             } else {
                 let group = GroupedNotification(
                     type: notification.type,
+                    category: notification.category,
                     relatedPostId: notification.relatedPostId,
                     notifications: [notification],
                     timestamp: notification.timestamp
@@ -147,12 +202,22 @@ struct NotificationView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // タブ切り替え
+            Picker("表示", selection: $selectedCategory) {
+                Text("あなたへの通知").tag(NotificationCategory.me)
+                Text("作成したAI").tag(NotificationCategory.createdOshi)
+            }
+            .pickerStyle(.segmented)
+            .padding()
+            .background(AppColors.backgroundPrimary)
+            
             if groupedNotifications.isEmpty {
                 EmptyStateView(
                     icon: "bell.slash",
                     title: "通知はありません",
-                    subtitle: "フォロワーの投稿やメッセージが\nここに表示されます"
+                    subtitle: selectedCategory == .me ? "フォロワーの投稿やメッセージが\nここに表示されます" : "あなたが作成したAIへの反応が\nここに表示されます"
                 )
+                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -201,11 +266,12 @@ struct NotificationView: View {
                 }
             }
         }
+        .background(AppColors.backgroundPrimary)
     }
 }
 
 // MARK: - Grouped Notification Row
-
+// (既存の構造体を使用、一部ロジックがプロパティ変更に追従)
 struct GroupedNotificationRow: View {
     let group: GroupedNotification
     @ObservedObject var viewModel: OshiViewModel
@@ -213,13 +279,21 @@ struct GroupedNotificationRow: View {
     
     var oshiList: [OshiCharacter] {
         group.senderIds.compactMap { senderId in
+            // 通知のsenderIdに一致するOshiを探す
+            // ローカルの推しか、おすすめリストなどから探す必要があるが、
+            // ここでは簡易的にviewModel.oshiListから探す
+            // ※ 注意: 他のユーザーからの通知の場合、ここに含まれない可能性があるため
+            // 本来はIDからアバターURLを取得するロジックが別途必要だが、
+            // 現状の実装に合わせて viewModel.oshiList から検索する。
+            // 必要に応じて `viewModel.resolveSender(id: UUID)` のようなものを実装推奨
             viewModel.oshiList.first { $0.id == senderId }
         }
     }
     
     var relatedPost: Post? {
         guard let postId = group.relatedPostId else { return nil }
-        return viewModel.posts.first { $0.id == postId }
+        // 自分の投稿または公開タイムラインの投稿から検索
+        return viewModel.posts.first { $0.id == postId } ?? viewModel.publicTimelinePosts.first { $0.id == postId }
     }
     
     private let maxAvatarsToShow = 5
@@ -344,18 +418,11 @@ struct GroupedNotificationRow: View {
     @ViewBuilder
     private var singleAvatarView: some View {
         if let oshi = oshiList.first {
-            if group.type == .follow {
-                NavigationLink {
-                    OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)
-                        .onAppear { markAsRead() }
-                } label: {
-                    avatarContent(for: oshi, size: DesignTokens.AvatarSize.md)
-                }
-                .buttonStyle(.plain)
-            } else {
-                avatarContent(for: oshi, size: DesignTokens.AvatarSize.md)
-            }
+            // 他ユーザーからのフォロー等の場合、OshiProfileDetailViewへ飛ばすかは仕様次第だが
+            // ここではアバター表示のみ考慮
+            avatarContent(for: oshi, size: DesignTokens.AvatarSize.md)
         } else {
+            // oshiListで見つからない場合（他ユーザーなど）は名前とプレースホルダー
             AvatarView(
                 image: nil,
                 name: group.senderNames.first ?? "",
@@ -375,28 +442,23 @@ struct GroupedNotificationRow: View {
         )
     }
     
-    // MARK: - Multiple Avatars View (Xスタイルの横並び)
+    // MARK: - Multiple Avatars View
     
     private var multipleAvatarsView: some View {
         HStack(spacing: 3) {
-            let displayOshi = Array(oshiList.prefix(maxAvatarsToShow))
-            let totalCount = oshiList.count
+            let displayIds = Array(group.senderIds.prefix(maxAvatarsToShow))
+            let totalCount = group.senderIds.count
             
-            ForEach(Array(displayOshi.enumerated()), id: \.element.id) { index, oshi in
-                Group {
-                    if group.type == .follow {
-                        NavigationLink {
-                            OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)
-                                .onAppear { markAsRead() }
-                        } label: {
-                            stackedAvatar(for: oshi)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        stackedAvatar(for: oshi)
-                    }
+            ForEach(Array(displayIds.enumerated()), id: \.element) { index, senderId in
+                if let oshi = viewModel.oshiList.first(where: { $0.id == senderId }) {
+                    stackedAvatar(for: oshi)
+                        .zIndex(Double(displayIds.count - index))
+                } else {
+                    // 情報がない場合はプレースホルダー
+                    AvatarView(image: nil, name: "?", size: 46, placeholderGradient: AppColors.pinkGradient)
+                        .overlay(Circle().stroke(AppColors.backgroundPrimary, lineWidth: 2))
+                        .zIndex(Double(displayIds.count - index))
                 }
-                .zIndex(Double(displayOshi.count - index))
             }
             
             // +N 表示
@@ -434,11 +496,5 @@ struct GroupedNotificationRow: View {
                 }
             }
         }
-    }
-}
-
-#Preview {
-    NavigationStack {
-        NotificationView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false))
     }
 }

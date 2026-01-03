@@ -197,7 +197,6 @@ struct TimelineScreenView: View {
             // 自分の投稿なら、自分のプロフィールへ
             navigationPath.append(SidebarDestination.profile)
         } else {
-            // 投稿の作者IDから、キャラクター情報を探す
             // 1. フォロー中の推しから探す
             if let oshi = viewModel.oshiList.first(where: { $0.id == post.authorId }) {
                 navigationPath.append(oshi)
@@ -206,7 +205,18 @@ struct TimelineScreenView: View {
             else if let preset = viewModel.recommendedOshis.first(where: { $0.id == post.authorId }) {
                 navigationPath.append(preset)
             }
-            // 見つからない場合は何もしない（またはデータ取得処理を入れる）
+            // 3. 【追加】それ以外（リストにない公開ユーザー）の場合
+            else if let authorId = post.authorId {
+                // Postの情報から一時的なOshiCharacterを生成して遷移
+                // ※性格や口調などの詳細情報は取得できませんが、プロフィール表示とフォローは可能になります
+                let unknownOshi = OshiCharacter(
+                    id: authorId,
+                    name: post.authorName,
+                    avatarImageURL: post.authorAvatarURL,
+                    isPublic: true
+                )
+                navigationPath.append(unknownOshi)
+            }
         }
     }
 

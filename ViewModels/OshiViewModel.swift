@@ -701,11 +701,11 @@ class OshiViewModel: ObservableObject {
         Task {
             do {
                 var newOshi = oshi
-                newOshi.isPublic = isPublic // ✅ 共有フラグを設定
+                newOshi.isPublic = isPublic
                 newOshi.isFollowedByUser = true
-                
-                // ✅ 追加: 最初から推しもユーザーをフォローしている状態にする（相互フォロー）
                 newOshi.isFollowingUser = true
+                // 追加: 作成者IDを設定
+                newOshi.creatorId = dbManager.currentUserId
                 
                 // 1. ローカルリストに追加
                 oshiList.append(newOshi)
