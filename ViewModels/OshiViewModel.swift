@@ -154,20 +154,40 @@ class OshiViewModel: ObservableObject {
         }
     }
 
-    /// リツイート切り替え
+    private func updatePostInAllLists(postId: UUID, update: (inout Post) -> Void) {
+        // 1. 自分のタイムライン / フォロー中
+        if let idx = posts.firstIndex(where: { $0.id == postId }) {
+            update(&posts[idx])
+        }
+        
+        // 2. おすすめ (公開タイムライン) ← これが重要！
+        if let idx = publicTimelinePosts.firstIndex(where: { $0.id == postId }) {
+            update(&publicTimelinePosts[idx])
+        }
+        
+        // 3. ブックマーク一覧 (表示中であれば)
+        if let idx = bookmarkedPosts.firstIndex(where: { $0.id == postId }) {
+            update(&bookmarkedPosts[idx])
+        }
+    }
+
+    /// リツイート切り替え (修正版)
     func toggleRepost(for post: Post) {
         let isCurrentlyReposted = repostedPostIDs.contains(post.id)
         
-        // 1. UIを即時更新 (楽観的UI更新)
+        // 1. IDリスト更新
         if isCurrentlyReposted {
             repostedPostIDs.remove(post.id)
-            if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                posts[idx].repostCount = max(0, posts[idx].repostCount - 1)
-            }
         } else {
             repostedPostIDs.insert(post.id)
-            if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                posts[idx].repostCount += 1
+        }
+        
+        // 2. 全リストの投稿オブジェクトを更新 (カウントの増減)
+        updatePostInAllLists(postId: post.id) { post in
+            if isCurrentlyReposted {
+                post.repostCount = max(0, post.repostCount - 1)
+            } else {
+                post.repostCount += 1
             }
         }
         
@@ -175,7 +195,7 @@ class OshiViewModel: ObservableObject {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
 
-        // 2. 非同期でDB更新
+        // 3. 非同期でDB更新
         Task {
             do {
                 if isCurrentlyReposted {
@@ -185,7 +205,100 @@ class OshiViewModel: ObservableObject {
                 }
             } catch {
                 print("❌ リツイート処理エラー: \(error)")
-                // エラー時はUIを戻す処理を入れるのが丁寧ですが、ここでは省略
+            }
+        }
+    }
+    
+    /// ユーザーが投稿にいいねする (修正版)
+    func toggleUserReaction(on post: Post) {
+        Task {
+            let isLiking = !likedPostIDs.contains(post.id)
+            
+            // 1. IDリスト更新
+            if isLiking {
+                likedPostIDs.insert(post.id)
+            } else {
+                likedPostIDs.remove(post.id)
+            }
+            
+            // 2. 全リストの投稿オブジェクトを更新 (カウントの増減)
+            await MainActor.run {
+                updatePostInAllLists(postId: post.id) { post in
+                    if isLiking {
+                        post.reactionCount += 1
+                    } else {
+                        post.reactionCount = max(0, post.reactionCount - 1)
+                    }
+                }
+            }
+
+            // 振動フィードバック
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+
+            do {
+                // 3. 詳細データの更新 (DB処理)
+                let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+
+                if postDetails[post.id] == nil {
+                    await loadPostDetails(for: post.id)
+                }
+
+                if var details = postDetails[post.id] {
+                    if let existingIndex = details.reactions.firstIndex(where: { $0.oshiId == userId }) {
+                        // 削除処理
+                        let removedReaction = details.reactions.remove(at: existingIndex)
+                        postDetails[post.id] = details
+                        try await dbManager.deleteReaction(removedReaction, from: post.id)
+                    } else {
+                        // 追加処理
+                        let reaction = Reaction(oshiId: userId, oshiName: "あなた")
+                        details.reactions.append(reaction)
+                        postDetails[post.id] = details
+                        try await dbManager.addReaction(reaction, to: post.id)
+                    }
+                }
+            } catch {
+                print("❌ いいね処理エラー: \(error)")
+                // エラー時のロールバック処理などは必要に応じて追加
+            }
+        }
+    }
+    
+    /// ユーザーコメントの追加 (修正版)
+    func addUserComment(to post: Post, content: String) {
+        let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+        
+        let comment = Comment(
+            oshiId: userId,
+            oshiName: userProfileName,
+            content: content
+        )
+        
+        Task {
+            do {
+                try await dbManager.addComment(comment, to: post.id)
+                
+                await MainActor.run {
+                    // 詳細データの更新
+                    if var details = postDetails[post.id] {
+                        details.comments.append(comment)
+                        postDetails[post.id] = details
+                    } else {
+                        postDetails[post.id] = PostDetails(post: post, comments: [comment])
+                    }
+                    
+                    // ✅ 全リストのコメント数を更新
+                    updatePostInAllLists(postId: post.id) { post in
+                        post.commentCount += 1
+                    }
+                }
+                print("✅ コメント投稿成功")
+            } catch {
+                print("❌ コメント投稿エラー: \(error)")
+                await MainActor.run {
+                    errorMessage = "コメントの投稿に失敗しました"
+                }
             }
         }
     }
@@ -492,22 +605,25 @@ class OshiViewModel: ObservableObject {
             async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
             async let userProfileTask = dbManager.loadUserProfile()
-            async let followingTask = dbManager.loadFollowingIds() // 1. タスク定義
+            async let followingTask = dbManager.loadFollowingIds()
+            
+            async let presetsTask = dbManager.fetchPresetOshis()
 
-            // 2. タプルに loadedFollowingIDs と followingTask を追加
-            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs) =
-                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask)
+            // タプルに追加して待機
+            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets) =
+                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask)
 
+            // データを反映
             oshiList = loadedOshi
             posts = loadedMyPosts
             publicTimelinePosts = loadedPublicPosts
-            
-            // 3. これで変数が使えるようになります
             followingRemoteOshiIDs = Set(loadedFollowingIDs)
-            
             chatRooms = loadedRooms
             userProfileName = profile.userName
             userProfileAvatarURL = profile.avatarImageURL
+            
+            // ★ 追加: recommendedOshis に格納
+            recommendedOshis = loadedPresets
 
         } catch {
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
@@ -658,7 +774,7 @@ class OshiViewModel: ObservableObject {
                 try await dbManager.savePost(post)
                 
                 // すべての推しが反応(遅延実行)
-                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.startDelayRange)))
+//                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.startDelayRange)))
                 await generateReactionsForPost(post)
                 
             } catch {
@@ -792,61 +908,18 @@ class OshiViewModel: ObservableObject {
         return selected
     }
     
-    func addUserComment(to post: Post, content: String) {
-        // ユーザーを表す固定UUID（いいね機能と同じIDを使用）
-        let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
-        
-        // Commentモデルを作成（oshiNameには現在のユーザー名を使用）
-        let comment = Comment(
-            oshiId: userId,
-            oshiName: userProfileName,
-            content: content
-        )
-        
-        Task {
-            do {
-                // 1. Firebaseに保存
-                try await dbManager.addComment(comment, to: post.id)
-                
-                // 2. ローカルの表示を即時更新
-                await MainActor.run {
-                    if var details = postDetails[post.id] {
-                        details.comments.append(comment)
-                        postDetails[post.id] = details
-                    } else {
-                        // 詳細が未ロードの場合（稀なケース）
-                        postDetails[post.id] = PostDetails(post: post, comments: [comment])
-                    }
-                    
-                    // 投稿一覧のコメント数カウントも更新
-                    if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                        posts[idx].commentCount += 1
-                    }
-                }
-                
-                print("✅ コメント投稿成功: \(content)")
-                
-                // 必要であれば、推しからの返信ロジックなどをここに追記可能
-                
-            } catch {
-                print("❌ コメント投稿エラー: \(error)")
-                await MainActor.run {
-                    errorMessage = "コメントの投稿に失敗しました"
-                }
-            }
-        }
-    }
-    
     func createOshiPost(by oshi: OshiCharacter) {
         Task {
             do {
                 let content = try await aiService.generateOshiPost(by: oshi)
                 
+                // 修正箇所: authorAvatarURL を追加
                 let post = Post(
                     authorId: oshi.id,
                     authorName: oshi.name,
                     content: content,
-                    isUserPost: false
+                    isUserPost: false,
+                    authorAvatarURL: oshi.avatarImageURL // 👈 ここを追加！
                 )
                 
                 // UIへの即時反映
@@ -931,75 +1004,6 @@ class OshiViewModel: ObservableObject {
                     errorMessage = "投稿の保存に失敗しました: \(error.localizedDescription)"
                     print("❌ 投稿保存エラー: \(error)")
                 }
-            }
-        }
-    }
-    
-    // MARK: - ユーザーからのいいね
-    
-    /// ユーザーが投稿にいいねする
-    func toggleUserReaction(on post: Post) {
-        Task {
-            // 1. UIの即時反映（IDリストの更新）
-            // 現在の状態を確認して反転させる
-            let isLiking = !likedPostIDs.contains(post.id)
-            
-            if isLiking {
-                likedPostIDs.insert(post.id)
-            } else {
-                likedPostIDs.remove(post.id)
-            }
-
-            // 振動フィードバック
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
-
-            do {
-                // ユーザーを表す固定ID
-                let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
-
-                // 詳細データがまだない場合はロードする
-                if postDetails[post.id] == nil {
-                    await loadPostDetails(for: post.id)
-                }
-
-                // ロード後に再度確認
-                if var details = postDetails[post.id] {
-                    // 既にいいねしているか確認
-                    if let existingIndex = details.reactions.firstIndex(where: { $0.oshiId == userId }) {
-                        // 既にいいね済み -> 削除処理
-                        // (もしUI操作がいいね追加だった場合、ここで矛盾が生じるが、基本的には同期する)
-                        let removedReaction = details.reactions.remove(at: existingIndex)
-                        postDetails[post.id] = details // ローカル更新
-                        
-                        try await dbManager.deleteReaction(removedReaction, from: post.id)
-                        
-                        // 投稿一覧のカウント更新
-                        if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                             posts[idx].reactionCount = max(0, posts[idx].reactionCount - 1)
-                        }
-                    } else {
-                        // いいねしていない -> 追加処理
-                        let reaction = Reaction(oshiId: userId, oshiName: "あなた")
-                        details.reactions.append(reaction)
-                        postDetails[post.id] = details // ローカル更新
-                        
-                        try await dbManager.addReaction(reaction, to: post.id)
-                        
-                        // 投稿一覧のカウント更新
-                         if let idx = posts.firstIndex(where: { $0.id == post.id }) {
-                             posts[idx].reactionCount += 1
-                        }
-                    }
-                }
-            } catch {
-                // エラー時はUIを元の状態に戻す
-                if isLiking {
-                     likedPostIDs.remove(post.id)
-                } else {
-                     likedPostIDs.insert(post.id)
-                }
-                print("❌ いいね処理エラー: \(error)")
             }
         }
     }
@@ -1163,9 +1167,11 @@ class OshiViewModel: ObservableObject {
     }
     
     private func randomOshiPost() async {
-        guard !oshiList.isEmpty else { return }
+        let mutualFollows = oshiList.filter { $0.isMutualFollow }
         
-        if let randomOshi = oshiList.randomElement() {
+        guard !mutualFollows.isEmpty else { return }
+
+        if let randomOshi = mutualFollows.randomElement() {
             createOshiPost(by: randomOshi)
         }
     }

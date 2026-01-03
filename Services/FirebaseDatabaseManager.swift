@@ -833,12 +833,13 @@ class FirebaseDatabaseManager {
               let isUserPost = data["isUserPost"] as? Bool else {
             return nil
         }
-
         let authorId = (data["authorId"] as? String).flatMap { UUID(uuidString: $0) }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let reactionCount = data["reactionCount"] as? Int ?? 0
         let commentCount = data["commentCount"] as? Int ?? 0
         let repostCount = data["repostCount"] as? Int ?? 0
+        
+        let authorAvatarURL = data["authorAvatarURL"] as? String
 
         let imageURLs = data["imageURLs"] as? [String] ?? []
 
@@ -849,6 +850,7 @@ class FirebaseDatabaseManager {
             content: content,
             timestamp: timestamp,
             isUserPost: isUserPost,
+            authorAvatarURL: authorAvatarURL,
             imageURLs: imageURLs
         )
 

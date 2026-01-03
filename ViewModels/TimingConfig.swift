@@ -16,23 +16,23 @@ struct TimingConfig {
         static let startDelayRange: ClosedRange<UInt64> = 60...300
         
         // 各キャラがいいねするまでの待機時間（秒）
-        static let likeDelayRange: ClosedRange<UInt64> = 5...300
+        static let likeDelayRange: ClosedRange<UInt64> = 5...30
         
         // 各キャラがコメントするまでの待機時間（秒）
-        static let commentDelayRange: ClosedRange<UInt64> = 60...300
+        static let commentDelayRange: ClosedRange<UInt64> = 10...300
     }
     
     struct Chat {
         // チャットの返信が来るまでの待機時間（秒）
-        static let replyDelayRange: ClosedRange<UInt64> = 10...60
+        static let replyDelayRange: ClosedRange<UInt64> = 10...20
     }
     
     struct AutoEvent {
         // 自動フォローイベントの間隔（秒）
-        static let followIntervalRange: ClosedRange<Double> = 100...100
+        static let followIntervalRange: ClosedRange<Double> = 300...1000
         
         // 自動投稿イベントの間隔（秒）
-        static let postInterval: TimeInterval = 1000.0
+        static let postInterval: TimeInterval = 100.0
     }
     
     // 秒数をナノ秒に変換するヘルパー

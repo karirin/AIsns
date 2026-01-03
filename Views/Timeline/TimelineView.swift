@@ -644,7 +644,10 @@ struct PostCardView: View {
         if let oshi = oshi, let urlString = oshi.avatarImageURL {
             avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
         }
-        
+        // 2. 👈 追加: いない場合、投稿データのURLを使う
+        else if let urlString = post.authorAvatarURL, !urlString.isEmpty {
+            avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
+        }
         // ユーザーのアバター
         if post.isUserPost, let url = viewModel.userProfileAvatarURL {
             userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
@@ -733,7 +736,8 @@ struct PostCardView: View {
                 )
             } else {
                 AvatarView(
-                    image: post.isUserPost ? userAvatarImage : nil,
+                    // 👈 修正: 自分の投稿なら userAvatarImage、そうでなければ上でロードした avatarImage を使う
+                    image: post.isUserPost ? userAvatarImage : avatarImage,
                     name: post.isUserPost ? viewModel.userProfileName : post.authorName,
                     size: DesignTokens.AvatarSize.md,
                     placeholderGradient: AppColors.primaryGradient
