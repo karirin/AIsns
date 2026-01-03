@@ -48,14 +48,17 @@ struct TimelineScreenView: View {
         switch selectedTab {
         case .forYou: // フォロー中タブ
             return viewModel.timelinePosts.filter { post in
+                if post.isUserPost { return true }
+                
                 if let authorId = post.authorId {
-                    return viewModel.followingOshiIds.contains(authorId)
+                    return viewModel.followingOshiIds.contains(authorId) ||
+                           viewModel.followingRemoteOshiIDs.contains(authorId)
                 }
-                return post.isUserPost
+                
+                return false
             }
             
-        case .following: // おすすめタブ
-            // ✅ 変更: おすすめ欄は公式アカウントのみ表示
+        case .following:
             return viewModel.recommendedPosts
         }
     }
