@@ -608,6 +608,12 @@ struct PostCardView: View {
         return nil
     }
     
+    var showFollowButton: Bool {
+        // 自分の投稿ではなく、かつまだフォローしていない場合
+        return !post.isUserPost &&
+               !viewModel.isFollowing(oshiId: post.authorId ?? UUID())
+    }
+    
     var hasUserLiked: Bool {
         viewModel.hasUserReacted(to: post)
     }

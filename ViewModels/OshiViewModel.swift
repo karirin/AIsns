@@ -19,6 +19,8 @@ class OshiViewModel: ObservableObject {
     @Published var bookmarkedPosts: [Post] = []
     @Published var repostedPostIDs: Set<UUID> = []
     @Published var likedPostIDs: Set<UUID> = []
+    @Published var publicTimelinePosts: [Post] = []
+    @Published var followingRemoteOshiIDs: Set<UUID> = []
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -50,21 +52,27 @@ class OshiViewModel: ObservableObject {
     }
     
     var timelinePosts: [Post] {
-        posts.filter { post in
-            // ユーザーの投稿は常に表示
-            if post.isUserPost {
-                return true
-            }
-
-            // 推しの投稿は自分がフォローしている場合のみ表示
-            guard let authorId = post.authorId,
-                  let oshi = oshiList.first(where: { $0.id == authorId }) else {
-                return false
-            }
-
-            // 変更前: return oshi.isMutualFollow
-            return oshi.isFollowedByUser // ✅ 修正: 自分がフォローしていれば表示
+        // 1. ベースは自分の投稿(posts)
+        var combined = posts
+        
+        // 2. 公開タイムライン(publicTimelinePosts)から、フォローしている人の投稿を抽出して追加
+        let followedPosts = publicTimelinePosts.filter { post in
+            guard let authorId = post.authorId else { return false }
+            
+            // ローカルの推し、またはリモートでフォローしている推しなら表示
+            let isLocalOshi = oshiList.contains(where: { $0.id == authorId })
+            let isRemoteFollow = followingRemoteOshiIDs.contains(authorId)
+            
+            return isLocalOshi || isRemoteFollow
         }
+        
+        combined.append(contentsOf: followedPosts)
+        
+        // 3. 重複排除（念のため）と日付順ソート
+        // PostがHashable準拠でない場合はIDで重複排除
+        let uniquePosts = Array(Dictionary(grouping: combined, by: { $0.id }).values.compactMap { $0.first })
+        
+        return uniquePosts.sorted { $0.timestamp > $1.timestamp }
     }
     
     var recommendedPosts: [Post] {
@@ -492,25 +500,56 @@ class OshiViewModel: ObservableObject {
 
         do {
             async let oshiListTask = dbManager.loadOshiList()
-            async let postsTask = dbManager.loadPosts(limit: 50)
+            async let myPostsTask = dbManager.loadMyPosts(limit: 50)
+            async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
-            async let presetsTask = dbManager.fetchPresetOshis()
             async let userProfileTask = dbManager.loadUserProfile()
+            async let followingTask = dbManager.loadFollowingIds() // 1. タスク定義
 
-            let (loadedOshi, loadedPosts, loadedRooms, presets, profile) =
-                try await (oshiListTask, postsTask, chatRoomsTask, presetsTask, userProfileTask)
+            // 2. タプルに loadedFollowingIDs と followingTask を追加
+            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs) =
+                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask)
 
             oshiList = loadedOshi
-            recommendedOshis = presets
-            posts = loadedPosts
+            posts = loadedMyPosts
+            publicTimelinePosts = loadedPublicPosts
+            
+            // 3. これで変数が使えるようになります
+            followingRemoteOshiIDs = Set(loadedFollowingIDs)
+            
             chatRooms = loadedRooms
-            userProfileName = profile.userName // ここでロードした名前が入る
+            userProfileName = profile.userName
             userProfileAvatarURL = profile.avatarImageURL
 
         } catch {
-            errorMessage = "データの読み込みに失敗しました"
+            errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+
+    func toggleFollowRemoteOshi(oshiId: UUID) {
+        if followingRemoteOshiIDs.contains(oshiId) {
+            // 解除
+            followingRemoteOshiIDs.remove(oshiId)
+            Task {
+                try? await dbManager.unfollowRemoteOshi(oshiId: oshiId)
+            }
+        } else {
+            // フォロー
+            followingRemoteOshiIDs.insert(oshiId)
+            Task {
+                try? await dbManager.followRemoteOshi(oshiId: oshiId)
+            }
+        }
+        // 振動フィードバック
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+    }
+    
+    /// フォロー状態確認用ヘルパー
+    func isFollowing(oshiId: UUID) -> Bool {
+        // ローカルにいるか、リモートリストにあるか
+        return oshiList.contains(where: { $0.id == oshiId }) || followingRemoteOshiIDs.contains(oshiId)
     }
 
     /// ✅ 通知だけを個別に読み込む関数を追加
@@ -814,11 +853,18 @@ class OshiViewModel: ObservableObject {
         Task {
             do {
                 let content = try await aiService.generateOshiPost(by: oshi)
-                let post = Post(authorId: oshi.id, authorName: oshi.name,
-                               content: content, isUserPost: false)
+                
+                let post = Post(
+                    authorId: oshi.id,
+                    authorName: oshi.name,
+                    content: content, isUserPost: false, authorAvatarURL: oshi.avatarImageURL
+                )
+                
+                // UIへの即時反映
                 posts.insert(post, at: 0)
                 
-                try await dbManager.savePost(post)
+                // 保存: ここで isPublic フラグを使用
+                try await dbManager.savePost(post, isPublic: oshi.isPublic)
                 
                 // ✅ 修正: 相互フォローの場合のみ通知を作成
                 if oshi.isMutualFollow {

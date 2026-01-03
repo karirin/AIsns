@@ -193,10 +193,109 @@ class FirebaseDatabaseManager {
     // MARK: - Posts
 
     /// 投稿を保存(リアクション・コメントは含まない)
-    func savePost(_ post: Post) async throws {
-        let postRef = ref.child("users/\(userId)/posts/\(post.id.uuidString)")
+    func savePost(_ post: Post, isPublic: Bool = false) async throws {
+        // 1. データ実体: root/posts/{postId} に保存
+        let postRef = ref.child("posts/\(post.id.uuidString)")
+        
+        // Postモデルに authorAvatarURL を追加している前提のデータ作成
+        var postData = encodePostToDictionary(post)
+        
+        // 2. 参照用パスの準備
+        var updates: [String: Any] = [:]
+        
+        // A. 実体の保存パス
+        updates["posts/\(post.id.uuidString)"] = postData
+        
+        // B. 自分の投稿リスト (users/{userId}/myPostIds/{postId})
+        // 値はソート用のタイムスタンプ
+        updates["users/\(userId)/myPostIds/\(post.id.uuidString)"] = post.timestamp.timeIntervalSince1970
+        
+        // C. 公開タイムライン (publicTimeline/{postId}) - 公開設定の場合のみ
+        if isPublic {
+            updates["publicTimeline/\(post.id.uuidString)"] = post.timestamp.timeIntervalSince1970
+        }
+        
+        // アトミックに一括更新（整合性を保つため）
+        try await ref.updateChildValues(updates)
+    }
 
-        let postData: [String: Any] = [
+    /// 公開投稿（おすすめ）を取得: インデックス -> 実体の順で取得
+    func loadPublicPosts(limit: Int = 50) async throws -> [Post] {
+        // 1. publicTimeline から IDとタイムスタンプを取得
+        let snapshot = try await ref.child("publicTimeline")
+            .queryOrderedByValue() // タイムスタンプ順
+            .queryLimited(toLast: UInt(limit))
+            .getData()
+
+        guard let value = snapshot.value as? [String: TimeInterval] else {
+            return []
+        }
+        
+        // IDのリストを作成（新しい順にソート）
+        let sortedIds = value.sorted { $0.value > $1.value }.map { UUID(uuidString: $0.key) }.compactMap { $0 }
+        
+        if sortedIds.isEmpty { return [] }
+
+        // 2. IDリストを使って実データを取得 (既存の loadPosts(by:) を活用)
+        return try await loadPosts(by: sortedIds)
+    }
+    
+    /// 自分の投稿を取得 (修正版)
+    func loadMyPosts(limit: Int = 50) async throws -> [Post] {
+        let snapshot = try await ref.child("users/\(userId)/myPostIds")
+            .queryOrderedByValue()
+            .queryLimited(toLast: UInt(limit))
+            .getData()
+            
+        guard let value = snapshot.value as? [String: TimeInterval] else {
+            return []
+        }
+        
+        let sortedIds = value.sorted { $0.value > $1.value }.map { UUID(uuidString: $0.key) }.compactMap { $0 }
+        
+        if sortedIds.isEmpty { return [] }
+        
+        return try await loadPosts(by: sortedIds)
+    }
+
+    func loadPosts(by postIds: [UUID]) async throws -> [Post] {
+        var loadedPosts: [Post] = []
+        
+        await withTaskGroup(of: Post?.self) { group in
+            for postId in postIds {
+                group.addTask {
+                    do {
+                        // 変更: 参照先を users/{userId}/posts から root/posts に変更
+                        let snapshot = try await self.ref.child("posts/\(postId.uuidString)").getData()
+                        
+                        guard let data = snapshot.value as? [String: Any],
+                              let post = self.parsePost(from: data) else {
+                            return nil
+                        }
+                        return post
+                    } catch {
+                        print("⚠️ 投稿取得エラー \(postId): \(error)")
+                        return nil
+                    }
+                }
+            }
+            
+            for await post in group {
+                if let post = post {
+                    loadedPosts.append(post)
+                }
+            }
+        }
+        
+        // リクエストされたID順（時系列）に並べ直して返す
+        // データ取得完了順だとバラバラになるため
+        let postMap = Dictionary(uniqueKeysWithValues: loadedPosts.map { ($0.id, $0) })
+        return postIds.compactMap { postMap[$0] }
+    }
+    
+    // ヘルパー: Post -> Dictionary 変換 (前回の回答と同じ)
+    private func encodePostToDictionary(_ post: Post) -> [String: Any] {
+        var data: [String: Any] = [
             "id": post.id.uuidString,
             "authorId": post.authorId?.uuidString ?? "",
             "authorName": post.authorName,
@@ -205,37 +304,39 @@ class FirebaseDatabaseManager {
             "isUserPost": post.isUserPost,
             "reactionCount": post.reactionCount,
             "commentCount": post.commentCount,
-            "repostCount": post.repostCount // 👈 追加
+            "repostCount": post.repostCount
         ]
-        // 画像URLがあれば追加保存（既存の実装に合わせて調整）
-        if !post.imageURLs.isEmpty {
-             // 簡易的な保存例。本来はpostDataに含めるか別ノード
-             try await postRef.child("imageURLs").setValue(post.imageURLs)
+        if let avatarURL = post.authorAvatarURL { // Postモデルへの追加が必要
+             data["authorAvatarURL"] = avatarURL
         }
-        
-        try await postRef.updateChildValues(postData)
+        if !post.imageURLs.isEmpty {
+            data["imageURLs"] = post.imageURLs
+        }
+        return data
+    }
+    
+    func followRemoteOshi(oshiId: UUID) async throws {
+        let refPath = "users/\(userId)/following/\(oshiId.uuidString)"
+        // 値はフォローした時刻
+        try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
     }
 
-    /// 投稿リストを取得(軽量・件数のみ)
-    func loadPosts(limit: Int = 50) async throws -> [Post] {
-        let snapshot = try await ref.child("users/\(userId)/posts")
-            .queryOrdered(byChild: "timestamp")
-            .queryLimited(toLast: UInt(limit))
-            .getData()
+    /// フォロー解除
+    func unfollowRemoteOshi(oshiId: UUID) async throws {
+        let refPath = "users/\(userId)/following/\(oshiId.uuidString)"
+        try await ref.child(refPath).removeValue()
+    }
 
-        guard let value = snapshot.value as? [String: [String: Any]] else {
+    /// フォローしているID一覧を取得
+    func loadFollowingIds() async throws -> [UUID] {
+        let snapshot = try await ref.child("users/\(userId)/following").getData()
+        
+        guard let value = snapshot.value as? [String: Any] else {
             return []
         }
-
-        var posts: [Post] = []
-
-        for (_, postData) in value {
-            if let post = parsePost(from: postData) {
-                posts.append(post)
-            }
-        }
-
-        return posts.sorted { $0.timestamp > $1.timestamp }
+        
+        // IDの配列を返す
+        return value.keys.compactMap { UUID(uuidString: $0) }
     }
 
     /// 投稿を更新(主にカウント更新用)
@@ -753,44 +854,6 @@ class FirebaseDatabaseManager {
         // タイムスタンプ順（新しい順）にソートしてIDを返す
         let sortedIDs = value.sorted { $0.value > $1.value }.compactMap { UUID(uuidString: $0.key) }
         return sortedIDs
-    }
-
-    /// 指定されたIDリストに対応する投稿データを取得（ブックマーク一覧表示用）
-    func loadPosts(by postIds: [UUID]) async throws -> [Post] {
-        var loadedPosts: [Post] = []
-        
-        // Note: Firebase Realtime DBでは "WHERE id IN (...)" ができないため、
-        // IDごとに並列でフェッチします
-        
-        await withTaskGroup(of: Post?.self) { group in
-            for postId in postIds {
-                group.addTask {
-                    do {
-                        // 投稿データを取得
-                        let snapshot = try await self.ref.child("users/\(self.userId)/posts/\(postId.uuidString)").getData()
-                        
-                        guard let data = snapshot.value as? [String: Any],
-                              let post = self.parsePost(from: data) else {
-                            return nil
-                        }
-                        return post
-                    } catch {
-                        print("⚠️ 投稿取得エラー \(postId): \(error)")
-                        return nil
-                    }
-                }
-            }
-            
-            for await post in group {
-                if let post = post {
-                    loadedPosts.append(post)
-                }
-            }
-        }
-        
-        // 元のIDリストの順序（保存した順）に合わせて並び替え直す
-        // または、日付順にするなら $0.timestamp > $1.timestamp
-        return loadedPosts.sorted { $0.timestamp > $1.timestamp }
     }
     
     /// 全ての通知を削除
