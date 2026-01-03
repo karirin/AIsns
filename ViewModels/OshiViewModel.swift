@@ -67,6 +67,24 @@ class OshiViewModel: ObservableObject {
         }
     }
     
+    var recommendedPosts: [Post] {
+        posts.filter { post in
+            // 自分の投稿は除外
+            if post.isUserPost {
+                return false
+            }
+            
+            // 推しの情報を取得
+            guard let authorId = post.authorId,
+                  let oshi = oshiList.first(where: { $0.id == authorId }) else {
+                return false
+            }
+            
+            // 公式アカウント（プリセット）の場合のみ表示
+            return oshi.isPublic
+        }
+    }
+    
     init() {
         Task {
             await loadData()
@@ -335,11 +353,11 @@ class OshiViewModel: ObservableObject {
     
     private func startAutoFollowing() {
         // 30分〜2時間に1回、ランダムなプリセット推しからフォローされる
-        autoFollowTimer = Timer.scheduledTimer(withTimeInterval: Double.random(in: 1800...7200), repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                await self?.randomPresetFollow()
+        autoFollowTimer = Timer.scheduledTimer(withTimeInterval: Double.random(in: TimingConfig.AutoEvent.followIntervalRange), repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.randomPresetFollow()
+                }
             }
-        }
         
         // 初回実行(30秒〜5分後にランダム実行)
         DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 5...5)) {
@@ -536,20 +554,32 @@ class OshiViewModel: ObservableObject {
     }
     // MARK: - 推し管理
     
-    func addOshi(_ oshi: OshiCharacter) {
+    func addOshi(_ oshi: OshiCharacter, isPublic: Bool = false) {
         Task {
             do {
                 var newOshi = oshi
+                newOshi.isPublic = isPublic // ✅ 共有フラグを設定
+                newOshi.isFollowedByUser = true
+                
+                // ✅ 追加: 最初から推しもユーザーをフォローしている状態にする（相互フォロー）
+                newOshi.isFollowingUser = true
+                
+                // 1. ローカルリストに追加
                 oshiList.append(newOshi)
                 try await dbManager.saveOshi(newOshi)
                 
+                // 2. チャットルーム作成
                 let chatRoom = ChatRoom(oshiId: newOshi.id)
                 chatRooms.append(chatRoom)
                 try await dbManager.saveChatRoom(chatRoom)
                 
+                // 3. 挨拶
                 await sendInitialGreeting(to: newOshi)
+                
+                print("✅ ユーザー推し追加完了: \(newOshi.name) (共有: \(isPublic))")
             } catch {
                 print("❌ 推し追加エラー: \(error)")
+                errorMessage = "推しの保存に失敗しました"
             }
         }
     }
@@ -601,7 +631,7 @@ class OshiViewModel: ObservableObject {
                 try await dbManager.savePost(post)
                 
                 // すべての推しが反応(遅延実行)
-                try await Task.sleep(nanoseconds: UInt64.random(in: 60_000_000_000...300_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.startDelayRange)))
                 await generateReactionsForPost(post)
                 
             } catch {
@@ -622,7 +652,7 @@ class OshiViewModel: ObservableObject {
         let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
         
         for oshi in oshiList {
-            try? await Task.sleep(nanoseconds: UInt64.random(in: 5_000_000_000...300_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.likeDelayRange)))
             // いいね処理 (変更なし)
             if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
                 let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
@@ -638,7 +668,7 @@ class OshiViewModel: ObservableObject {
             // コメント処理
             if selectedCommenters.contains(where: { $0.id == oshi.id }) {
                 do {
-                    try await Task.sleep(nanoseconds: UInt64.random(in: 60_000_000_000...300_000_000_000))
+                    try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.commentDelayRange)))
                     
                     // ✅ 修正: mood は String なので .rawValue は不要
                     let commentText = try await aiService.generateComment(
@@ -1028,7 +1058,7 @@ class OshiViewModel: ObservableObject {
                     try await dbManager.saveOshi(oshiList[oshiIndex])
                 }
                 
-                try await Task.sleep(nanoseconds: UInt64.random(in: 10_000_000_000...60_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Chat.replyDelayRange)))
                 
                 // ✅ 修正: userNameを渡す
                 let reply = try await aiService.generateChatReply(
@@ -1085,7 +1115,7 @@ class OshiViewModel: ObservableObject {
     // MARK: - 自動投稿
     
     private func startAutoPosting() {
-        autoPostTimer = Timer.scheduledTimer(withTimeInterval: 300.0, repeats: true) { [weak self] _ in
+        autoPostTimer = Timer.scheduledTimer(withTimeInterval: TimingConfig.AutoEvent.postInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.randomOshiPost()
             }

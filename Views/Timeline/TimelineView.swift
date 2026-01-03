@@ -22,8 +22,8 @@ enum SidebarDestination: Hashable {
 // MARK: - Timeline Tab
 
 enum TimelineTab: String, CaseIterable {
-    case forYou = "おすすめ"
-    case following = "フォロー中"
+    case forYou = "フォロー中"
+    case following = "おすすめ"
 }
 
 // MARK: - Timeline Screen View
@@ -46,15 +46,17 @@ struct TimelineScreenView: View {
     // フィルタリングされた投稿
     private var filteredPosts: [Post] {
         switch selectedTab {
-        case .forYou:
-            return viewModel.timelinePosts
-        case .following:
+        case .forYou: // フォロー中タブ
             return viewModel.timelinePosts.filter { post in
                 if let authorId = post.authorId {
                     return viewModel.followingOshiIds.contains(authorId)
                 }
                 return post.isUserPost
             }
+            
+        case .following: // おすすめタブ
+            // ✅ 変更: おすすめ欄は公式アカウントのみ表示
+            return viewModel.recommendedPosts
         }
     }
     
@@ -269,16 +271,28 @@ struct TimelineScreenView: View {
             
             // ロゴ
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(AppColors.primaryGradient)
+                Image("アイコン")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width:30)
+                    .cornerRadius(50)
                 
-                Text("AIsns")
+                Text("AImate")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(AppColors.primaryGradient)
             }
             
             Spacer()
+            Button {
+                generateHapticFeedback()
+                withAnimation(DesignTokens.Animation.spring) {
+                    showingSidebar.toggle()
+                }
+            } label: {
+                profileButton
+            }
+            .opacity(0) // レイアウトバランス用
+            .disabled(true)
         }
         .padding(.horizontal, DesignTokens.Spacing.md)
         .padding(.vertical, DesignTokens.Spacing.sm)
@@ -348,24 +362,34 @@ struct TimelineScreenView: View {
         )
     }
     
-    // MARK: - Empty State
-    
+    // MARK: - Empty State (Updated)
     private var timelineEmptyView: some View {
         ScrollView {
-            EmptyStateView(
-                icon: "bubble.left.and.bubble.right",
-                title: selectedTab == .following ? "フォロー中の投稿がありません" : "タイムラインがまだ空です",
-                subtitle: selectedTab == .following
-                    ? "アカウントをフォローすると\nここに投稿が表示されます"
-                    : "新しい投稿を作成するか\nアカウントをフォローしてみましょう",
-                actionTitle: "アカウントを探す",
-                action: {
-                    generateHapticFeedback()
-                    navigationPath.append(SidebarDestination.followers)
-                }
-            )
-            .padding(.top, DesignTokens.Spacing.xxxxl)
+            // タブに応じたコンテンツの切り替え
+            if selectedTab == .following {
+                // おすすめ（公式）タブが空の場合
+                EmptyStateView(
+                    icon: "sparkles", // アイコン変更
+                    title: "おすすめの投稿はまだありません",
+                    subtitle: "公式アカウントからの最新情報を\nお待ちください",
+                    actionTitle: nil, // アクションボタンなし
+                    action: nil
+                )
+            } else {
+                // フォロー中タブが空の場合
+                EmptyStateView(
+                    icon: "bubble.left.and.bubble.right",
+                    title: "タイムラインがまだ空です",
+                    subtitle: "新しい投稿を作成するか\nアカウントをフォローしてみましょう",
+                    actionTitle: "アカウントを探す",
+                    action: {
+                        generateHapticFeedback()
+                        navigationPath.append(SidebarDestination.followers)
+                    }
+                )
+            }
         }
+        .padding(.top, DesignTokens.Spacing.xxxxl)
         .refreshable {
             await viewModel.loadData()
         }

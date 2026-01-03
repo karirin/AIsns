@@ -10,7 +10,7 @@ import SwiftUI
 struct OshiCreationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
-
+    
     // 入力State
     @State private var name: String = ""
     @State private var gender: Gender? = nil
@@ -19,7 +19,8 @@ struct OshiCreationView: View {
     @State private var userCallingName: String = ""
     @State private var speechStyleText: String = ""
     @State private var avatarImage: UIImage? = nil
-
+    @State private var isPublic: Bool = false
+    
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
     @State private var isLoadingImage = false
@@ -28,7 +29,7 @@ struct OshiCreationView: View {
     @State private var appearAnimation = false
     @State private var avatarPulse = false
     @State private var isSaving = false
-
+    
     // カラーテーマ
     private let accentGradient = LinearGradient(
         colors: [Color(hex: "6366F1"), Color(hex: "8B5CF6"), Color(hex: "A855F7")],
@@ -50,7 +51,7 @@ struct OshiCreationView: View {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-
+    
     var body: some View {
         ZStack {
             // 背景レイヤー
@@ -62,20 +63,24 @@ struct OshiCreationView: View {
                     headerCard
                         .offset(y: appearAnimation ? 0 : 30)
                         .opacity(appearAnimation ? 1 : 0)
-
+                    
                     // 基本設定セクション
                     basicSettingsSection
                         .offset(y: appearAnimation ? 0 : 40)
                         .opacity(appearAnimation ? 1 : 0)
-
+                    
                     // キャラクター設定セクション
                     characterSettingsSection
                         .offset(y: appearAnimation ? 0 : 50)
                         .opacity(appearAnimation ? 1 : 0)
-
+                    
                     // ユーザーとの関係セクション
                     relationshipSection
                         .offset(y: appearAnimation ? 0 : 60)
+                        .opacity(appearAnimation ? 1 : 0)
+                    
+                    shareSettingsSection
+                        .offset(y: appearAnimation ? 0 : 70)
                         .opacity(appearAnimation ? 1 : 0)
                     
                     Spacer(minLength: 120)
@@ -94,7 +99,7 @@ struct OshiCreationView: View {
         .onTapGesture {
             UIApplication.shared.endEditing()
         }
-        .navigationTitle("推しを作成")
+        .navigationTitle("フォロワーを作成")
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -313,7 +318,7 @@ struct OshiCreationView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accentGradient)
                 
-                Text("推しの名前")
+                Text("フォロワーの名前")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(hex: "374151"))
             }
@@ -331,8 +336,8 @@ struct OshiCreationView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .strokeBorder(
                                 name.isEmpty
-                                    ? Color(hex: "E5E7EB")
-                                    : Color(hex: "6366F1").opacity(0.5),
+                                ? Color(hex: "E5E7EB")
+                                : Color(hex: "6366F1").opacity(0.5),
                                 lineWidth: 1.5
                             )
                     }
@@ -455,8 +460,8 @@ struct OshiCreationView: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .strokeBorder(
                                     userCallingName.isEmpty
-                                        ? Color(hex: "E5E7EB")
-                                        : Color(hex: "F59E0B").opacity(0.5),
+                                    ? Color(hex: "E5E7EB")
+                                    : Color(hex: "F59E0B").opacity(0.5),
                                     lineWidth: 1.5
                                 )
                         }
@@ -513,7 +518,7 @@ struct OshiCreationView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 18, weight: .semibold))
                             
-                            Text("推しを登録")
+                            Text("フォロワーを登録")
                                 .font(.system(size: 17, weight: .bold))
                         }
                     }
@@ -580,7 +585,7 @@ struct OshiCreationView: View {
                         .foregroundColor(.white)
                 }
                 
-                Text("推しを登録しました")
+                Text("フォロワーを登録しました")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
             }
@@ -607,23 +612,54 @@ struct OshiCreationView: View {
         ))
         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: showingSaveConfirmation)
     }
+    
+    private var shareSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ModernSectionHeader(title: "共有設定", icon: "globe.asia.australia.fill", color: Color(hex: "10B981"))
+            
+            Toggle(isOn: $isPublic) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("共有する")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(hex: "374151"))
+                    
+                    Text("ONにすると、他のユーザーが検索できるようになります（現在は機能しません）")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "6B7280"))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.ultraThinMaterial)
+                    
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(cardGradient)
+                    
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
+                }
+            )
+            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "10B981")))
+            .shadow(color: Color.black.opacity(0.04), radius: 15, y: 5)
+        }
+        .padding(.horizontal, 20)
+    }
 
     // MARK: - 推し作成処理
     private func createOshi() {
         isSaving = true
         
         Task {
+            // ... (Existing creation logic) ...
             let personality: PersonalityType = {
-                if let matched = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) {
-                    return matched
-                }
+                if let matched = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) { return matched }
                 return .kind
             }()
-
             let style: SpeechStyle = {
-                if let matched = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) {
-                    return matched
-                }
+                if let matched = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) { return matched }
                 return .polite
             }()
 
@@ -634,37 +670,28 @@ struct OshiCreationView: View {
                 speechCharacteristics: speechCharacteristics,
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
-                avatarImageURL: nil
+                avatarImageURL: nil,
+                isPublic: isPublic // ✅ ここでは初期値として渡すが、ViewModelで上書きされるか確認
             )
 
             if let image = avatarImage {
                 do {
-                    let imageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(
-                        image,
-                        oshiId: newOshi.id
-                    )
+                    let imageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(image, oshiId: newOshi.id)
                     newOshi.avatarImageURL = imageURL
                 } catch {
                     print("画像アップロードエラー: \(error)")
                 }
             }
 
-            viewModel.addOshi(newOshi)
+            // ✅ isPublicを渡す
+            viewModel.addOshi(newOshi, isPublic: isPublic)
 
             await MainActor.run {
                 isSaving = false
-                
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                    showingSaveConfirmation = true
-                }
-
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { showingSaveConfirmation = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showingSaveConfirmation = false
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        dismiss()
-                    }
+                    withAnimation(.easeOut(duration: 0.3)) { showingSaveConfirmation = false }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dismiss() }
                 }
             }
         }

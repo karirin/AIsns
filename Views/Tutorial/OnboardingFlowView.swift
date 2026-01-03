@@ -340,7 +340,7 @@ struct OnboardingOshiSetupView: View {
                         .font(AppTypography.title2)
                         .foregroundColor(AppColors.textPrimary)
                     
-                    Text("気になるキャラクターをフォローするか、\n自分だけの推しを作成しましょう。")
+                    Text("気になるキャラクターをフォローするか、\n自分だけのフォロワーを作成しましょう。")
                         .font(AppTypography.subheadline)
                         .foregroundColor(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
@@ -451,7 +451,7 @@ struct OnboardingOshiSetupView: View {
             
             // 入力フィールド
             VStack(spacing: DesignTokens.Spacing.sm) {
-                inputField(title: "推しの名前", placeholder: "例: レン", text: $name)
+                inputField(title: "フォロワーの名前", placeholder: "例: レン", text: $name)
                 inputField(title: "性格", placeholder: "例: 優しくて甘えん坊", text: $personality)
                 inputField(title: "口調", placeholder: "例: タメ口、語尾に「〜だよ」", text: $tone)
             }

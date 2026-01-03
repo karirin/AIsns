@@ -93,12 +93,6 @@ class FirebaseDatabaseManager {
     func saveOshi(_ oshi: OshiCharacter) async throws {
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshi.id.uuidString)")
         
-        print("💾 saveOshi: \(oshi.name)")
-        print("  - path: users/\(userId)/oshiList/\(oshi.id.uuidString)")
-        print("  - isFollowingUser: \(oshi.isFollowingUser)")
-        print("  - isFollowedByUser: \(oshi.isFollowedByUser)")
-        print("  - isMutualFollow: \(oshi.isMutualFollow)")
-
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
@@ -109,9 +103,9 @@ class FirebaseDatabaseManager {
             "createdAt": oshi.createdAt.timeIntervalSince1970,
             "totalInteractions": oshi.totalInteractions,
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0,
-            "isFollowingUser": oshi.isFollowingUser,  // ✅ これを保存
-            "isFollowedByUser": oshi.isFollowedByUser // ✅ これを保存
-            // isMutualFollowは計算プロパティなので保存不要
+            "isFollowingUser": oshi.isFollowingUser,
+            "isFollowedByUser": oshi.isFollowedByUser,
+            "isPublic": oshi.isPublic
         ]
 
         if let gender = oshi.gender {
@@ -122,11 +116,7 @@ class FirebaseDatabaseManager {
             oshiData["avatarImageURL"] = imageURL
         }
         
-        print("  - 保存データ: \(oshiData)")
-
         try await oshiRef.setValue(oshiData)
-        
-        print("  ✅ saveOshi完了")
     }
     
     func saveUserProfile(userName: String, userBio: String, avatarImageURL: String?) async throws {
@@ -524,9 +514,9 @@ class FirebaseDatabaseManager {
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
         
-        // ✅ isFollowingUserとisFollowedByUserを読み込み
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
+        let isPublic = data["isPublic"] as? Bool ?? false // ✅ 追加: 読み込み
 
         var oshi = OshiCharacter(
             id: id,
@@ -537,8 +527,9 @@ class FirebaseDatabaseManager {
             userCallingName: userCallingName,
             speechStyleText: speechStyleText,
             avatarImageURL: avatarImageURL,
-            isFollowingUser: isFollowingUser,  // ✅ 追加
-            isFollowedByUser: isFollowedByUser // ✅ 追加
+            isFollowingUser: isFollowingUser,
+            isFollowedByUser: isFollowedByUser,
+            isPublic: isPublic
         )
 
         oshi.totalInteractions = totalInteractions
@@ -552,8 +543,6 @@ class FirebaseDatabaseManager {
     // FirebaseDatabaseManager に追加
     func savePresetOshi(_ oshi: OshiCharacter) async throws {
         let path = "presets/oshiList/\(oshi.id.uuidString)"
-        print("🧩 savePresetOshi path=\(path)")
-
         let oshiRef = ref.child(path)
 
         var oshiData: [String: Any] = [
@@ -564,9 +553,8 @@ class FirebaseDatabaseManager {
             "userCallingName": oshi.userCallingName,
             "speechStyleText": oshi.speechStyleText,
             "createdAt": oshi.createdAt.timeIntervalSince1970,
-            "totalInteractions": oshi.totalInteractions,
-            "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0,
-            "avatarImageURL": oshi.avatarImageURL ?? ""
+            "totalInteractions": 0, // プリセット初期値
+            "avatarImageURL": oshi.avatarImageURL ?? "",
         ]
 
         if let gender = oshi.gender {
@@ -574,7 +562,7 @@ class FirebaseDatabaseManager {
         }
 
         try await oshiRef.updateChildValues(oshiData)
-        print("✅ savePresetOshi updated \(oshi.id.uuidString)")
+        print("✅ プリセット保存（公式）: \(oshi.name)")
     }
 
 

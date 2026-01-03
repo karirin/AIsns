@@ -61,8 +61,10 @@ struct OshiCharacter: Identifiable, Codable {
     var totalInteractions: Int
     var lastInteractionDate: Date?
     var avatarImageURL: String?
+    
     var isFollowingUser: Bool
     var isFollowedByUser: Bool
+    var isPublic: Bool
     
     var isMutualFollow: Bool {
         isFollowingUser && isFollowedByUser
@@ -76,13 +78,10 @@ struct OshiCharacter: Identifiable, Codable {
         }
     }
     
-    // ✅ 修正: ユーザー名を受け取り、適切な呼び名を返すメソッドに変更
     func callingName(userName: String) -> String {
-        // カスタム呼び方が設定されていればそれを使用
         if !userCallingName.isEmpty {
             return userCallingName
         }
-        // 設定がない場合はユーザー名を使用（空なら「あなた」）
         return userName.isEmpty ? "あなた" : "\(userName)さん"
     }
     
@@ -99,7 +98,8 @@ struct OshiCharacter: Identifiable, Codable {
         totalInteractions: Int = 0,
         lastInteractionDate: Date? = nil,
         isFollowingUser: Bool = false,
-        isFollowedByUser: Bool = false
+        isFollowedByUser: Bool = false,
+        isPublic: Bool = false // ✅ 初期値
     ) {
         self.id = id
         self.name = name
@@ -114,6 +114,7 @@ struct OshiCharacter: Identifiable, Codable {
         self.lastInteractionDate = lastInteractionDate
         self.isFollowingUser = isFollowingUser
         self.isFollowedByUser = isFollowedByUser
+        self.isPublic = isPublic
     }
     
     mutating func increaseIntimacy(by amount: Int = 1) {

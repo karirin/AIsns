@@ -356,7 +356,7 @@ struct OshiProfileEditView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accentGradient)
                 
-                Text("推しの名前")
+                Text("フォロワーの名前")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(hex: "374151"))
             }
