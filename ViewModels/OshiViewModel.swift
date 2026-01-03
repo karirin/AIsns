@@ -30,6 +30,7 @@ class OshiViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var autoPostTimer: Timer?
     private var autoFollowTimer: Timer?
+    private let notificationsStorageKey = "local_notifications_v1"
 
     var unreadNotificationCount: Int {
         notifications.filter { !$0.isRead }.count
@@ -676,42 +677,29 @@ class OshiViewModel: ObservableObject {
     }
 
     /// ✅ 通知だけを個別に読み込む関数を追加
-    func fetchNotifications() async {
-        do {
-            // 1. 最新の通知を取得して表示 (最大100件)
-            let loadedNotifications = try await dbManager.loadNotifications(limit: 100)
-            
-            await MainActor.run {
-                self.notifications = loadedNotifications
+    func fetchNotifications() async { // asyncは互換性維持のため残すが、実処理は同期的でも可
+        await MainActor.run {
+            if let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
+                if let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
+                    self.notifications = decoded
+                    return
+                }
             }
-            
-            // 2. 古いデータの削除を実行 (バックグラウンド)
-            Task {
-                await deleteOldNotifications()
-            }
-            
-        } catch {
-            print("⚠️ 通知の読み込みに失敗: \(error.localizedDescription)")
+            self.notifications = []
         }
     }
 
     private func deleteOldNotifications() async {
-        // 現在時刻から30日引く (秒数計算)
-        // 確実に「過去」の日付になっていることを確認
         let thirtyDaysAgo = Date().addingTimeInterval(-(60 * 60 * 24 * 30))
         
-        do {
-            // Firebaseから削除
-            try await dbManager.deleteOldNotifications(olderThan: thirtyDaysAgo)
+        await MainActor.run {
+            let initialCount = notifications.count
+            notifications.removeAll { $0.timestamp < thirtyDaysAgo }
             
-            // 現在表示中のリストからも、もし古いものが混ざっていれば削除
-            await MainActor.run {
-                notifications.removeAll { notification in
-                    notification.timestamp < thirtyDaysAgo
-                }
+            // 変更があれば保存
+            if notifications.count != initialCount {
+                saveNotificationsToLocal()
             }
-        } catch {
-            print("⚠️ 古い通知の削除に失敗: \(error)")
         }
     }
     // MARK: - 推し管理
@@ -1208,18 +1196,19 @@ class OshiViewModel: ObservableObject {
         // ローカルに追加
         notifications.insert(notification, at: 0)
         
-        // 100件を超えたらUI上は古いものを削除
+        // 100件制限
         if notifications.count > 100 {
             notifications = Array(notifications.prefix(100))
         }
         
-        // ✅ Firebaseに保存
-        Task {
-            do {
-                try await dbManager.saveNotification(notification)
-            } catch {
-                print("❌ 通知の保存に失敗: \(error)")
-            }
+        // 端末に保存 (Firebaseへの保存コードは削除)
+        saveNotificationsToLocal()
+    }
+    
+    /// UserDefaultsへ保存するヘルパー
+    private func saveNotificationsToLocal() {
+        if let encoded = try? JSONEncoder().encode(notifications) {
+            UserDefaults.standard.set(encoded, forKey: notificationsStorageKey)
         }
     }
 
@@ -1227,37 +1216,33 @@ class OshiViewModel: ObservableObject {
     func markNotificationAsRead(_ notificationId: UUID) {
         if let index = notifications.firstIndex(where: { $0.id == notificationId }) {
             notifications[index].isRead = true
-            
-            // ✅ 保存データの既読状態も更新
-            Task {
-                try? await dbManager.updateNotificationReadStatus(notificationId, isRead: true)
-            }
+            // 保存
+            saveNotificationsToLocal()
         }
     }
 
     /// すべての通知を既読にする
     func markAllNotificationsAsRead() {
+        var hasChange = false
         for index in notifications.indices {
-            // まだ既読でないものだけ更新処理へ
             if !notifications[index].isRead {
                 notifications[index].isRead = true
-                let id = notifications[index].id
-                Task {
-                    try? await dbManager.updateNotificationReadStatus(id, isRead: true)
-                }
+                hasChange = true
             }
+        }
+        if hasChange {
+            saveNotificationsToLocal()
         }
     }
 
     /// すべての通知を削除
     func clearAllNotifications() {
         notifications.removeAll()
-        
-        // ✅ Firebaseからも全削除
-        Task {
-            try? await dbManager.clearAllNotifications()
-        }
+        saveNotificationsToLocal()
+        // Firebase削除コードは削除
     }
+
+    // MARK: - 通知生成メソッドの修正
 
     /// リアクション通知を作成
     private func createReactionNotification(oshi: OshiCharacter, post: Post) {
@@ -1283,27 +1268,14 @@ class OshiViewModel: ObservableObject {
         addNotification(notification)
     }
 
-    /// 推しの投稿通知を作成
+    /// 推しの投稿通知を作成 -> 廃止
     private func createOshiPostNotification(oshi: OshiCharacter, post: Post) {
-        let notification = AppNotification(
-            type: .oshiPost,
-            senderId: oshi.id,
-            senderName: oshi.name,
-            content: post.content,
-            relatedPostId: post.id
-        )
-        addNotification(notification)
+        // 何もしない (通知を作成しない)
     }
 
-    /// チャットメッセージ通知を作成
+    /// チャットメッセージ通知を作成 -> 廃止
     private func createChatNotification(oshi: OshiCharacter, message: Message) {
-        let notification = AppNotification(
-            type: .chat,
-            senderId: oshi.id,
-            senderName: oshi.name,
-            content: message.content
-        )
-        addNotification(notification)
+        // 何もしない (通知を作成しない)
     }
     
     // MARK: - 高親密度での自発的メッセージ

@@ -119,26 +119,30 @@ struct NotificationView: View {
         var groups: [GroupedNotification] = []
         var processed: Set<UUID> = []
         
-        // カテゴリでフィルタリング
-        let filteredNotifications = viewModel.notifications.filter {
+        // 1. カテゴリでフィルタリング
+        // (.chat の除外フィルタは NotificationType から削除されたため不要になり削除しました)
+        let notifications = viewModel.notifications.filter {
             $0.category == selectedCategory
         }
         
-        // 通知の種類によるフィルタリング (チャットは通知欄には出さずバッジで扱うなどの仕様であれば除外)
-        let notifications = filteredNotifications.filter {
-            $0.type != .chat
-        }
+        // 2. 日付順にソート (処理用)
+        let sortedNotifications = notifications.sorted(by: { $0.timestamp > $1.timestamp })
         
-        for notification in notifications.sorted(by: { $0.timestamp > $1.timestamp }) {
+        for notification in sortedNotifications {
+            // すでに処理済みの通知はスキップ
             guard !processed.contains(notification.id) else { continue }
             
             if notification.type.canGroup {
                 if notification.type == .follow {
-                    // フォローの場合、同じターゲット（自分 or 同じ推し）へのフォローをまとめる
-                    let relatedNotifications = notifications.filter {
-                        $0.type == .follow &&
-                        $0.targetOshiName == notification.targetOshiName && // 同じ対象へのフォローのみ
-                        !processed.contains($0.id)
+                    // フォローの場合: 同じターゲット（自分 or 同じ推し）へのフォローをまとめる
+                    let targetName = notification.targetOshiName
+                    
+                    // コンパイラのエラー回避のため、条件を明示的に分割
+                    let relatedNotifications = sortedNotifications.filter { item in
+                        let isSameType = (item.type == .follow)
+                        let isSameTarget = (item.targetOshiName == targetName)
+                        let isNotProcessed = !processed.contains(item.id)
+                        return isSameType && isSameTarget && isNotProcessed
                     }
                     
                     let group = GroupedNotification(
@@ -153,11 +157,15 @@ struct NotificationView: View {
                     relatedNotifications.forEach { processed.insert($0.id) }
                     
                 } else if let postId = notification.relatedPostId {
-                    // 投稿関連（いいね、コメント）は同じPostIDでまとめる
-                    let relatedNotifications = notifications.filter {
-                        $0.type == notification.type &&
-                        $0.relatedPostId == postId &&
-                        !processed.contains($0.id)
+                    // 投稿関連（いいね、コメント）: 同じPostIDでまとめる
+                    let currentType = notification.type
+                    
+                    // コンパイラのエラー回避のため、条件を明示的に分割
+                    let relatedNotifications = sortedNotifications.filter { item in
+                        let isSameType = (item.type == currentType)
+                        let isSamePost = (item.relatedPostId == postId)
+                        let isNotProcessed = !processed.contains(item.id)
+                        return isSameType && isSamePost && isNotProcessed
                     }
                     
                     let group = GroupedNotification(
@@ -308,10 +316,6 @@ struct GroupedNotificationRow: View {
             return ("at", Color.purple, LinearGradient(colors: [.purple], startPoint: .top, endPoint: .bottom))
         case .follow:
             return ("person.fill.badge.plus", AppColors.success, AppColors.successGradient)
-        case .chat:
-            return ("message.fill", AppColors.warning, AppColors.warningGradient)
-        case .oshiPost:
-            return ("star.fill", Color.yellow, AppColors.goldGradient)
         }
     }
     

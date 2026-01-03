@@ -1,28 +1,20 @@
-//
-//  Notification.swift
-//  AIsns
-//
-//  Created by Apple on 2025/12/23.
-//
+// Notification/Notification.swift
 
 import Foundation
 
 // MARK: - Notification Model
 
-/// 通知のカテゴリー
 enum NotificationCategory: String, Codable {
-    case me = "me"                 // 自分への通知
-    case createdOshi = "createdOshi" // 作成したAIへの反応
+    case me = "me"
+    case createdOshi = "createdOshi"
 }
 
 /// 通知の種類
 enum NotificationType: String, Codable {
-    case reaction = "いいね"      // 投稿にいいねされた
-    case comment = "コメント"     // 投稿にコメントされた
-    case mention = "メンション"   // メンションされた（将来対応）
-    case follow = "フォロー"      // フォローされた（将来対応）
-    case chat = "チャット"        // 新しいメッセージ
-    case oshiPost = "推しの投稿"  // 推しが投稿した
+    case reaction = "いいね"
+    case comment = "コメント"
+    case mention = "メンション"   // 将来対応
+    case follow = "フォロー"
     
     var icon: String {
         switch self {
@@ -30,8 +22,7 @@ enum NotificationType: String, Codable {
         case .comment: return "bubble.left.fill"
         case .mention: return "at"
         case .follow: return "person.fill.badge.plus"
-        case .chat: return "message.fill"
-        case .oshiPost: return "star.fill"
+        // 削除されたcaseの処理も削除
         }
     }
     
@@ -41,12 +32,10 @@ enum NotificationType: String, Codable {
         case .comment: return "blue"
         case .mention: return "purple"
         case .follow: return "green"
-        case .chat: return "orange"
-        case .oshiPost: return "yellow"
+        // 削除されたcaseの処理も削除
         }
     }
     
-    /// 同じ投稿に対する通知をグループ化できるか
     var canGroup: Bool {
         switch self {
         case .reaction, .comment, .follow:
@@ -57,20 +46,17 @@ enum NotificationType: String, Codable {
     }
 }
 
-/// 通知モデル
 struct AppNotification: Identifiable, Codable {
     let id: UUID
     let type: NotificationType
-    var senderId: UUID         // 送信者のID（推しのID）
-    var senderName: String     // 送信者の名前
-    var content: String        // 通知内容
-    var relatedPostId: UUID?   // 関連する投稿ID
+    var senderId: UUID
+    var senderName: String
+    var content: String
+    var relatedPostId: UUID?
     var timestamp: Date
     var isRead: Bool
-    
-    // カテゴリ分け用
     var category: NotificationCategory
-    var targetOshiName: String? // 対象のAI名（category == .createdOshi の場合）
+    var targetOshiName: String?
     
     init(
         id: UUID = UUID(),
@@ -96,7 +82,6 @@ struct AppNotification: Identifiable, Codable {
         self.targetOshiName = targetOshiName
     }
     
-    /// 通知メッセージの生成
     var message: String {
         switch category {
         case .me:
@@ -109,10 +94,7 @@ struct AppNotification: Identifiable, Codable {
                 return "\(senderName)があなたをメンションしました"
             case .follow:
                 return "\(senderName)があなたをフォローしました"
-            case .chat:
-                return "\(senderName)からメッセージが届きました"
-            case .oshiPost:
-                return "\(senderName)が投稿しました"
+            // 削除されたcaseの処理も削除
             }
         case .createdOshi:
             let targetName = targetOshiName ?? "あなたのAI"
