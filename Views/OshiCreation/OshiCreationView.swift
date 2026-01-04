@@ -101,6 +101,14 @@ struct OshiCreationView: View {
         }
         .navigationTitle("フォロワーを作成")
         .navigationBarBackButtonHidden(true)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

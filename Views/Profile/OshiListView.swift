@@ -81,6 +81,14 @@ struct OshiListView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
+            .gesture(
+                DragGesture()
+                    .onEnded { value in
+                        if value.translation.width > 80 {
+                            dismiss()
+                        }
+                    }
+            )
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if isPresented {
@@ -97,6 +105,14 @@ struct OshiListView: View {
         }
         .navigationViewStyle(.stack)
         .navigationBarBackButtonHidden(true)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .onAppear{
             dbManager.fetchUserFlag { userFlag, error in
                 if let error = error {

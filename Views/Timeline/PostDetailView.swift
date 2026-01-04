@@ -45,6 +45,14 @@ struct PostDetailView: View {
         }
         .navigationTitle("投稿")
         .navigationBarTitleDisplayMode(.inline)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {

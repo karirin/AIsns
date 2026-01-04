@@ -81,14 +81,6 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         }
     }
     
-    static func == (lhs: OshiCharacter, rhs: OshiCharacter) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-    
     func callingName(userName: String) -> String {
         if !userCallingName.isEmpty {
             return userCallingName

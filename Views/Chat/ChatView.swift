@@ -83,7 +83,6 @@ struct ChatListView: View {
                 }
             }
         }
-        .navigationBarBackButtonHidden(true)
     }
     
     func executeProcessEveryfifTimes() {

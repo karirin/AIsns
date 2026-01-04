@@ -245,6 +245,14 @@ struct NotificationView: View {
         .navigationTitle("通知")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .task {
             // 1. まず最新の通知を取得してリストを表示
             await viewModel.fetchNotifications()

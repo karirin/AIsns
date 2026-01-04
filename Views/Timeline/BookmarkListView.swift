@@ -48,6 +48,14 @@ struct BookmarkListView: View {
         .navigationTitle("ブックマーク")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                     Button {
