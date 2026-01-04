@@ -111,6 +111,7 @@ struct NotificationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
+    @Namespace private var tabNamespace
     
     // タブ選択用
     @State private var selectedCategory: NotificationCategory = .me
@@ -211,13 +212,7 @@ struct NotificationView: View {
     var body: some View {
         VStack(spacing: 0) {
             // タブ切り替え
-            Picker("表示", selection: $selectedCategory) {
-                Text("あなたへの通知").tag(NotificationCategory.me)
-                Text("作成したAI").tag(NotificationCategory.createdOshi)
-            }
-            .pickerStyle(.segmented)
-            .padding()
-            .background(AppColors.backgroundPrimary)
+            notificationTabBarView
             
             if groupedNotifications.isEmpty {
                 EmptyStateView(
@@ -290,6 +285,57 @@ struct NotificationView: View {
         }
         .background(AppColors.backgroundPrimary)
     }
+    
+    private var notificationTabBarView: some View {
+        HStack(spacing: 0) {
+            notificationTabItem(
+                title: "あなたへの通知",
+                category: .me
+            )
+            
+            notificationTabItem(
+                title: "作成したAI",
+                category: .createdOshi
+            )
+        }
+        .padding(.top, DesignTokens.Spacing.xxs)
+        .background(AppColors.backgroundPrimary)
+        .overlay(
+            AppDivider(),
+            alignment: .bottom
+        )
+    }
+
+    private func notificationTabItem(title: String, category: NotificationCategory) -> some View {
+        Button {
+            generateHapticFeedback()
+            withAnimation(DesignTokens.Animation.spring) {
+                selectedCategory = category
+            }
+        } label: {
+            VStack(spacing: DesignTokens.Spacing.xs) {
+                Text(title)
+                    .font(selectedCategory == category ? AppTypography.bodyMedium : AppTypography.body)
+                    .foregroundColor(selectedCategory == category ? AppColors.textPrimary : AppColors.textSecondary)
+                
+                ZStack {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(height: 3)
+                    
+                    if selectedCategory == category {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(AppColors.primaryGradientH)
+                            .frame(width: 48, height: 3)
+                            .matchedGeometryEffect(id: "notificationTabIndicator", in: tabNamespace)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
 }
 
 // MARK: - Grouped Notification Row
@@ -299,6 +345,14 @@ struct GroupedNotificationRow: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var avatarImages: [UUID: UIImage] = [:]
     
+    // ✅ 既存の投稿遷移用
+    @State private var dynamicPost: Post?
+    @State private var isNavigatingToDynamicPost = false
+    
+    // ✅ プロフィール遷移用
+    @State private var dynamicOshi: OshiCharacter?
+    @State private var isNavigatingToOshiProfile = false
+    
     var oshiList: [OshiCharacter] {
         group.senderIds.compactMap { senderId in
             viewModel.oshiList.first { $0.id == senderId }
@@ -307,7 +361,6 @@ struct GroupedNotificationRow: View {
     
     var relatedPost: Post? {
         guard let postId = group.relatedPostId else { return nil }
-        // 自分の投稿または公開タイムラインの投稿から検索
         return viewModel.posts.first { $0.id == postId } ?? viewModel.publicTimelinePosts.first { $0.id == postId }
     }
     
@@ -327,41 +380,96 @@ struct GroupedNotificationRow: View {
     }
     
     var body: some View {
-        if let post = relatedPost {
-            NavigationLink {
-                PostDetailView(post: post, viewModel: viewModel)
-                    .onAppear { markAsRead() }
-            } label: {
-                contentView
-            }
-            .buttonStyle(.plain)
-        } else {
-            contentView
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    markAsRead()
+        ZStack {
+            // メインコンテンツ
+            if let post = relatedPost {
+                NavigationLink {
+                    PostDetailView(post: post, viewModel: viewModel)
+                        .onAppear { markAsRead() }
+                } label: {
+                    contentView
                 }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    handleTap()
+                } label: {
+                    contentView
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // 隠しNavigationLink（投稿詳細へ）
+            NavigationLink(
+                isActive: $isNavigatingToDynamicPost,
+                destination: {
+                    if let post = dynamicPost {
+                        PostDetailView(post: post, viewModel: viewModel)
+                            .onAppear { markAsRead() }
+                    }
+                },
+                label: { EmptyView() }
+            )
+            .hidden()
+            
+            // ✅ 修正: プロフィール詳細への遷移（.idを追加）
+            NavigationLink(
+                isActive: $isNavigatingToOshiProfile,
+                destination: {
+                    if let oshi = dynamicOshi {
+                        OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)
+                            .id(oshi.id) // 👈 【重要】IDごとのViewであることを明示してStateを強制リセット
+                    }
+                },
+                label: { EmptyView() }
+            )
+            .hidden()
         }
     }
     
+    // MARK: - Tap Handlers
+    
+    private func handleTap() {
+        if let postId = group.relatedPostId {
+            Task {
+                if let post = await viewModel.fetchPost(postId: postId) {
+                    await MainActor.run {
+                        self.dynamicPost = post
+                        self.isNavigatingToDynamicPost = true
+                    }
+                } else {
+                    await MainActor.run { markAsRead() }
+                }
+            }
+        } else {
+            markAsRead()
+        }
+    }
+    
+    private func handleAvatarTap(oshiId: UUID) {
+        Task {
+            if let oshi = await viewModel.fetchOshi(oshiId: oshiId) {
+                await MainActor.run {
+                    self.dynamicOshi = oshi
+                    self.isNavigatingToOshiProfile = true
+                }
+            }
+        }
+    }
+    
+    // MARK: - Subviews
+    
     private var contentView: some View {
         HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
-            // 左側: 通知タイプアイコン
             notificationTypeIcon
             
-            // 中央: コンテンツ
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
-                // 複数人の場合はアバター一覧を表示
                 if group.notifications.count > 1 {
-                    multipleAvatarsView
-                        .padding(.bottom, DesignTokens.Spacing.xs)
+                    multipleAvatarsView.padding(.bottom, DesignTokens.Spacing.xs)
                 }
-                
-                // 単一の場合はアバター + メッセージを横並び
                 if group.notifications.count == 1 {
                     HStack(spacing: DesignTokens.Spacing.sm) {
                         singleAvatarView
-                        
                         Text(group.displayMessage)
                             .font(AppTypography.subheadline)
                             .foregroundColor(AppColors.textPrimary)
@@ -374,7 +482,6 @@ struct GroupedNotificationRow: View {
                         .lineLimit(2)
                 }
                 
-                // 投稿プレビュー
                 if let post = relatedPost {
                     Text(post.content)
                         .font(AppTypography.caption)
@@ -386,60 +493,51 @@ struct GroupedNotificationRow: View {
                         .cornerRadius(DesignTokens.Radius.sm)
                 }
                 
-                // 時刻
                 RelativeTimeText(date: group.timestamp)
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textTertiary)
             }
-            
             Spacer()
-            
-            // 未読インジケーター
             if !group.isRead {
-                Circle()
-                    .fill(AppColors.primary)
-                    .frame(width: 8, height: 8)
+                Circle().fill(AppColors.primary).frame(width: 8, height: 8)
             }
         }
         .padding(.horizontal, DesignTokens.Spacing.md)
         .padding(.vertical, DesignTokens.Spacing.sm)
         .background(group.isRead ? AppColors.backgroundPrimary : AppColors.primary.opacity(0.03))
-        .task {
-            await loadAvatars()
-        }
+        .task { await loadAvatars() }
     }
-    
-    // MARK: - Notification Type Icon
-    
+
     private var notificationTypeIcon: some View {
         Image(systemName: notificationIconInfo.icon)
             .font(.system(size: 16, weight: .semibold))
             .foregroundColor(notificationIconInfo.color)
             .frame(width: 24)
     }
-    
+
     private func markAsRead() {
-        group.notifications.forEach { notification in
-            viewModel.markNotificationAsRead(notification.id)
-        }
+        group.notifications.forEach { viewModel.markNotificationAsRead($0.id) }
     }
     
-    // MARK: - Single Avatar View
+    // MARK: - Avatar Views (Buttonized)
     
     @ViewBuilder
     private var singleAvatarView: some View {
         if let oshi = oshiList.first {
-            // 他ユーザーからのフォロー等の場合、OshiProfileDetailViewへ飛ばすかは仕様次第だが
-            // ここではアバター表示のみ考慮
-            avatarContent(for: oshi, size: DesignTokens.AvatarSize.md)
+            avatarButton(for: oshi.id) {
+                avatarContent(for: oshi, size: DesignTokens.AvatarSize.md)
+            }
         } else {
-            // oshiListで見つからない場合（他ユーザーなど）は名前とプレースホルダー
-            AvatarView(
-                image: nil,
-                name: group.senderNames.first ?? "",
-                size: DesignTokens.AvatarSize.md,
-                placeholderGradient: AppColors.pinkGradient
-            )
+            if let senderId = group.senderIds.first {
+                avatarButton(for: senderId) {
+                    AvatarView(
+                        image: nil,
+                        name: group.senderNames.first ?? "",
+                        size: DesignTokens.AvatarSize.md,
+                        placeholderGradient: AppColors.pinkGradient
+                    )
+                }
+            }
         }
     }
     
@@ -453,26 +551,23 @@ struct GroupedNotificationRow: View {
         )
     }
     
-    // MARK: - Multiple Avatars View
-    
     private var multipleAvatarsView: some View {
         HStack(spacing: 3) {
             let displayIds = Array(group.senderIds.prefix(maxAvatarsToShow))
             let totalCount = group.senderIds.count
             
             ForEach(Array(displayIds.enumerated()), id: \.element) { index, senderId in
-                if let oshi = viewModel.oshiList.first(where: { $0.id == senderId }) {
-                    stackedAvatar(for: oshi)
-                        .zIndex(Double(displayIds.count - index))
-                } else {
-                    // 情報がない場合はプレースホルダー
-                    AvatarView(image: nil, name: "?", size: 46, placeholderGradient: AppColors.pinkGradient)
-                        .overlay(Circle().stroke(AppColors.backgroundPrimary, lineWidth: 2))
-                        .zIndex(Double(displayIds.count - index))
+                avatarButton(for: senderId) {
+                    if let oshi = viewModel.oshiList.first(where: { $0.id == senderId }) {
+                        stackedAvatar(for: oshi)
+                            .zIndex(Double(displayIds.count - index))
+                    } else {
+                        AvatarView(image: nil, name: "?", size: 46, placeholderGradient: AppColors.pinkGradient)
+                            .overlay(Circle().stroke(AppColors.backgroundPrimary, lineWidth: 2))
+                            .zIndex(Double(displayIds.count - index))
+                    }
                 }
             }
-            
-            // +N 表示
             if totalCount > maxAvatarsToShow {
                 Text("+\(totalCount - maxAvatarsToShow)")
                     .font(AppTypography.caption)
@@ -490,34 +585,29 @@ struct GroupedNotificationRow: View {
             size: 46,
             placeholderGradient: AppColors.pinkGradient
         )
-        .overlay(
-            Circle()
-                .stroke(AppColors.backgroundPrimary, lineWidth: 2)
-        )
+        .overlay(Circle().stroke(AppColors.backgroundPrimary, lineWidth: 2))
     }
     
-    // MARK: - Load Avatars
+    private func avatarButton<Content: View>(for oshiId: UUID, @ViewBuilder content: () -> Content) -> some View {
+        Button {
+            handleAvatarTap(oshiId: oshiId)
+        } label: {
+            content()
+        }
+        .buttonStyle(.plain)
+    }
+    
     private func loadAvatars() async {
-        print("🖼️ アバター読み込み開始")
-        print("  - 通知数: \(group.notifications.count)")
-        
         for notification in group.notifications {
-            print("📋 通知: \(notification.senderName)")
-            print("  - senderAvatarURL: \(notification.senderAvatarURL ?? "nil")")
-            
-            // ✅ 通知に含まれているアバターURLを使用
             if let urlString = notification.senderAvatarURL {
                 do {
                     let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
                     await MainActor.run {
                         avatarImages[notification.senderId] = image
-                        print("✅ アバター読み込み成功: \(notification.senderName)")
                     }
                 } catch {
                     print("❌ アバター読み込みエラー: \(error)")
                 }
-            } else {
-                print("⚠️ アバターURLがnilです")
             }
         }
     }

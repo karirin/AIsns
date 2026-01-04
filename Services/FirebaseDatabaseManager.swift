@@ -745,6 +745,33 @@ class FirebaseDatabaseManager {
         
         try await notificationRef.setValue(data)
     }
+    
+    func fetchUserProfile(userId: String) async throws -> OshiCharacter? {
+        let snapshot = try await ref.child("users/\(userId)/profile").getData()
+        
+        guard let v = snapshot.value as? [String: Any] else {
+            return nil
+        }
+        
+        let name = v["userName"] as? String ?? "不明なユーザー"
+        let bio = v["userBio"] as? String ?? ""
+        let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        
+        // ユーザー情報をOshiCharacterモデルとして構築
+        return OshiCharacter(
+            id: UUID(uuidString: userId) ?? UUID(),
+            name: name,
+            gender: .other,
+            personalityText: bio,
+            speechCharacteristics: "",
+            userCallingName: "",
+            speechStyleText: "",
+            avatarImageURL: avatar,
+            isFollowingUser: false,
+            isFollowedByUser: false,
+            isPublic: true
+        )
+    }
 
     // 既存の saveNotification は「自分への保存」として残すか、上記メソッドを使う形に修正
     func saveNotification(_ notification: AppNotification) async throws {

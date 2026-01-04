@@ -1,4 +1,4 @@
-// ViewModels/OshiViewModel.swift (修正版 - おすすめタイムライン修正)
+// ViewModels/OshiViewModel.swift (修正版 - おすすめタイムライン修正 + 通知フラッシュ対策)
 
 import Foundation
 import Combine
@@ -543,6 +543,46 @@ class OshiViewModel: ObservableObject {
             self.chatRooms = []
         }
     }
+    
+    func fetchOshi(oshiId: UUID) async -> OshiCharacter? {
+        // 1. まず自分の推しリストから検索
+        if let oshi = oshiList.first(where: { $0.id == oshiId }) { return oshi }
+        
+        // 2. おすすめリスト（プリセット）から検索
+        if let oshi = recommendedOshis.first(where: { $0.id == oshiId }) { return oshi }
+        
+        // 3. DBからユーザープロフィールとして取得
+        do {
+            if let oshi = try await dbManager.fetchUserProfile(userId: oshiId.uuidString) {
+                // フォロー状態をローカル情報で上書き（リモートフォロー中かどうか）
+                var fetchedOshi = oshi
+                fetchedOshi.isFollowedByUser = followingRemoteOshiIDs.contains(oshiId)
+                return fetchedOshi
+            }
+            
+            // 4. それでもなければプリセットリストを再取得して検索する等の処理も考えられるが、一旦ここまで
+        } catch {
+            print("❌ fetchOshi error: \(error)")
+        }
+        
+        return nil
+    }
+
+    func fetchPost(postId: UUID) async -> Post? {
+        // 1. まずメモリ内の既存リストから検索（高速）
+        if let post = posts.first(where: { $0.id == postId }) { return post }
+        if let post = publicTimelinePosts.first(where: { $0.id == postId }) { return post }
+        if let post = bookmarkedPosts.first(where: { $0.id == postId }) { return post }
+        
+        // 2. なければDBから取得
+        do {
+            let fetchedPosts = try await dbManager.loadPosts(by: [postId])
+            return fetchedPosts.first
+        } catch {
+            print("❌ fetchPost error: \(error)")
+            return nil
+        }
+    }
 
     func followRecommended(_ preset: OshiCharacter) async {
         // 既にリストにある場合は、フラグ更新のみ行う（重複追加防止）
@@ -706,9 +746,23 @@ class OshiViewModel: ObservableObject {
         return oshiList.contains(where: { $0.id == oshiId }) || followingRemoteOshiIDs.contains(oshiId)
     }
 
-    /// ✅ 通知だけを個別に読み込む関数を追加
+    /// ✅ 通知だけを個別に読み込む関数を追加 (修正: 既読状態の維持)
     func fetchNotifications() async {
         print("📲 [Debug] ViewModel: fetchNotifications 開始")
+        
+        // 1. 【追加】サーバー通信前にローカルキャッシュを読み込む
+        // これにより、アプリ起動直後でも「既読状態」をメモリ上に復元し、
+        // サーバーからの未読データをマージする際の比較対象として利用できるようにする。
+        await MainActor.run {
+            if self.notifications.isEmpty {
+                if let data = UserDefaults.standard.data(forKey: notificationsStorageKey),
+                   let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
+                    print("📲 [Debug] ViewModel: ローカルキャッシュを先行ロード (\(decoded.count)件)")
+                    self.notifications = decoded
+                }
+            }
+        }
+
         do {
             // Firebaseから通知を取得
             let fetchedNotifications = try await dbManager.loadNotifications(limit: 100)
@@ -716,23 +770,41 @@ class OshiViewModel: ObservableObject {
             print("📲 [Debug] ViewModel: 取得成功 - \(fetchedNotifications.count)件")
             
             await MainActor.run {
-                self.notifications = fetchedNotifications
+                // ✅ ローカルの既読状態をマージする
+                // 先ほどロードしたキャッシュ(self.notifications)の情報を使って、サーバーデータの未読を上書きする
+                
+                // 現在のローカル通知の既読状態マップを作成
+                let currentReadStatus = Dictionary(
+                    self.notifications.map { ($0.id, $0.isRead) },
+                    uniquingKeysWith: { (first, _) in first }
+                )
+                
+                self.notifications = fetchedNotifications.map { notification in
+                    var newNotification = notification
+                    // ローカルですでに既読なら、サーバーが未読でも既読として扱う
+                    if let isReadLocally = currentReadStatus[notification.id], isReadLocally {
+                        newNotification.isRead = true
+                    }
+                    return newNotification
+                }
+                
                 // ローカルにも保存（オフライン対応）
                 saveNotificationsToLocal()
                 print("📲 [Debug] ViewModel: UI更新完了")
             }
         } catch {
             print("❌ [Debug] 通知取得エラー: \(error)")
-            // エラー時はローカルから取得
+            // エラー時はローカルから取得（すでに冒頭でロードしているが、念のため再確認）
             await MainActor.run {
-                if let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
+                if self.notifications.isEmpty,
+                   let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
                     if let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
                         print("📲 [Debug] ViewModel: エラーのためローカルキャッシュを表示 (\(decoded.count)件)")
                         self.notifications = decoded
                         return
                     }
                 }
-                self.notifications = []
+                // キャッシュもなければ空のまま
             }
         }
     }
@@ -1282,7 +1354,7 @@ class OshiViewModel: ObservableObject {
         }
     }
 
-    /// すべての通知を既読にする
+    /// すべての通知を既読にする (修正: サーバー同期の信頼性向上)
     func markAllNotificationsAsRead() {
         var hasChange = false
 
@@ -1293,15 +1365,19 @@ class OshiViewModel: ObservableObject {
             }
         }
         
+        // ローカルに変更があれば保存
         if hasChange {
             saveNotificationsToLocal()
-            Task {
-                do {
-                    try await dbManager.markAllNotificationsAsRead()
-                    print("✅ 全ての通知を既読にしました (Server synced)")
-                } catch {
-                    print("❌ 既読更新エラー: \(error)")
-                }
+        }
+        
+        // ✅ 変更の有無に関わらず、念のためサーバー側も既読にするリクエストを送る
+        // （前回アプリ終了時などに同期失敗していた場合、ここですべて既読にする）
+        Task {
+            do {
+                try await dbManager.markAllNotificationsAsRead()
+                print("✅ 全ての通知を既読にしました (Server synced)")
+            } catch {
+                print("❌ 既読更新エラー: \(error)")
             }
         }
     }

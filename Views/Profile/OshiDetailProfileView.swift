@@ -129,6 +129,8 @@ struct OshiProfileDetailView: View {
     // MARK: - Load Avatar
     
     private func loadAvatar() async {
+        avatarImage = nil
+        
         if let urlString = oshi.avatarImageURL, !urlString.isEmpty {
             isLoadingImage = true
             avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
