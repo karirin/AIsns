@@ -213,7 +213,8 @@ struct TimelineScreenView: View {
                     id: authorId,
                     name: post.authorName,
                     avatarImageURL: post.authorAvatarURL,
-                    isPublic: true
+                    isPublic: true,
+                    creatorId: post.creatorId // 👈 【ここを追加】これにより通知先にIDが渡ります
                 )
                 navigationPath.append(unknownOshi)
             }

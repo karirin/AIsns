@@ -309,15 +309,29 @@ class FirebaseDatabaseManager {
     }
     
     func followRemoteOshi(oshi: OshiCharacter) async throws {
+        print("📍 followRemoteOshi 開始")
+        print("  - フォロー対象: \(oshi.name)")
+        print("  - 推しID: \(oshi.id)")
+        print("  - creatorId: \(oshi.creatorId ?? "nil")")
+        
         // 1. 既存の処理: フォロー情報の保存
         let refPath = "users/\(userId)/following/\(oshi.id.uuidString)"
         try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
         
         // 2. 追加処理: 通知の送信
-        // 作成者ID (creatorId) がある場合のみ通知を送る
-        guard let creatorId = oshi.creatorId else { return }
+        guard let creatorId = oshi.creatorId else {
+            print("⚠️ creatorIdがnilのため通知を送信できません")
+            return
+        }
         
-        let (myUserName, _, _) = try await loadUserProfile()
+        let (myUserName, _, myAvatarURL) = try await loadUserProfile()  // ✅ アバターURLも取得
+        print("📤 通知送信情報:")
+        print("  - 送信者: \(myUserName)")
+        print("  - 送信者アバターURL: \(myAvatarURL ?? "nil")")
+        print("  - 通知先: \(creatorId)")
+
+        print("followRemoteOshi　👤 フォロー実行者: \(myUserName)")
+        print("followRemoteOshi　🖼️ アバターURL: \(myAvatarURL ?? "未設定")")
         
         let notification = AppNotification(
             type: .follow,
@@ -326,10 +340,12 @@ class FirebaseDatabaseManager {
             content: "あなたのAIをフォローしました",
             relatedPostId: nil,
             category: .createdOshi,
-            targetOshiName: oshi.name
+            targetOshiName: oshi.name,
+            senderAvatarURL: myAvatarURL  // ✅ 追加: アバターURLを含める
         )
         
         try await sendNotification(to: creatorId, notification: notification)
+        print("✅ 通知送信完了")
     }
 
     func unfollowRemoteOshi(oshiId: UUID) async throws {
@@ -371,22 +387,23 @@ class FirebaseDatabaseManager {
         
         // 2. 追加処理: 通知の送信
         // 自分のプロフィールを取得（送信者名として使用）
-        let (myUserName, _, _) = try await loadUserProfile()
+        let (myUserName, _, myAvatarURL) = try await loadUserProfile()  // ✅ アバターURLも取得
+        print("func addReaction　👤 フォロー実行者: \(myUserName)")
+        print("func addReaction　🖼️ アバターURL: \(myAvatarURL ?? "未設定")")
         
-        // カテゴリ判定: AIへのいいねなら .createdOshi、ユーザーへのいいねなら .me
         let category: NotificationCategory = (oshiName != nil) ? .createdOshi : .me
         
         let notification = AppNotification(
             type: .reaction,
-            senderId: UUID(uuidString: userId) ?? UUID(), // 送信者は自分
+            senderId: UUID(uuidString: userId) ?? UUID(),
             senderName: myUserName,
-            content: "あなたの投稿にいいねしました", // AppNotification.messageで生成されるので空でも可だが、モデルに合わせて設定
+            content: "あなたの投稿にいいねしました",
             relatedPostId: postId,
             category: category,
-            targetOshiName: oshiName
+            targetOshiName: oshiName,
+            senderAvatarURL: myAvatarURL  // ✅ 追加
         )
         
-        // 相手（postAuthorId）に通知を送信
         try await sendNotification(to: postAuthorId, notification: notification)
     }
 
@@ -701,7 +718,6 @@ class FirebaseDatabaseManager {
     }
 
     func sendNotification(to targetUserId: String, notification: AppNotification) async throws {
-        // 自分のアクションで自分に通知を送らないようにする（必要に応じて）
         guard targetUserId != userId else { return }
         
         let notificationRef = ref.child("users/\(targetUserId)/notifications/\(notification.id.uuidString)")
@@ -710,7 +726,7 @@ class FirebaseDatabaseManager {
             "id": notification.id.uuidString,
             "type": notification.type.rawValue,
             "senderId": notification.senderId.uuidString,
-            "senderName": notification.senderName, // 送信者は「自分」
+            "senderName": notification.senderName,
             "content": notification.content,
             "timestamp": notification.timestamp.timeIntervalSince1970,
             "isRead": notification.isRead,
@@ -722,6 +738,9 @@ class FirebaseDatabaseManager {
         }
         if let targetName = notification.targetOshiName {
             data["targetOshiName"] = targetName
+        }
+        if let avatarURL = notification.senderAvatarURL {  // ✅ 追加
+            data["senderAvatarURL"] = avatarURL
         }
         
         try await notificationRef.setValue(data)
@@ -869,11 +888,10 @@ class FirebaseDatabaseManager {
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let isRead = data["isRead"] as? Bool ?? false
         let relatedPostId = (data["relatedPostId"] as? String).flatMap { UUID(uuidString: $0) }
-        
-        // カテゴリの読み込み（後方互換性のため、ない場合は .me）
         let categoryString = data["category"] as? String
         let category = categoryString.flatMap { NotificationCategory(rawValue: $0) } ?? .me
         let targetOshiName = data["targetOshiName"] as? String
+        let senderAvatarURL = data["senderAvatarURL"] as? String  // ✅ 追加
         
         return AppNotification(
             id: id,
@@ -885,7 +903,8 @@ class FirebaseDatabaseManager {
             timestamp: timestamp,
             isRead: isRead,
             category: category,
-            targetOshiName: targetOshiName
+            targetOshiName: targetOshiName,
+            senderAvatarURL: senderAvatarURL  // ✅ 追加
         )
     }
 

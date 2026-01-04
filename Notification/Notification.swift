@@ -58,6 +58,9 @@ struct AppNotification: Identifiable, Codable {
     var category: NotificationCategory
     var targetOshiName: String?
     
+    // ✅ 新規追加: 送信者のアバターURL
+    var senderAvatarURL: String?
+    
     init(
         id: UUID = UUID(),
         type: NotificationType,
@@ -68,7 +71,8 @@ struct AppNotification: Identifiable, Codable {
         timestamp: Date = Date(),
         isRead: Bool = false,
         category: NotificationCategory = .me,
-        targetOshiName: String? = nil
+        targetOshiName: String? = nil,
+        senderAvatarURL: String? = nil  // ✅ 追加
     ) {
         self.id = id
         self.type = type
@@ -80,6 +84,7 @@ struct AppNotification: Identifiable, Codable {
         self.isRead = isRead
         self.category = category
         self.targetOshiName = targetOshiName
+        self.senderAvatarURL = senderAvatarURL  // ✅ 追加
     }
     
     var message: String {

@@ -524,7 +524,8 @@ class OshiViewModel: ObservableObject {
             type: .follow,
             senderId: oshi.id,
             senderName: oshi.name,
-            content: ""
+            content: "",
+            senderAvatarURL: oshi.avatarImageURL
         )
         addNotification(notification)
     }
@@ -678,15 +679,28 @@ class OshiViewModel: ObservableObject {
     }
 
     /// ✅ 通知だけを個別に読み込む関数を追加
-    func fetchNotifications() async { // asyncは互換性維持のため残すが、実処理は同期的でも可
-        await MainActor.run {
-            if let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
-                if let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
-                    self.notifications = decoded
-                    return
-                }
+    func fetchNotifications() async {
+        do {
+            // Firebaseから通知を取得
+            let fetchedNotifications = try await dbManager.loadNotifications(limit: 100)
+            
+            await MainActor.run {
+                self.notifications = fetchedNotifications
+                // ローカルにも保存（オフライン対応）
+                saveNotificationsToLocal()
             }
-            self.notifications = []
+        } catch {
+            print("❌ 通知取得エラー: \(error)")
+            // エラー時はローカルから取得
+            await MainActor.run {
+                if let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
+                    if let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
+                        self.notifications = decoded
+                        return
+                    }
+                }
+                self.notifications = []
+            }
         }
     }
 

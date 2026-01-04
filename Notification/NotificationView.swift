@@ -490,14 +490,27 @@ struct GroupedNotificationRow: View {
     }
     
     // MARK: - Load Avatars
-    
     private func loadAvatars() async {
-        for oshi in oshiList {
-            guard let urlString = oshi.avatarImageURL else { continue }
-            if let image = try? await FirebaseStorageManager.shared.downloadImage(from: urlString) {
-                await MainActor.run {
-                    avatarImages[oshi.id] = image
+        print("🖼️ アバター読み込み開始")
+        print("  - 通知数: \(group.notifications.count)")
+        
+        for notification in group.notifications {
+            print("📋 通知: \(notification.senderName)")
+            print("  - senderAvatarURL: \(notification.senderAvatarURL ?? "nil")")
+            
+            // ✅ 通知に含まれているアバターURLを使用
+            if let urlString = notification.senderAvatarURL {
+                do {
+                    let image = try await FirebaseStorageManager.shared.downloadImage(from: urlString)
+                    await MainActor.run {
+                        avatarImages[notification.senderId] = image
+                        print("✅ アバター読み込み成功: \(notification.senderName)")
+                    }
+                } catch {
+                    print("❌ アバター読み込みエラー: \(error)")
                 }
+            } else {
+                print("⚠️ アバターURLがnilです")
             }
         }
     }
