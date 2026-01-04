@@ -246,7 +246,13 @@ struct NotificationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .task {
+            // 1. まず最新の通知を取得してリストを表示
             await viewModel.fetchNotifications()
+            
+            // 2. ほんの少しだけ待ってから既読にする (UX向上: ユーザーに一瞬「未読がある」と認識させてから消す)
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒待機
+            
+            // 3. 全て既読にする (ローカルの表示を更新 + サーバー同期)
             viewModel.markAllNotificationsAsRead()
         }
         .toolbar {
@@ -287,13 +293,6 @@ struct GroupedNotificationRow: View {
     
     var oshiList: [OshiCharacter] {
         group.senderIds.compactMap { senderId in
-            // 通知のsenderIdに一致するOshiを探す
-            // ローカルの推しか、おすすめリストなどから探す必要があるが、
-            // ここでは簡易的にviewModel.oshiListから探す
-            // ※ 注意: 他のユーザーからの通知の場合、ここに含まれない可能性があるため
-            // 本来はIDからアバターURLを取得するロジックが別途必要だが、
-            // 現状の実装に合わせて viewModel.oshiList から検索する。
-            // 必要に応じて `viewModel.resolveSender(id: UUID)` のようなものを実装推奨
             viewModel.oshiList.first { $0.id == senderId }
         }
     }

@@ -46,7 +46,7 @@ struct UserProfileView: View {
                 contentSection
                 
                 // 管理者メニュー
-                if FirebaseConfig.shared.userId == "3248012D-3F48-4449-9F99-D3C0D777D0D0" {
+                if FirebaseConfig.shared.userId == "43F74A75-89A5-48EE-9372-5B350504CD35" {
                     adminSection
                         .padding(.top, 24)
                 }

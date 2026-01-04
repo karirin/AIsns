@@ -748,7 +748,33 @@ class FirebaseDatabaseManager {
 
     // 既存の saveNotification は「自分への保存」として残すか、上記メソッドを使う形に修正
     func saveNotification(_ notification: AppNotification) async throws {
-        try await sendNotification(to: userId, notification: notification)
+        // sendNotification(to: userId...) を呼ぶとガードされるため、直接書き込む
+        
+        let notificationRef = ref.child("users/\(userId)/notifications/\(notification.id.uuidString)")
+        
+        var data: [String: Any] = [
+            "id": notification.id.uuidString,
+            "type": notification.type.rawValue,
+            "senderId": notification.senderId.uuidString,
+            "senderName": notification.senderName,
+            "content": notification.content,
+            "timestamp": notification.timestamp.timeIntervalSince1970,
+            "isRead": notification.isRead,
+            "category": notification.category.rawValue
+        ]
+        
+        if let relatedPostId = notification.relatedPostId {
+            data["relatedPostId"] = relatedPostId.uuidString
+        }
+        if let targetName = notification.targetOshiName {
+            data["targetOshiName"] = targetName
+        }
+        if let avatarURL = notification.senderAvatarURL {
+            data["senderAvatarURL"] = avatarURL
+        }
+        
+        try await notificationRef.setValue(data)
+        print("💾 [Debug] saveNotification: Firebaseに保存完了 (ID: \(notification.id))")
     }
 
     func fetchPresetOshis() async throws -> [OshiCharacter] {
@@ -810,24 +836,85 @@ class FirebaseDatabaseManager {
     }
 
     func loadNotifications(limit: Int = 100) async throws -> [AppNotification] {
+        print("🔔 [Debug] loadNotifications: データ取得開始 (UserId: \(userId))")
+        
         let snapshot = try await ref.child("users/\(userId)/notifications")
             .queryOrdered(byChild: "timestamp")
             .queryLimited(toLast: UInt(limit))
             .getData()
         
-        guard let value = snapshot.value as? [String: [String: Any]] else {
+        // 生データがnilかどうか確認
+        guard let rawValue = snapshot.value, !(rawValue is NSNull) else {
+            print("🔔 [Debug] loadNotifications: データが存在しません (nil または NSNull)")
             return []
         }
         
+        print("🔔 [Debug] loadNotifications: 取得データの型: \(type(of: rawValue))")
+        
         var notifications: [AppNotification] = []
         
-        for (_, data) in value {
-            if let notification = parseNotification(from: data) {
-                notifications.append(notification)
+        // パターンA: 辞書型 [String: Any] として取得できた場合 (通常はこちら)
+        if let dictValue = rawValue as? [String: Any] {
+            print("🔔 [Debug] loadNotifications: 辞書型として処理します")
+            for (key, item) in dictValue {
+                if let data = item as? [String: Any] {
+                    if let notification = parseNotification(from: data) {
+                        notifications.append(notification)
+                    } else {
+                        print("⚠️ [Debug] パース失敗 (Key: \(key)): 必須フィールドが不足している可能性があります")
+                    }
+                } else {
+                    print("⚠️ [Debug] データ型不一致 (Key: \(key)): [String: Any] ではありません")
+                }
             }
         }
+        // パターンB: 配列型 [Any] として取得された場合 (キーが整数の連番に近い場合など)
+        else if let arrayValue = rawValue as? [Any] {
+            print("🔔 [Debug] loadNotifications: 配列型として処理します")
+            for (index, item) in arrayValue.enumerated() {
+                // 配列の要素が辞書型か確認
+                if let data = item as? [String: Any] {
+                    if let notification = parseNotification(from: data) {
+                        notifications.append(notification)
+                    } else {
+                        print("⚠️ [Debug] パース失敗 (Index: \(index))")
+                    }
+                } else if item is NSNull {
+                    // 配列の欠番などは無視
+                    continue
+                } else {
+                    print("⚠️ [Debug] 配列要素の型が予期せぬものです (Index: \(index)): \(type(of: item))")
+                }
+            }
+        } else {
+            print("❌ [Debug] loadNotifications: 想定外のデータ構造です。処理できません。")
+            return []
+        }
         
+        print("🔔 [Debug] loadNotifications: 最終的な取得件数 -> \(notifications.count)件")
         return notifications.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    func markAllNotificationsAsRead() async throws {
+        let notificationsRef = ref.child("users/\(userId)/notifications")
+        
+        let snapshot = try await notificationsRef.queryOrdered(byChild: "isRead").queryEqual(toValue: false).getData()
+        
+        guard let value = snapshot.value as? [String: Any] else { return }
+        
+        var updates: [String: Any] = [:]
+        for (key, _) in value {
+            updates["\(key)/isRead"] = true
+        }
+        
+        if !updates.isEmpty {
+            try await notificationsRef.updateChildValues(updates)
+        }
+    }
+    
+    func updateNotificationReadStatus(_ notificationId: UUID, isRead: Bool) async throws {
+        try await ref.child("users/\(userId)/notifications/\(notificationId.uuidString)")
+            .updateChildValues(["isRead": isRead])
     }
     
     func deleteOldNotifications(olderThan date: Date) async throws {
@@ -865,11 +952,6 @@ class FirebaseDatabaseManager {
     
     func clearAllNotifications() async throws {
         try await ref.child("users/\(userId)/notifications").removeValue()
-    }
-    
-    func updateNotificationReadStatus(_ notificationId: UUID, isRead: Bool) async throws {
-        try await ref.child("users/\(userId)/notifications/\(notificationId.uuidString)")
-            .updateChildValues(["isRead": isRead])
     }
     
     private func parseNotification(from data: [String: Any]) -> AppNotification? {

@@ -3,6 +3,7 @@
 import Foundation
 import Combine
 import UIKit
+import SwiftUI
 
 @MainActor
 class OshiViewModel: ObservableObject {
@@ -680,21 +681,26 @@ class OshiViewModel: ObservableObject {
 
     /// ✅ 通知だけを個別に読み込む関数を追加
     func fetchNotifications() async {
+        print("📲 [Debug] ViewModel: fetchNotifications 開始")
         do {
             // Firebaseから通知を取得
             let fetchedNotifications = try await dbManager.loadNotifications(limit: 100)
+            
+            print("📲 [Debug] ViewModel: 取得成功 - \(fetchedNotifications.count)件")
             
             await MainActor.run {
                 self.notifications = fetchedNotifications
                 // ローカルにも保存（オフライン対応）
                 saveNotificationsToLocal()
+                print("📲 [Debug] ViewModel: UI更新完了")
             }
         } catch {
-            print("❌ 通知取得エラー: \(error)")
+            print("❌ [Debug] 通知取得エラー: \(error)")
             // エラー時はローカルから取得
             await MainActor.run {
                 if let data = UserDefaults.standard.data(forKey: notificationsStorageKey) {
                     if let decoded = try? JSONDecoder().decode([AppNotification].self, from: data) {
+                        print("📲 [Debug] ViewModel: エラーのためローカルキャッシュを表示 (\(decoded.count)件)")
                         self.notifications = decoded
                         return
                     }
@@ -1209,16 +1215,28 @@ class OshiViewModel: ObservableObject {
     }
     
     private func addNotification(_ notification: AppNotification) {
-        // ローカルに追加
-        notifications.insert(notification, at: 0)
+        // ローカルに追加（UI即時反映）
+        withAnimation {
+            notifications.insert(notification, at: 0)
+        }
         
         // 100件制限
         if notifications.count > 100 {
             notifications = Array(notifications.prefix(100))
         }
         
-        // 端末に保存 (Firebaseへの保存コードは削除)
+        // 端末(UserDefaults)に保存
         saveNotificationsToLocal()
+        
+        // ✅ 追加: Firebaseにも保存する
+        // これがないと、次に画面を開いた時にデータが消えてしまいます
+        Task {
+            do {
+                try await dbManager.saveNotification(notification)
+            } catch {
+                print("❌ [Debug] 通知のFirebase保存に失敗: \(error)")
+            }
+        }
     }
     
     /// UserDefaultsへ保存するヘルパー
@@ -1240,14 +1258,24 @@ class OshiViewModel: ObservableObject {
     /// すべての通知を既読にする
     func markAllNotificationsAsRead() {
         var hasChange = false
+
         for index in notifications.indices {
             if !notifications[index].isRead {
                 notifications[index].isRead = true
                 hasChange = true
             }
         }
+        
         if hasChange {
             saveNotificationsToLocal()
+            Task {
+                do {
+                    try await dbManager.markAllNotificationsAsRead()
+                    print("✅ 全ての通知を既読にしました (Server synced)")
+                } catch {
+                    print("❌ 既読更新エラー: \(error)")
+                }
+            }
         }
     }
 
