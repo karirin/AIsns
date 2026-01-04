@@ -275,6 +275,7 @@ struct ChatDetailView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
+    @Environment(\.dismiss) var dismiss
     
     var chatRoom: ChatRoom? {
         viewModel.chatRooms.first { $0.oshiId == oshi.id }
@@ -312,6 +313,14 @@ struct ChatDetailView: View {
         }
         .navigationTitle(oshi.name)
         .navigationBarTitleDisplayMode(.inline)
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        dismiss()
+                    }
+                }
+        )
         .onAppear {
             viewModel.markChatAsRead(oshiId: oshi.id)
         }

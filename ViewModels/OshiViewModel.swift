@@ -545,31 +545,44 @@ class OshiViewModel: ObservableObject {
     }
 
     func followRecommended(_ preset: OshiCharacter) async {
-        do {
-            if oshiList.contains(where: { $0.id == preset.id }) { return }
-
-            var followedOshi = preset
-            followedOshi.isFollowingUser = true
-            followedOshi.isFollowedByUser = true
-
-            try await dbManager.saveOshi(followedOshi)
-            oshiList.insert(followedOshi, at: 0)
-            
-            // リロードして反映
-            let reloadedList = try await dbManager.loadOshiList()
-            if let reloaded = reloadedList.first(where: { $0.id == preset.id }),
-               let idx = oshiList.firstIndex(where: { $0.id == preset.id }) {
-                oshiList[idx] = reloaded
+        // 既にリストにある場合は、フラグ更新のみ行う（重複追加防止）
+        if let index = oshiList.firstIndex(where: { $0.id == preset.id }) {
+            // リストにあるがフォロー表示になっていない場合の保険
+            if !oshiList[index].isFollowedByUser {
+                oshiList[index].isFollowedByUser = true
             }
+            return
+        }
 
+        var followedOshi = preset
+        followedOshi.isFollowingUser = true
+        followedOshi.isFollowedByUser = true
+        // 必要に応じて作成者IDなども設定
+        followedOshi.creatorId = dbManager.currentUserId
+
+        // 1. 【重要】通信を待たず、先にローカルのリストを更新して見た目を即座に変える
+        withAnimation {
+            oshiList.insert(followedOshi, at: 0)
+        }
+        
+        // 2. バックグラウンドでDB保存などを実行
+        do {
+            try await dbManager.saveOshi(followedOshi)
+
+            // チャットルームの初期化など
             if !chatRooms.contains(where: { $0.oshiId == preset.id }) {
                 let room = ChatRoom(id: UUID(), oshiId: preset.id, messages: [], lastMessageDate: nil, unreadCount: 0)
                 try await dbManager.saveChatRoom(room)
-                chatRooms.append(room)
+                
+                // チャットルームリストへの反映も必要であればここで行う
+                // (OshiViewModelのchatRoomsプロパティへの追加)
+                if !chatRooms.contains(where: { $0.oshiId == preset.id }) {
+                     chatRooms.append(room)
+                }
             }
             
-            // ✅ 修正: 初期メッセージ生成にAIを使用するか、固定文言でも呼び名を反映
-            // ここでは簡易的に呼び名メソッドを使用
+            // 挨拶メッセージの送信（AI生成または固定文）
+            // 注意: userProfileNameなどのプロパティがMainActor内であることを確認
             let callingName = followedOshi.callingName(userName: userProfileName)
             let welcome = Message(
                 id: UUID(),
@@ -581,6 +594,8 @@ class OshiViewModel: ObservableObject {
             )
 
             try await dbManager.addMessage(to: preset.id, message: welcome)
+            
+            // チャットルームの最新メッセージ更新
             if let idx = chatRooms.firstIndex(where: { $0.oshiId == preset.id }) {
                 var room = chatRooms[idx]
                 room.messages.append(welcome)
@@ -590,8 +605,20 @@ class OshiViewModel: ObservableObject {
             }
 
             try? await dbManager.followRemoteOshi(oshi: preset)
+            
+            print("✅ followRecommended success: \(preset.name)")
+
         } catch {
             print("❌ followRecommended error: \(error)")
+            
+            // 3. 【ロールバック】保存に失敗した場合は、リストから削除して元の状態に戻す
+            withAnimation {
+                if let index = oshiList.firstIndex(where: { $0.id == preset.id }) {
+                    oshiList.remove(at: index)
+                }
+            }
+            // エラーメッセージをユーザーに通知
+            errorMessage = "フォローに失敗しました。通信環境を確認してください。"
         }
     }
     
