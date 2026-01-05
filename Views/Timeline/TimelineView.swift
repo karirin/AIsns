@@ -1208,24 +1208,33 @@ struct CommentRow: View {
         HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
             avatarView
             
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                HStack(spacing: DesignTokens.Spacing.xxs) {
                     Text(comment.oshiName)
                         .font(AppTypography.subheadlineMedium)
+                        .foregroundColor(AppColors.textPrimary)
+                    
                     Text("·")
-                        .font(AppTypography.footnote)
-                        .foregroundColor(AppColors.textSecondary)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textTertiary)
+                    
                     RelativeTimeText(date: comment.timestamp)
-                        .font(AppTypography.footnote)
-                        .foregroundColor(AppColors.textSecondary)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textTertiary)
+                }
+                
+                if let replyName = comment.replyToName {
+                    Text("返信先: @\(replyName)")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppColors.textTertiary)
+                        .padding(.bottom, 2)
                 }
                 
                 Text(comment.content)
                     .font(AppTypography.subheadline)
                     .lineSpacing(2)
             }
-            
-            Spacer()
+            Spacer(minLength: 0)
         }
         .task {
             if isUser {

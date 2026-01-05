@@ -329,7 +329,6 @@ class OshiViewModel: ObservableObject {
     }
     
     private func attemptAiReplyToComment(post: Post, userComment: String, oshi: OshiCharacter) async {
-        // 50%の確率で返信する
         guard Double.random(in: 0...1) < 0.5 else {
             print("🎲 AI返信スキップ (確率)")
             return
@@ -338,10 +337,8 @@ class OshiViewModel: ObservableObject {
         print("🤖 AI返信プロセス開始: \(oshi.name)")
         
         do {
-            // 少し遅延を入れてリアリティを出す (3〜8秒)
             try await Task.sleep(nanoseconds: UInt64.random(in: 3_000_000_000...8_000_000_000))
             
-            // AI返信生成
             let replyText = try await aiService.generateReplyToUserComment(
                 comment: userComment,
                 on: post,
@@ -349,16 +346,16 @@ class OshiViewModel: ObservableObject {
                 userName: userProfileName
             )
             
+            // ✅ 修正: replyToName にユーザー名を設定
             let replyComment = Comment(
                 oshiId: oshi.id,
                 oshiName: oshi.name,
-                content: replyText
+                content: replyText,
+                replyToName: userProfileName // ← ここで指定
             )
             
-            // DB保存
             try await dbManager.addComment(replyComment, to: post.id)
             
-            // UI更新
             await MainActor.run {
                 if var details = postDetails[post.id] {
                     details.comments.append(replyComment)
@@ -369,14 +366,10 @@ class OshiViewModel: ObservableObject {
                     post.commentCount += 1
                 }
                 
-                // インタラクションがあったので親密度アップ
                 if let index = oshiList.firstIndex(where: { $0.id == oshi.id }) {
                     oshiList[index].increaseIntimacy(by: 1)
-                    // 保存は非同期で
                     let oshiToSave = oshiList[index]
-                    Task {
-                        try? await dbManager.saveOshi(oshiToSave)
-                    }
+                    Task { try? await dbManager.saveOshi(oshiToSave) }
                 }
             }
             print("✅ AI返信成功: \(replyText)")

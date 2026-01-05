@@ -79,14 +79,16 @@ struct Comment: Identifiable, Codable {
     let oshiName: String
     let content: String
     let timestamp: Date
+    var replyToName: String?
     
     init(id: UUID = UUID(), oshiId: UUID, oshiName: String,
-         content: String, timestamp: Date = Date()) {
+         content: String, timestamp: Date = Date(), replyToName: String? = nil) {
         self.id = id
         self.oshiId = oshiId
         self.oshiName = oshiName
         self.content = content
         self.timestamp = timestamp
+        self.replyToName = replyToName
     }
 }
 
