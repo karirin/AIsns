@@ -304,18 +304,85 @@ class OshiViewModel: ObservableObject {
                         postDetails[post.id] = PostDetails(post: post, comments: [comment])
                     }
                     
-                    // ✅ 全リストのコメント数を更新
+                    // 全リストのコメント数を更新
                     updatePostInAllLists(postId: post.id) { post in
                         post.commentCount += 1
                     }
                 }
                 print("✅ コメント投稿成功")
+                
+                // ✅ 追加: AIの投稿に対するコメントなら、50%の確率で返信する
+                if !post.isUserPost, let authorId = post.authorId {
+                    // 投稿者の推し情報を検索 (ローカルリストから)
+                    if let oshi = self.oshiList.first(where: { $0.id == authorId }) {
+                        await attemptAiReplyToComment(post: post, userComment: content, oshi: oshi)
+                    }
+                }
+                
             } catch {
                 print("❌ コメント投稿エラー: \(error)")
                 await MainActor.run {
                     errorMessage = "コメントの投稿に失敗しました"
                 }
             }
+        }
+    }
+    
+    private func attemptAiReplyToComment(post: Post, userComment: String, oshi: OshiCharacter) async {
+        // 50%の確率で返信する
+        guard Double.random(in: 0...1) < 0.5 else {
+            print("🎲 AI返信スキップ (確率)")
+            return
+        }
+        
+        print("🤖 AI返信プロセス開始: \(oshi.name)")
+        
+        do {
+            // 少し遅延を入れてリアリティを出す (3〜8秒)
+            try await Task.sleep(nanoseconds: UInt64.random(in: 3_000_000_000...8_000_000_000))
+            
+            // AI返信生成
+            let replyText = try await aiService.generateReplyToUserComment(
+                comment: userComment,
+                on: post,
+                by: oshi,
+                userName: userProfileName
+            )
+            
+            let replyComment = Comment(
+                oshiId: oshi.id,
+                oshiName: oshi.name,
+                content: replyText
+            )
+            
+            // DB保存
+            try await dbManager.addComment(replyComment, to: post.id)
+            
+            // UI更新
+            await MainActor.run {
+                if var details = postDetails[post.id] {
+                    details.comments.append(replyComment)
+                    postDetails[post.id] = details
+                }
+                
+                updatePostInAllLists(postId: post.id) { post in
+                    post.commentCount += 1
+                }
+                
+                // インタラクションがあったので親密度アップ
+                if let index = oshiList.firstIndex(where: { $0.id == oshi.id }) {
+                    oshiList[index].increaseIntimacy(by: 1)
+                    // 保存は非同期で
+                    let oshiToSave = oshiList[index]
+                    Task {
+                        try? await dbManager.saveOshi(oshiToSave)
+                    }
+                }
+            }
+            print("✅ AI返信成功: \(replyText)")
+            
+        } catch {
+            print("❌ AI返信エラー: \(error)")
         }
     }
 

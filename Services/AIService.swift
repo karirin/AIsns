@@ -38,24 +38,19 @@ class AIService {
 
     // 投稿に対するコメント生成 (UserMood Enum版 - 修正済み)
     func generateComment(for post: Post, by oshi: OshiCharacter, userMood: UserMood) async throws -> String {
-        // Enumを文字列に変換して、下のメソッドに委譲
         let moodString: String
-        
-        // ✅ 修正: UserMoodの定義に合わせてケースを更新
         switch userMood {
         case .happy:    moodString = "喜んでいる"
         case .tired:    moodString = "疲れている"
         case .sad:      moodString = "落ち込んでいる"
         case .excited:  moodString = "テンションが高い"
         case .normal:   moodString = "普通"
-        case .stressed: moodString = "イライラしている" // "怒っている"の代わりにストレスを割り当て
+        case .stressed: moodString = "イライラしている"
         }
-        
-        // ユーザー名はデフォルト値を使用
         return try await generateComment(for: post, by: oshi, userMood: moodString, userName: "あなた")
     }
     
-    // 投稿に対するコメント生成 (String版 & ユーザー名対応 - 新機能)
+    // 投稿に対するコメント生成 (String版)
     func generateComment(for post: Post, by oshi: OshiCharacter, userMood: String, userName: String) async throws -> String {
         let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
@@ -81,6 +76,35 @@ class AIService {
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
     }
     
+    // MARK: - Reply Generation (New Feature)
+    
+    // ✅ 追加: ユーザーのコメントに対する返信生成
+    func generateReplyToUserComment(comment: String, on post: Post, by oshi: OshiCharacter, userName: String) async throws -> String {
+        let settings = getEffectiveSettings(for: oshi)
+        let callingName = oshi.callingName(userName: userName)
+        
+        let prompt = """
+        あなたは「\(oshi.name)」です。あなたがSNSに投稿した内容に対して、ユーザー（\(callingName)）からコメントが届きました。
+        そのコメントに対して、会話が弾むような返信をしてください。
+        
+        【キャラクター設定】
+        性格: \(settings.personality)
+        口調: \(settings.speech)
+        ユーザーの呼び方: \(callingName)
+        
+        【あなたの元の投稿】
+        "\(post.content)"
+        
+        【ユーザーからのコメント】
+        "\(comment)"
+        
+        上記のコメントに対する自然な返信を、40文字以内で作成してください。
+        キャラクター設定（特に口調）を厳守してください。
+        """
+        
+        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
+    }
+
     // MARK: - Chat Generation
 
     // チャットメッセージ生成
@@ -114,7 +138,7 @@ class AIService {
     
     // MARK: - Greeting Generation
     
-    // 挨拶生成 (ユーザー名対応版)
+    // 挨拶生成
     func generateGreeting(type: GreetingType, by oshi: OshiCharacter, userName: String = "") async throws -> String {
         let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
@@ -145,7 +169,7 @@ class AIService {
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.greetingFailed($0) })
     }
     
-    // 初回挨拶生成 (ユーザー名対応版)
+    // 初回挨拶生成
     func generateInitialGreeting(for oshi: OshiCharacter, userName: String) async throws -> String {
         let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
@@ -169,7 +193,6 @@ class AIService {
 
     // 推しからの自発的投稿生成
     func generateOshiPost(by oshi: OshiCharacter) async throws -> String {
-        // ここでもデフォルト設定を適用するために、直接プロンプトを作成する
         let settings = getEffectiveSettings(for: oshi)
         
         let prompt = """
@@ -193,7 +216,6 @@ class AIService {
     func analyzeMood(from content: String) -> String {
         let lowerContent = content.lowercased()
         
-        // 簡易的なキーワードマッチング
         if lowerContent.contains("疲れ") || lowerContent.contains("つかれ") ||
            lowerContent.contains("だるい") || lowerContent.contains("しんどい") {
             return "疲れている"
@@ -206,7 +228,6 @@ class AIService {
            lowerContent.contains("むかつく") {
             return "イライラしている"
         }
-        
         if lowerContent.contains("嬉しい") || lowerContent.contains("うれしい") ||
            lowerContent.contains("楽しい") || lowerContent.contains("幸せ") {
             return "喜んでいる"
@@ -221,7 +242,6 @@ class AIService {
     
     // MARK: - Private Helper
     
-    /// 共通のエラーハンドリングを行う実行メソッド
     private func generateResponse(prompt: String, errorType: (Error) -> AIServiceError) async throws -> String {
         do {
             return try await openAI.generateText(prompt: prompt)
@@ -231,8 +251,6 @@ class AIService {
         }
     }
 }
-
-// MARK: - Enums & Errors
 
 enum GreetingType {
     case morning
