@@ -8,6 +8,8 @@ import SwiftUI
 @MainActor
 class OshiViewModel: ObservableObject {
     @Published var oshiList: [OshiCharacter] = []
+    @Published var followingOshis: [OshiCharacter] = []
+    @Published var isLoadingList = false
     @Published var posts: [Post] = []
     @Published var chatRooms: [ChatRoom] = []
     @Published var isLoading = false
@@ -712,6 +714,20 @@ class OshiViewModel: ObservableObject {
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+    
+    func loadFollowingList() async {
+        await MainActor.run { isLoadingList = true }
+        do {
+            let oshis = try await FirebaseDatabaseManager.shared.fetchFollowingOshis()
+            await MainActor.run {
+                self.followingOshis = oshis
+                self.isLoadingList = false
+            }
+        } catch {
+            print("Error loading following list: \(error)")
+            await MainActor.run { isLoadingList = false }
+        }
     }
 
     // 修正: 引数を oshiId: UUID から oshi: OshiCharacter に変更

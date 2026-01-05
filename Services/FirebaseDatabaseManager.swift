@@ -108,7 +108,8 @@ class FirebaseDatabaseManager {
             "lastInteractionDate": oshi.lastInteractionDate?.timeIntervalSince1970 ?? 0,
             "isFollowingUser": oshi.isFollowingUser,
             "isFollowedByUser": oshi.isFollowedByUser,
-            "isPublic": oshi.isPublic
+            "isPublic": oshi.isPublic,
+            "followerCount": oshi.followerCount // 保存
         ]
 
         if let gender = oshi.gender {
@@ -310,28 +311,31 @@ class FirebaseDatabaseManager {
     
     func followRemoteOshi(oshi: OshiCharacter) async throws {
         print("📍 followRemoteOshi 開始")
-        print("  - フォロー対象: \(oshi.name)")
-        print("  - 推しID: \(oshi.id)")
-        print("  - creatorId: \(oshi.creatorId ?? "nil")")
         
-        // 1. 既存の処理: フォロー情報の保存
+        // 1. 自分のフォローリストに追加
         let refPath = "users/\(userId)/following/\(oshi.id.uuidString)"
         try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
         
-        // 2. 追加処理: 通知の送信
-        guard let creatorId = oshi.creatorId else {
-            print("⚠️ creatorIdがnilのため通知を送信できません")
-            return
+        // 2. 推しのフォロワーリストに追加 (Reverse Index)
+        let followerRef = ref.child("oshi-followers/\(oshi.id.uuidString)/\(userId)")
+        try await followerRef.setValue(Date().timeIntervalSince1970)
+        
+        // 3. 推しのフォロワー数をインクリメント
+        if let creatorId = oshi.creatorId {
+            // ユーザー作成の推しの場合
+            let countRef = ref.child("users/\(creatorId)/oshiList/\(oshi.id.uuidString)/followerCount")
+            try await countRef.setValue(ServerValue.increment(1))
+        } else {
+            // プリセットの場合 (presets/oshiList)
+            let countRef = ref.child("presets/oshiList/\(oshi.id.uuidString)/followerCount")
+            try await countRef.setValue(ServerValue.increment(1))
         }
         
-        let (myUserName, _, myAvatarURL) = try await loadUserProfile()  // ✅ アバターURLも取得
-        print("📤 通知送信情報:")
-        print("  - 送信者: \(myUserName)")
-        print("  - 送信者アバターURL: \(myAvatarURL ?? "nil")")
-        print("  - 通知先: \(creatorId)")
-
-        print("followRemoteOshi　👤 フォロー実行者: \(myUserName)")
-        print("followRemoteOshi　🖼️ アバターURL: \(myAvatarURL ?? "未設定")")
+        // 4. 通知の送信
+        guard let creatorId = oshi.creatorId else { return }
+        
+        // 修正箇所: 返り値のタプルの数を合わせる（3つ）
+        let (myUserName, _, myAvatarURL) = try await loadUserProfile()
         
         let notification = AppNotification(
             type: .follow,
@@ -341,16 +345,67 @@ class FirebaseDatabaseManager {
             relatedPostId: nil,
             category: .createdOshi,
             targetOshiName: oshi.name,
-            senderAvatarURL: myAvatarURL  // ✅ 追加: アバターURLを含める
+            senderAvatarURL: myAvatarURL
         )
         
         try await sendNotification(to: creatorId, notification: notification)
-        print("✅ 通知送信完了")
     }
 
     func unfollowRemoteOshi(oshiId: UUID) async throws {
+        // 1. 自分のフォローリストから削除
         let refPath = "users/\(userId)/following/\(oshiId.uuidString)"
         try await ref.child(refPath).removeValue()
+        
+        // 2. 推しのフォロワーリストから削除
+        let followerRef = ref.child("oshi-followers/\(oshiId.uuidString)/\(userId)")
+        try await followerRef.removeValue()
+        
+        // 3. 推しのフォロワー数をデクリメント (本来はcreatorIdが必要だが、ここでは簡易的に省略)
+    }
+    
+    /// フォロー中の推し一覧を取得
+    func fetchFollowingOshis() async throws -> [OshiCharacter] {
+        // 1. フォロー中のIDリストを取得
+        let followingIds = try await loadFollowingIds()
+        if followingIds.isEmpty { return [] }
+        
+        var oshis: [OshiCharacter] = []
+        
+        // 簡易実装: プリセットと自分の推しリストから検索
+        // (本来は全公開推しデータベースから検索するか、キャッシュが必要)
+        let presets = try await loadPresetOshiList()
+        let myOshis = try await loadOshiList()
+        
+        for id in followingIds {
+            if let preset = presets.first(where: { $0.id == id }) {
+                oshis.append(preset)
+            } else if let myOshi = myOshis.first(where: { $0.id == id }) {
+                oshis.append(myOshi)
+            } else {
+                // 他ユーザーの推しの場合は現状取得ルートがないためスキップ
+                // 将来的には publicTimeline から取得するか、oshis/{id} のようなルートが必要
+            }
+        }
+        
+        return oshis
+    }
+    
+    /// 推しのフォロワー（ユーザー）一覧を取得
+    func fetchOshiFollowers(oshiId: UUID) async throws -> [OshiCharacter] {
+        // フォロワーのUserIDリストを取得
+        let snapshot = try await ref.child("oshi-followers/\(oshiId.uuidString)").getData()
+        guard let value = snapshot.value as? [String: Any] else { return [] }
+        let userIds = value.keys
+        
+        var users: [OshiCharacter] = []
+        
+        for uid in userIds {
+            if let userProfile = try await fetchUserProfile(userId: uid) {
+                users.append(userProfile)
+            }
+        }
+        
+        return users
     }
 
     func loadFollowingIds() async throws -> [UUID] {
@@ -662,8 +717,9 @@ class FirebaseDatabaseManager {
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
         let isPublic = data["isPublic"] as? Bool ?? false
+        let followerCount = data["followerCount"] as? Int ?? 0 // 追加
         
-        let creatorId = data["creatorId"] as? String // 追加
+        let creatorId = data["creatorId"] as? String
 
         var oshi = OshiCharacter(
             id: id,
@@ -677,6 +733,7 @@ class FirebaseDatabaseManager {
             isFollowingUser: isFollowingUser,
             isFollowedByUser: isFollowedByUser,
             isPublic: isPublic,
+            followerCount: followerCount, // 追加
             creatorId: creatorId
         )
 

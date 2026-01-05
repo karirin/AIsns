@@ -178,8 +178,9 @@ struct UserProfileView: View {
             
             // フォロー統計（横並び）
             HStack(spacing: 16) {
-                Button {
-                    // フォロー中一覧へ
+                // ボタンをNavigationLinkに変更
+                NavigationLink {
+                    FollowListView(title: "フォロー中", type: .following, viewModel: viewModel)
                 } label: {
                     HStack(spacing: 4) {
                         Text("\(viewModel.followingCount)")
@@ -192,8 +193,9 @@ struct UserProfileView: View {
                     }
                 }
                 
+                // フォロワー一覧へ（必要なら実装、今回はボタンのまま）
                 Button {
-                    // フォロワー一覧へ
+                    // 将来的に実装
                 } label: {
                     HStack(spacing: 4) {
                         Text("\(viewModel.followerCount)")

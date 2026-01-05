@@ -20,9 +20,10 @@ struct OshiProfileView: View {
             VStack(spacing: 0) {
                 // プロフィール画像エリア
                 VStack(spacing: 12) {
-                                        Button(action: {
+                    Button(action: {
                         generateHapticFeedback()
-                                            showingEditView = true }) {
+                        showingEditView = true
+                    }) {
                         if let avatarImage = avatarImage {
                             Image(uiImage: avatarImage)
                                 .resizable()
@@ -224,23 +225,6 @@ struct OshiProfileView: View {
                     .background(Color(.systemBackground))
                 }
                 
-                // AI Self
-                VStack(spacing: 0) {
-                    Divider()
-                        .padding(.leading, 16)
-                    
-                    ProfileRowButton(
-                        label: "AI Self",
-                        value: "私のAI Self",
-                        valueColor: .secondary,
-                        showChevron: true
-                    ) {
-                        // AI Self処理
-                    }
-                }
-                .background(Color(.systemBackground))
-                .padding(.top, 20)
-                
                 // 統計情報
                 VStack(spacing: 0) {
                     Text("統計")
@@ -251,7 +235,36 @@ struct OshiProfileView: View {
                         .padding(.top, 32)
                         .padding(.bottom, 8)
                     
-                    VStack(spacing: 0) {                        
+                    VStack(spacing: 0) {
+                        // 追加: フォロワー数表示
+                        NavigationLink {
+                            FollowListView(
+                                title: "フォロワー",
+                                type: .followers(oshiId: oshi.id),
+                                viewModel: viewModel
+                            )
+                        } label: {
+                            HStack {
+                                Text("フォロワー")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text("\(oshi.followerCount)人")
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+                            .padding(.leading, 16)
+
                         ProfileRowButton(
                             label: "やりとり",
                             value: "\(oshi.totalInteractions)回",
@@ -271,9 +284,10 @@ struct OshiProfileView: View {
                 }
                 
                 // 削除ボタン
-                                    Button(action: {
-                        generateHapticFeedback()
-                                        showingDeleteAlert = true }) {
+                Button(action: {
+                    generateHapticFeedback()
+                    showingDeleteAlert = true
+                }) {
                     Text("アカウントを削除")
                         .font(.body)
                         .foregroundColor(.red)
@@ -310,6 +324,12 @@ struct OshiProfileView: View {
             }
         } message: {
             Text("この操作は取り消せません。チャット履歴も削除されます。")
+        }
+        .task {
+            // アバター画像の読み込み
+            if let url = oshi.avatarImageURL {
+                avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
+            }
         }
     }
     

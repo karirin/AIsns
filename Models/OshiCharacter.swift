@@ -66,7 +66,9 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
     var isFollowedByUser: Bool
     var isPublic: Bool
     
-    // 追加: 作成者のID（自分の作成したAIへの反応を受け取るために使用）
+    // 追加: フォロワー数
+    var followerCount: Int
+    
     var creatorId: String?
     
     var isMutualFollow: Bool {
@@ -103,7 +105,8 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         isFollowingUser: Bool = false,
         isFollowedByUser: Bool = false,
         isPublic: Bool = false,
-        creatorId: String? = nil // 初期値
+        followerCount: Int = 0, // 追加
+        creatorId: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -119,6 +122,7 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         self.isFollowingUser = isFollowingUser
         self.isFollowedByUser = isFollowedByUser
         self.isPublic = isPublic
+        self.followerCount = followerCount // 追加
         self.creatorId = creatorId
     }
     

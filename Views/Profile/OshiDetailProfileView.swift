@@ -205,6 +205,34 @@ struct OshiProfileDetailView: View {
                 .padding(.top, DesignTokens.Spacing.xxs)
             }
             
+            NavigationLink {
+                FollowListView(
+                    title: "フォロワー",
+                    type: .followers(oshiId: oshi.id),
+                    viewModel: viewModel
+                )
+            } label: {
+                HStack {
+                    Text("フォロワー")
+                        .font(.body)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Text("\(oshi.followerCount)人")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Divider()
+                .padding(.leading, 16)
+            
             // キャラクタータグ
             characterTagsView
                 .padding(.top, DesignTokens.Spacing.xs)
