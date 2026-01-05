@@ -19,7 +19,7 @@ struct OshiCreationView: View {
     @State private var userCallingName: String = ""
     @State private var speechStyleText: String = ""
     @State private var avatarImage: UIImage? = nil
-    @State private var isPublic: Bool = false
+    @State private var isPublic: Bool = true
     
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
@@ -631,7 +631,7 @@ struct OshiCreationView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(Color(hex: "374151"))
                     
-                    Text("ONにすると、他のユーザーが検索できるようになります（現在は機能しません）")
+                    Text("ONにすると、他のユーザーからも投稿が見えるようになります")
                         .font(.system(size: 12))
                         .foregroundColor(Color(hex: "6B7280"))
                 }

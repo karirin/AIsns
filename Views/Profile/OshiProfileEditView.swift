@@ -19,6 +19,7 @@ struct OshiProfileEditView: View {
     @State private var userCallingName: String
     @State private var speechStyleText: String
     @State private var avatarImage: UIImage?
+    @State private var isPublic: Bool
     @State private var showingSaveConfirmation = false
     @State private var showingImagePicker = false
     @State private var isLoadingImage = false
@@ -65,6 +66,7 @@ struct OshiProfileEditView: View {
         _userCallingName = State(initialValue: oshi.userCallingName)
         _speechStyleText = State(initialValue: oshi.speechStyleText)
         _avatarImage = State(initialValue: nil)
+        _isPublic = State(initialValue: oshi.isPublic)
         _showingSaveConfirmation = State(initialValue: false)
         _showingImagePicker = State(initialValue: false)
         _isLoadingImage = State(initialValue: false)
@@ -99,6 +101,10 @@ struct OshiProfileEditView: View {
                     // ユーザーとの関係セクション
                     relationshipSection
                         .offset(y: appearAnimation ? 0 : 60)
+                        .opacity(appearAnimation ? 1 : 0)
+                    
+                    shareSettingsSection
+                        .offset(y: appearAnimation ? 0 : 70)
                         .opacity(appearAnimation ? 1 : 0)
                     
                     Spacer(minLength: 40)
@@ -159,6 +165,41 @@ struct OshiProfileEditView: View {
                 avatarPulse = true
             }
         }
+    }
+    
+    private var shareSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ModernSectionHeader(title: "共有設定", icon: "globe.asia.australia.fill", color: Color(hex: "10B981"))
+            
+            Toggle(isOn: $isPublic) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("共有する")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(hex: "374151"))
+                    
+                    Text("ONにすると、他のユーザーからも投稿が見えるようになります")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "6B7280"))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.ultraThinMaterial)
+                    
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(cardGradient)
+                    
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
+                }
+            )
+            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "10B981")))
+            .shadow(color: Color.black.opacity(0.04), radius: 15, y: 5)
+        }
+        .padding(.horizontal, 20)
     }
     
     // MARK: - 背景レイヤー
@@ -584,6 +625,7 @@ struct OshiProfileEditView: View {
             updatedOshi.speechCharacteristics = speechCharacteristics
             updatedOshi.userCallingName = userCallingName
             updatedOshi.speechStyleText = speechStyleText
+            updatedOshi.isPublic = isPublic
             
             if let image = avatarImage {
                 do {
