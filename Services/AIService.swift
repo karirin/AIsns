@@ -6,11 +6,27 @@ class AIService {
     static let shared = AIService()
     private let openAI = OpenAIService.shared
     
+    // デフォルト設定
+    private let defaultPersonality = "明るく親しみやすい性格。ユーザーの良き友人として振る舞う。少しユーモアがある。"
+    private let defaultSpeechStyle = "親しい友人に話しかけるような口調。堅苦しい敬語は使わず、タメ口で話す。絵文字を適度に使用して感情豊かに表現する。"
+    
     // MARK: - Format Helpers
+    
+    /// 性格と口調の設定を取得（空の場合はデフォルト値を適用）
+    private func getEffectiveSettings(for oshi: OshiCharacter) -> (personality: String, speech: String) {
+        let personality = oshi.personalityText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultPersonality
+            : oshi.personalityText
+            
+        let speech = oshi.speechStyleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultSpeechStyle
+            : oshi.speechStyleText
+            
+        return (personality, speech)
+    }
     
     /// 会話履歴をAIが理解しやすい文字列形式に変換する
     private func formatHistory(_ history: [Message]) -> String {
-        // 最近の10件のみを使用（トークン節約のため）
         let recentMessages = history.suffix(10)
         return recentMessages.map { message in
             let sender = message.isFromUser ? "ユーザー" : "キャラクター"
@@ -20,28 +36,36 @@ class AIService {
 
     // MARK: - Comment Generation
 
-    // 投稿に対するコメント生成 (UserMood Enum版 - 既存コード互換)
+    // 投稿に対するコメント生成 (UserMood Enum版 - 修正済み)
     func generateComment(for post: Post, by oshi: OshiCharacter, userMood: UserMood) async throws -> String {
-        // 既存のプロンプト生成ロジックを使用
-        let prompt = openAI.createCommentPrompt(
-            character: oshi,
-            postContent: post.content,
-            userMood: userMood
-        )
+        // Enumを文字列に変換して、下のメソッドに委譲
+        let moodString: String
         
-        return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
+        // ✅ 修正: UserMoodの定義に合わせてケースを更新
+        switch userMood {
+        case .happy:    moodString = "喜んでいる"
+        case .tired:    moodString = "疲れている"
+        case .sad:      moodString = "落ち込んでいる"
+        case .excited:  moodString = "テンションが高い"
+        case .normal:   moodString = "普通"
+        case .stressed: moodString = "イライラしている" // "怒っている"の代わりにストレスを割り当て
+        }
+        
+        // ユーザー名はデフォルト値を使用
+        return try await generateComment(for: post, by: oshi, userMood: moodString, userName: "あなた")
     }
     
     // 投稿に対するコメント生成 (String版 & ユーザー名対応 - 新機能)
     func generateComment(for post: Post, by oshi: OshiCharacter, userMood: String, userName: String) async throws -> String {
+        let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
         
         let prompt = """
         あなたは「\(oshi.name)」として、ユーザー（\(callingName)）の投稿にコメントしてください。
         
         【キャラクター設定】
-        性格: \(oshi.personalityText)
-        口調: \(oshi.speechStyleText)
+        性格: \(settings.personality)
+        口調: \(settings.speech)
         ユーザーの呼び方: \(callingName)
         
         【ユーザーの投稿】
@@ -50,7 +74,8 @@ class AIService {
         【ユーザーの感情分析】
         \(userMood)
         
-        ユーザーの感情に寄り添い、キャラクターらしい反応を短く（30文字以内）返してください。
+        ユーザーの感情に寄り添い、キャラクター設定（特に口調）を厳守して、30文字以内の短いコメントを返してください。
+        "私はAIです"などの自己言及は禁止です。
         """
         
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.commentGenerationFailed($0) })
@@ -60,7 +85,7 @@ class AIService {
 
     // チャットメッセージ生成
     func generateChatReply(for message: String, by oshi: OshiCharacter, conversationHistory: [Message], userName: String) async throws -> String {
-        // 呼び名を決定
+        let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
         
         let prompt = """
@@ -68,10 +93,10 @@ class AIService {
         
         【キャラクター設定】
         名前: \(oshi.name)
-        性格: \(oshi.personalityText)
-        口調: \(oshi.speechStyleText)
-        話し方の特徴: \(oshi.speechCharacteristics)
-        一人称: 私（またはキャラに合わせる）
+        性格: \(settings.personality)
+        口調: \(settings.speech)
+        話し方の特徴: \(oshi.speechCharacteristics.isEmpty ? "特になし" : oshi.speechCharacteristics)
+        一人称: 私（またはキャラ設定に合わせる）
         ユーザーの呼び方: \(callingName)
         
         【会話の履歴】
@@ -81,6 +106,7 @@ class AIService {
         \(message)
         
         上記のキャラクター設定を厳守し、短めの文章（1〜3文程度）で親しみを込めて返信してください。
+        AIアシスタントとしての振る舞いや、"お手伝いしましょうか？"といった定型句は禁止です。
         """
         
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.chatReplyFailed($0) })
@@ -90,6 +116,7 @@ class AIService {
     
     // 挨拶生成 (ユーザー名対応版)
     func generateGreeting(type: GreetingType, by oshi: OshiCharacter, userName: String = "") async throws -> String {
+        let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
         
         var context = ""
@@ -106,12 +133,13 @@ class AIService {
         あなたは「\(oshi.name)」です。ユーザー（\(callingName)）に対して挨拶をしてください。
         
         【設定】
-        性格: \(oshi.personalityText)
-        口調: \(oshi.speechStyleText)
+        性格: \(settings.personality)
+        口調: \(settings.speech)
         ユーザーの呼び方: \(callingName)
         シチュエーション: \(context)
         
-        短く（一言〜二言）、キャラクターらしさを出して話しかけてください。
+        短く（一言〜二言）、キャラクター設定を反映して話しかけてください。
+        事務的な挨拶は避け、親近感を持たせてください。
         """
         
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.greetingFailed($0) })
@@ -119,17 +147,19 @@ class AIService {
     
     // 初回挨拶生成 (ユーザー名対応版)
     func generateInitialGreeting(for oshi: OshiCharacter, userName: String) async throws -> String {
+        let settings = getEffectiveSettings(for: oshi)
         let callingName = oshi.callingName(userName: userName)
         
         let prompt = """
         あなたは「\(oshi.name)」です。新しく友達になったユーザー（\(callingName)）に最初の挨拶をしてください。
         
         【設定】
-        性格: \(oshi.personalityText)
-        口調: \(oshi.speechStyleText)
+        性格: \(settings.personality)
+        口調: \(settings.speech)
         ユーザーの呼び方: \(callingName)
         
         自己紹介を含めて、これからの関係を楽しみにしている感じで短く話しかけてください。
+        堅苦しい挨拶（"はじめまして、私は..."など）は避け、設定された口調で自然に話してください。
         """
         
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.greetingFailed($0) })
@@ -139,7 +169,23 @@ class AIService {
 
     // 推しからの自発的投稿生成
     func generateOshiPost(by oshi: OshiCharacter) async throws -> String {
-        let prompt = openAI.createOshiPostPrompt(character: oshi)
+        // ここでもデフォルト設定を適用するために、直接プロンプトを作成する
+        let settings = getEffectiveSettings(for: oshi)
+        
+        let prompt = """
+        あなたは「\(oshi.name)」です。SNSに投稿するつぶやきを作成してください。
+        
+        【設定】
+        性格: \(settings.personality)
+        口調: \(settings.speech)
+        
+        【指示】
+        ・日常の出来事、ふと思ったこと、あるいはフォロワーへの呼びかけなどを自由に発想してください。
+        ・140文字以内で、キャラクター設定（特に口調）を厳守してください。
+        ・ハッシュタグは使用しないでください。
+        ・"私はAIです"などのメタ発言は禁止です。
+        """
+        
         return try await generateResponse(prompt: prompt, errorType: { AIServiceError.postGenerationFailed($0) })
     }
     
@@ -147,7 +193,7 @@ class AIService {
     func analyzeMood(from content: String) -> String {
         let lowerContent = content.lowercased()
         
-        // 簡易的なキーワードマッチング（必要に応じてAI判定に置き換え可能）
+        // 簡易的なキーワードマッチング
         if lowerContent.contains("疲れ") || lowerContent.contains("つかれ") ||
            lowerContent.contains("だるい") || lowerContent.contains("しんどい") {
             return "疲れている"
@@ -178,7 +224,6 @@ class AIService {
     /// 共通のエラーハンドリングを行う実行メソッド
     private func generateResponse(prompt: String, errorType: (Error) -> AIServiceError) async throws -> String {
         do {
-            // ✅ 修正: sendRequest ではなく generateText を使用
             return try await openAI.generateText(prompt: prompt)
         } catch {
             print("❌ OpenAI Error: \(error)")

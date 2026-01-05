@@ -29,7 +29,7 @@ struct TimingConfig {
     
     struct AutoEvent {
         // 自動フォローイベントの間隔（秒）
-        static let followIntervalRange: ClosedRange<Double> = 5...5
+        static let followIntervalRange: ClosedRange<Double> = 100...1000
         
         // 自動投稿イベントの間隔（秒）
         static let postInterval: TimeInterval = 60.0
