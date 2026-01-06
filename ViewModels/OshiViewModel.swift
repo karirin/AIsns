@@ -721,6 +721,7 @@ class OshiViewModel: ObservableObject {
     }
     
     func loadData() async {
+        print("🔍 [Debug] loadData: 開始") // ログ追加
         isLoading = true
         errorMessage = nil
 
@@ -736,8 +737,16 @@ class OshiViewModel: ObservableObject {
             async let myPostsTask = dbManager.loadMyPosts(limit: 50)
             async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
 
+            print("🔍 [Debug] loadData: 非同期タスクを実行中...") // ログ追加
+
             let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets) =
                 try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask)
+
+            // ログ追加: 取得結果の確認
+            print("✅ [Debug] loadData: 成功")
+            print("   - おすすめ(loadedPresets): \(loadedPresets.count)件")
+            print("   - 推しリスト: \(loadedOshi.count)件")
+            print("   - プロフィール名: \(profile.userName)")
 
             // 3. データ反映
             oshiList = loadedOshi
@@ -748,18 +757,14 @@ class OshiViewModel: ObservableObject {
             userProfileAvatarURL = profile.avatarImageURL
             recommendedOshis = loadedPresets
 
-            // 4. フォロー中タイムラインの構築 (重要: ここでマージ)
-            // 自分の推し(Local) + リモートフォロー(Remote) のIDリストを作成
+            // 4. フォロー中タイムラインの構築
             let localOshiIds = oshiList.map { $0.id }
             let remoteOshiIds = Array(followingRemoteOshiIDs)
-            let allFollowingIds = Set(localOshiIds + remoteOshiIds) // 重複排除
+            let allFollowingIds = Set(localOshiIds + remoteOshiIds)
             
-            // フォローしている推しの投稿を取得
             let followingPosts = try await dbManager.loadFollowingPosts(followingIds: Array(allFollowingIds))
             
-            // 自分の投稿とマージしてソート
             let mergedPosts = (loadedMyPosts + followingPosts)
-                // 重複排除 (念のため)
                 .reduce(into: [Post]()) { res, post in
                     if !res.contains(where: { $0.id == post.id }) { res.append(post) }
                 }
@@ -767,15 +772,17 @@ class OshiViewModel: ObservableObject {
             
             self.posts = mergedPosts
             
-            // 5. 古い通知の削除 (バックグラウンドで実行)
             Task {
                 try? await dbManager.deleteOldNotifications(olderThan: Date().addingTimeInterval(-60*60*24*30))
             }
 
         } catch {
+            // ログ追加: 具体的なエラー内容を表示
+            print("❌ [Debug] loadData: エラー発生 - \(error)")
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
         }
         isLoading = false
+        print("🏁 [Debug] loadData: 完了 (isLoading = false)") // ログ追加
     }
     
     func loadFollowingList() async {

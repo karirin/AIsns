@@ -352,6 +352,27 @@ struct OnboardingOshiSetupView: View {
                 } else if viewModel.isLoading {
                     LoadingView(message: "おすすめを読み込み中...")
                         .frame(height: 180)
+                } else {
+                    // 追加: データが空かつロード中でない場合の表示（エラーまたは0件）
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 32))
+                            .foregroundColor(.orange)
+                        Text("おすすめアカウントが見つかりませんでした")
+                            .font(AppTypography.caption)
+                            .foregroundColor(AppColors.textSecondary)
+                        if let error = viewModel.errorMessage {
+                            Text("エラー: \(error)")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .frame(height: 180)
+                    .frame(maxWidth: .infinity)
+                    .background(AppColors.backgroundSecondary.opacity(0.5))
+                    .cornerRadius(12)
                 }
                 
                 // 区切り線

@@ -159,11 +159,11 @@ struct LaunchScreenView: View {
                     
                     // アプリ名
                     VStack(spacing: DesignTokens.Spacing.xs) {
-                        Text("AIsns")
+                        Text("AImate")
                             .font(.system(size: 48, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                         
-                        Text("AIとつながる、新しいSNS")
+                        Text("AIとつながるSNS")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(0.9))
                     }

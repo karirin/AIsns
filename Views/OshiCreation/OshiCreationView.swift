@@ -10,6 +10,11 @@ import SwiftUI
 struct OshiCreationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
+    private let presets = [
+        ("ツンデレ", "普段は厳しいけど、たまに優しくなる性格。"),
+        ("癒やし系", "いつも穏やかで、ユーザーを包み込むような性格。"),
+        ("熱血", "常に前向きで、ユーザーを全力で応援してくれる性格。")
+    ]
     
     // 入力State
     @State private var name: String = ""
