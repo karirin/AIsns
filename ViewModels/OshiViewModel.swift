@@ -525,7 +525,7 @@ class OshiViewModel: ObservableObject {
             }
         
         // 初回実行(30秒〜5分後にランダム実行)
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 5...5)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 30...300)) {
             Task { @MainActor in
                 await self.randomPresetFollow()
             }
