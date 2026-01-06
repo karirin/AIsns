@@ -18,77 +18,26 @@ class FirebaseDatabaseManager {
     
     func updateContact(userId: String, newContact: String, completion: @escaping (Bool) -> Void) {
         let contactRef = ref.child("contacts").child(userId)
-
         contactRef.observeSingleEvent(of: .value) { snapshot in
             var contacts: [String] = []
-
-            if let currentContacts = snapshot.value as? [String] {
-                contacts = currentContacts
-            }
-
+            if let currentContacts = snapshot.value as? [String] { contacts = currentContacts }
             contacts.append(newContact)
-
-            contactRef.setValue(contacts) { error, _ in
-                if let error = error {
-                    print("❌ Error updating contact: \(error)")
-                    completion(false)
-                } else {
-                    completion(true)
-                }
-            }
-        } withCancel: { error in
-            print("❌ Error reading contact: \(error.localizedDescription)")
-            completion(false)
+            contactRef.setValue(contacts) { error, _ in completion(error == nil) }
         }
     }
     
     func fetchUserFlag(completion: @escaping (Int?, Error?) -> Void) {
-        let userRef = ref.child("users").child(userId)
-
-        userRef.child("userFlag").observeSingleEvent(of: .value) { snapshot in
-            if let userFlag = snapshot.value as? Int {
-                DispatchQueue.main.async {
-                    completion(userFlag, nil)
-                }
-            } else {
-                DispatchQueue.main.async {
-                    completion(0, nil)
-                }
-            }
-        } withCancel: { error in
-            DispatchQueue.main.async {
-                completion(nil, error)
-            }
-        }
+        ref.child("users").child(userId).child("userFlag").observeSingleEvent(of: .value) { snapshot in
+            completion(snapshot.value as? Int ?? 0, nil)
+        } withCancel: { error in completion(nil, error) }
     }
-    
-    func updateUserFlag(userId: String, userFlag: Int, completion: @escaping (Bool) -> Void) {
-        let userRef = ref.child("users").child(userId)
-        let updates: [String: Any] = ["userFlag": userFlag]
 
-        userRef.updateChildValues(updates) { error, _ in
-            if let error = error {
-                print("❌ Error updating userFlag: \(error)")
-                completion(false)
-            } else {
-                completion(true)
-            }
-        }
+    func updateUserFlag(userId: String, userFlag: Int, completion: @escaping (Bool) -> Void) {
+        ref.child("users").child(userId).updateChildValues(["userFlag": userFlag]) { error, _ in completion(error == nil) }
     }
     
     func updateUserCsFlag(userId: String, userCsFlag: Int, completion: @escaping (Bool) -> Void) {
-        let userRef = ref.child("users").child(userId)
-        let updates: [String: Any] = ["userCsFlag": userCsFlag]
-        print("🔧 updateUserCsFlag updates:", updates)
-
-        userRef.updateChildValues(updates) { error, _ in
-            if let error = error {
-                print("❌ Error updating userCsFlag: \(error)")
-                completion(false)
-            } else {
-                completion(true)
-            }
-        }
+        ref.child("users").child(userId).updateChildValues(["userCsFlag": userCsFlag]) { error, _ in completion(error == nil) }
     }
 
     // MARK: - Oshi Management
@@ -109,45 +58,29 @@ class FirebaseDatabaseManager {
             "isFollowingUser": oshi.isFollowingUser,
             "isFollowedByUser": oshi.isFollowedByUser,
             "isPublic": oshi.isPublic,
-            "followerCount": oshi.followerCount // 保存
+            "followerCount": oshi.followerCount
         ]
-
-        if let gender = oshi.gender {
-            oshiData["gender"] = gender.rawValue
-        }
-
-        if let imageURL = oshi.avatarImageURL {
-            oshiData["avatarImageURL"] = imageURL
-        }
-        
-        // 追加: 作成者ID
-        if let creatorId = oshi.creatorId {
-            oshiData["creatorId"] = creatorId
-        }
+        if let gender = oshi.gender { oshiData["gender"] = gender.rawValue }
+        if let imageURL = oshi.avatarImageURL { oshiData["avatarImageURL"] = imageURL }
+        if let creatorId = oshi.creatorId { oshiData["creatorId"] = creatorId }
         
         try await oshiRef.setValue(oshiData)
     }
     
     func saveUserProfile(userName: String, userBio: String, avatarImageURL: String?) async throws {
         let profileRef = ref.child("users/\(userId)/profile")
-
         var data: [String: Any] = [
             "userName": userName,
             "userBio": userBio,
             "updatedAt": Date().timeIntervalSince1970
         ]
         data["avatarImageURL"] = avatarImageURL ?? ""
-
         try await profileRef.updateChildValues(data)
     }
 
     func loadUserProfile() async throws -> (userName: String, userBio: String, avatarImageURL: String?) {
         let snap = try await ref.child("users/\(userId)/profile").getData()
-
-        guard let v = snap.value as? [String: Any] else {
-            return ("あなた", "", nil)
-        }
-
+        guard let v = snap.value as? [String: Any] else { return ("あなた", "", nil) }
         let name = v["userName"] as? String ?? "あなた"
         let bio = v["userBio"] as? String ?? ""
         let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -185,31 +118,39 @@ class FirebaseDatabaseManager {
         // 1. 推しデータの削除
         let oshiRef = ref.child("users/\(userId)/oshiList/\(oshiId.uuidString)")
         try await oshiRef.removeValue()
-
-        // 2. この推しに関連する投稿の削除が必要ならここで行う
-        // 今回は「推しの削除」機能であり、過去の投稿が残っていても大きな問題ではないため、
-        // 複雑な整合性処理は省略します。
     }
 
     // MARK: - Posts
 
     /// 投稿を保存(リアクション・コメントは含まない)
     func savePost(_ post: Post, isPublic: Bool = false) async throws {
-        // 1. データ実体: root/posts/{postId} に保存 (全ユーザー共有)
         let postData = encodePostToDictionary(post)
-        
-        // 2. 参照用パスの準備
         var updates: [String: Any] = [:]
         
-        // A. 実体の保存パス
+        // 1. データ実体 (root/posts/{postId}) - すべての基本
         updates["posts/\(post.id.uuidString)"] = postData
         
-        // B. 自分の投稿リスト (users/{userId}/myPostIds/{postId})
-        updates["users/\(userId)/myPostIds/\(post.id.uuidString)"] = post.timestamp.timeIntervalSince1970
+        // 2. 自分の投稿リスト (users/{userId}/myPosts/{postId})
+        if post.isUserPost {
+            updates["users/\(userId)/myPosts/\(post.id.uuidString)"] = postData
+        }
         
-        // C. 公開タイムライン (publicTimeline/{postId}) - 公開設定の場合のみ
+        // 3. 推しの投稿リスト (oshi-posts/{oshiId}/{postId})
+        // これが「推しのプロフィール画面」等で使われるデータソース
+        if !post.isUserPost, let authorId = post.authorId {
+            updates["oshi-posts/\(authorId.uuidString)/\(post.id.uuidString)"] = postData
+        }
+        
+        // 4. 公開タイムライン (publicTimeline/{postId})
+        // ここに入ると「おすすめ」に表示される
         if isPublic {
-            updates["publicTimeline/\(post.id.uuidString)"] = post.timestamp.timeIntervalSince1970
+            updates["publicTimeline/\(post.id.uuidString)"] = postData
+            
+            // 将来的なファンアウト用（現状は空振りでも問題なし）
+            let followers = try await fetchUserFollowers(userId: userId)
+            for followerId in followers {
+                updates["users/\(followerId)/homeTimeline/\(post.id.uuidString)"] = postData
+            }
         }
         
         try await ref.updateChildValues(updates)
@@ -218,35 +159,60 @@ class FirebaseDatabaseManager {
     /// 公開投稿（おすすめ）を取得
     func loadPublicPosts(limit: Int = 50) async throws -> [Post] {
         let snapshot = try await ref.child("publicTimeline")
-            .queryOrderedByValue()
+            .queryOrdered(byChild: "timestamp")
             .queryLimited(toLast: UInt(limit))
             .getData()
 
-        guard let value = snapshot.value as? [String: TimeInterval] else {
-            return []
-        }
-        
-        let sortedIds = value.sorted { $0.value > $1.value }.map { UUID(uuidString: $0.key) }.compactMap { $0 }
-        
-        if sortedIds.isEmpty { return [] }
-        return try await loadPosts(by: sortedIds)
+        return parsePosts(from: snapshot)
     }
     
     /// 自分の投稿を取得
     func loadMyPosts(limit: Int = 50) async throws -> [Post] {
-        let snapshot = try await ref.child("users/\(userId)/myPostIds")
-            .queryOrderedByValue()
+        let snapshot = try await ref.child("users/\(userId)/myPosts")
+            .queryOrdered(byChild: "timestamp")
             .queryLimited(toLast: UInt(limit))
             .getData()
             
-        guard let value = snapshot.value as? [String: TimeInterval] else {
-            return []
+        return parsePosts(from: snapshot)
+    }
+    
+    /// ✅ 追加: 特定の推しの投稿を取得 (プロフィール画面用など)
+    /// これがないと他ユーザーが推しの詳細画面を開いた時に投稿が表示されません
+    func loadOshiPosts(oshiId: UUID, limit: Int = 50) async throws -> [Post] {
+        let snapshot = try await ref.child("oshi-posts/\(oshiId.uuidString)")
+            .queryOrdered(byChild: "timestamp")
+            .queryLimited(toLast: UInt(limit))
+            .getData()
+            
+        return parsePosts(from: snapshot)
+    }
+
+    /// フォロー中の推しの投稿を一括取得
+    func loadFollowingPosts(followingIds: [UUID], limitPerOshi: Int = 5) async throws -> [Post] {
+        var allPosts: [Post] = []
+        
+        await withTaskGroup(of: [Post].self) { group in
+            for oshiId in followingIds {
+                group.addTask {
+                    do {
+                        // 各推しの投稿リスト(oshi-posts)から並列取得
+                        let snapshot = try await self.ref.child("oshi-posts/\(oshiId.uuidString)")
+                            .queryOrdered(byChild: "timestamp")
+                            .queryLimited(toLast: UInt(limitPerOshi))
+                            .getData()
+                        return self.parsePosts(from: snapshot)
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            
+            for await posts in group {
+                allPosts.append(contentsOf: posts)
+            }
         }
         
-        let sortedIds = value.sorted { $0.value > $1.value }.map { UUID(uuidString: $0.key) }.compactMap { $0 }
-        
-        if sortedIds.isEmpty { return [] }
-        return try await loadPosts(by: sortedIds)
+        return allPosts.sorted { $0.timestamp > $1.timestamp }.prefix(50).map { $0 }
     }
 
     func loadPosts(by postIds: [UUID]) async throws -> [Post] {
@@ -256,25 +222,17 @@ class FirebaseDatabaseManager {
             for postId in postIds {
                 group.addTask {
                     do {
-                        // ✅ 全ユーザー共有のパスから取得
                         let snapshot = try await self.ref.child("posts/\(postId.uuidString)").getData()
-                        
-                        guard let data = snapshot.value as? [String: Any],
-                              let post = self.parsePost(from: data) else {
-                            return nil
-                        }
-                        return post
+                        guard let data = snapshot.value as? [String: Any] else { return nil }
+                        return self.parsePost(from: data)
                     } catch {
-                        print("⚠️ 投稿取得エラー \(postId): \(error)")
                         return nil
                     }
                 }
             }
             
             for await post in group {
-                if let post = post {
-                    loadedPosts.append(post)
-                }
+                if let post = post { loadedPosts.append(post) }
             }
         }
         
@@ -282,59 +240,83 @@ class FirebaseDatabaseManager {
         return postIds.compactMap { postMap[$0] }
     }
     
+    private func parsePosts(from snapshot: DataSnapshot) -> [Post] {
+        guard let value = snapshot.value as? [String: Any] else { return [] }
+        
+        var posts: [Post] = []
+        for (_, data) in value {
+            if let dict = data as? [String: Any],
+               let post = parsePost(from: dict) {
+                posts.append(post)
+            }
+        }
+        return posts.sorted { $0.timestamp > $1.timestamp }
+    }
+
     private func encodePostToDictionary(_ post: Post) -> [String: Any] {
         var data: [String: Any] = [
             "id": post.id.uuidString,
-            "authorId": post.authorId?.uuidString ?? "",
             "authorName": post.authorName,
             "content": post.content,
             "timestamp": post.timestamp.timeIntervalSince1970,
             "isUserPost": post.isUserPost,
             "reactionCount": post.reactionCount,
             "commentCount": post.commentCount,
-            "repostCount": post.repostCount
+            "repostCount": post.repostCount,
+            "imageURLs": post.imageURLs
         ]
-        if let avatarURL = post.authorAvatarURL {
-             data["authorAvatarURL"] = avatarURL
-        }
-        if !post.imageURLs.isEmpty {
-            data["imageURLs"] = post.imageURLs
-        }
-        
-        // 👇 追加: creatorIdがあれば保存
-        if let creatorId = post.creatorId {
-            data["creatorId"] = creatorId
-        }
+        if let authorId = post.authorId { data["authorId"] = authorId.uuidString }
+        if let avatarURL = post.authorAvatarURL { data["authorAvatarURL"] = avatarURL }
+        if let creatorId = post.creatorId { data["creatorId"] = creatorId }
         
         return data
     }
     
-    func followRemoteOshi(oshi: OshiCharacter) async throws {
-        print("📍 followRemoteOshi 開始")
+    // MARK: - 通知の自動削除
+    
+    func deleteOldNotifications(olderThan date: Date) async throws {
+        let timestamp = date.timeIntervalSince1970
+        let query = ref.child("users/\(userId)/notifications")
+            .queryOrdered(byChild: "timestamp")
+            .queryEnding(atValue: timestamp)
+            
+        let snapshot = try await query.getData()
+        guard let value = snapshot.value as? [String: Any] else { return }
         
-        // 1. 自分のフォローリストに追加
+        var updates: [String: Any?] = [:]
+        for key in value.keys {
+            updates["users/\(userId)/notifications/\(key)"] = nil
+        }
+        
+        if !updates.isEmpty {
+            try await ref.updateChildValues(updates as [AnyHashable : Any])
+        }
+    }
+    
+    // MARK: - Follow / Unfollow
+    
+    /// ✅ 追加: ユーザーのフォロワーIDを取得
+    func fetchUserFollowers(userId: String) async throws -> [String] {
+        // 現在はAI SNSのため、ユーザー間フォローがない場合は空配列を返す
+        return []
+    }
+    
+    func followRemoteOshi(oshi: OshiCharacter) async throws {
         let refPath = "users/\(userId)/following/\(oshi.id.uuidString)"
         try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
         
-        // 2. 推しのフォロワーリストに追加 (Reverse Index)
         let followerRef = ref.child("oshi-followers/\(oshi.id.uuidString)/\(userId)")
         try await followerRef.setValue(Date().timeIntervalSince1970)
         
-        // 3. 推しのフォロワー数をインクリメント
         if let creatorId = oshi.creatorId {
-            // ユーザー作成の推しの場合
             let countRef = ref.child("users/\(creatorId)/oshiList/\(oshi.id.uuidString)/followerCount")
             try await countRef.setValue(ServerValue.increment(1))
         } else {
-            // プリセットの場合 (presets/oshiList)
             let countRef = ref.child("presets/oshiList/\(oshi.id.uuidString)/followerCount")
             try await countRef.setValue(ServerValue.increment(1))
         }
         
-        // 4. 通知の送信
         guard let creatorId = oshi.creatorId else { return }
-        
-        // 修正箇所: 返り値のタプルの数を合わせる（3つ）
         let (myUserName, _, myAvatarURL) = try await loadUserProfile()
         
         let notification = AppNotification(
@@ -352,27 +334,18 @@ class FirebaseDatabaseManager {
     }
 
     func unfollowRemoteOshi(oshiId: UUID) async throws {
-        // 1. 自分のフォローリストから削除
         let refPath = "users/\(userId)/following/\(oshiId.uuidString)"
         try await ref.child(refPath).removeValue()
         
-        // 2. 推しのフォロワーリストから削除
         let followerRef = ref.child("oshi-followers/\(oshiId.uuidString)/\(userId)")
         try await followerRef.removeValue()
-        
-        // 3. 推しのフォロワー数をデクリメント (本来はcreatorIdが必要だが、ここでは簡易的に省略)
     }
     
-    /// フォロー中の推し一覧を取得
     func fetchFollowingOshis() async throws -> [OshiCharacter] {
-        // 1. フォロー中のIDリストを取得
         let followingIds = try await loadFollowingIds()
         if followingIds.isEmpty { return [] }
         
         var oshis: [OshiCharacter] = []
-        
-        // 簡易実装: プリセットと自分の推しリストから検索
-        // (本来は全公開推しデータベースから検索するか、キャッシュが必要)
         let presets = try await loadPresetOshiList()
         let myOshis = try await loadOshiList()
         
@@ -381,30 +354,22 @@ class FirebaseDatabaseManager {
                 oshis.append(preset)
             } else if let myOshi = myOshis.first(where: { $0.id == id }) {
                 oshis.append(myOshi)
-            } else {
-                // 他ユーザーの推しの場合は現状取得ルートがないためスキップ
-                // 将来的には publicTimeline から取得するか、oshis/{id} のようなルートが必要
             }
         }
-        
         return oshis
     }
     
-    /// 推しのフォロワー（ユーザー）一覧を取得
     func fetchOshiFollowers(oshiId: UUID) async throws -> [OshiCharacter] {
-        // フォロワーのUserIDリストを取得
         let snapshot = try await ref.child("oshi-followers/\(oshiId.uuidString)").getData()
         guard let value = snapshot.value as? [String: Any] else { return [] }
         let userIds = value.keys
         
         var users: [OshiCharacter] = []
-        
         for uid in userIds {
             if let userProfile = try await fetchUserProfile(userId: uid) {
                 users.append(userProfile)
             }
         }
-        
         return users
     }
 
@@ -420,9 +385,7 @@ class FirebaseDatabaseManager {
 
     // MARK: - Reactions (Shared)
 
-    /// リアクションを追加 (共有対応)
     func addReaction(_ reaction: Reaction, to postId: UUID, postAuthorId: String, oshiName: String? = nil) async throws {
-        // 1. 既存の処理: リアクション保存
         let reactionRef = ref.child("post-reactions/\(postId.uuidString)/\(reaction.id.uuidString)")
         let reactionData: [String: Any] = [
             "id": reaction.id.uuidString,
@@ -440,12 +403,7 @@ class FirebaseDatabaseManager {
         let countRef = ref.child("posts/\(postId.uuidString)/reactionCount")
         try await countRef.setValue(ServerValue.increment(1))
         
-        // 2. 追加処理: 通知の送信
-        // 自分のプロフィールを取得（送信者名として使用）
-        let (myUserName, _, myAvatarURL) = try await loadUserProfile()  // ✅ アバターURLも取得
-        print("func addReaction　👤 フォロー実行者: \(myUserName)")
-        print("func addReaction　🖼️ アバターURL: \(myAvatarURL ?? "未設定")")
-        
+        let (myUserName, _, myAvatarURL) = try await loadUserProfile()
         let category: NotificationCategory = (oshiName != nil) ? .createdOshi : .me
         
         let notification = AppNotification(
@@ -456,66 +414,44 @@ class FirebaseDatabaseManager {
             relatedPostId: postId,
             category: category,
             targetOshiName: oshiName,
-            senderAvatarURL: myAvatarURL  // ✅ 追加
+            senderAvatarURL: myAvatarURL
         )
-        
         try await sendNotification(to: postAuthorId, notification: notification)
     }
 
-    /// 特定投稿のリアクションを全取得 (共有パスから)
     func loadReactions(for postId: UUID) async throws -> [Reaction] {
         do {
-            // ✅ 共有パスから取得
             let snapshot = try await ref.child("post-reactions/\(postId.uuidString)").getData()
-
-            guard let value = snapshot.value as? [String: [String: Any]] else {
-                return []
-            }
+            guard let value = snapshot.value as? [String: [String: Any]] else { return [] }
 
             var reactions: [Reaction] = []
-
             for (_, reactionData) in value {
                 if let reaction = parseReaction(from: reactionData) {
                     reactions.append(reaction)
                 }
             }
-
             return reactions.sorted { $0.timestamp > $1.timestamp }
         } catch let error as NSError {
-            if error.domain == "com.firebase.core" && error.code == 1 {
-                return []
-            }
+            if error.domain == "com.firebase.core" && error.code == 1 { return [] }
             throw error
         }
     }
 
-    /// リアクションを削除 (共有対応)
     func deleteReaction(_ reaction: Reaction, from postId: UUID) async throws {
-        // 1. 共有パスから削除
         let reactionRef = ref.child("post-reactions/\(postId.uuidString)/\(reaction.id.uuidString)")
         try await reactionRef.removeValue()
         
-        // 2. 「自分がいいねしたリスト」から削除
         let myLikeRef = ref.child("users/\(userId)/likes/\(postId.uuidString)")
         try await myLikeRef.removeValue()
 
-        // 3. 共有投稿のreactionCountをデクリメント
         let countRef = ref.child("posts/\(postId.uuidString)/reactionCount")
         try await countRef.setValue(ServerValue.increment(-1))
     }
     
-    // 古いメソッド互換用
-    func removeReaction(oshiId: UUID, from postId: UUID) async throws {
-        // IDが特定できない場合の削除用(現在は基本的にdeleteReactionを使用)
-    }
-
     // MARK: - Comments (Shared)
 
-    /// コメントを追加 (共有対応)
     func addComment(_ comment: Comment, to postId: UUID) async throws {
-        // 1. コメントを共有パスに保存 (post-comments/{postId}/{commentId})
         let commentRef = ref.child("post-comments/\(postId.uuidString)/\(comment.id.uuidString)")
-
         let commentData: [String: Any] = [
             "id": comment.id.uuidString,
             "oshiId": comment.oshiId.uuidString,
@@ -524,57 +460,42 @@ class FirebaseDatabaseManager {
             "timestamp": comment.timestamp.timeIntervalSince1970,
             "userId": userId
         ]
-
         try await commentRef.setValue(commentData)
 
-        // 2. 共有投稿のcommentCountをインクリメント
         let countRef = ref.child("posts/\(postId.uuidString)/commentCount")
         try await countRef.setValue(ServerValue.increment(1))
     }
 
-    /// 特定投稿のコメントを取得 (共有パスから)
     func loadComments(for postId: UUID, limit: Int = 10, before: Date? = nil) async throws -> [Comment] {
-        // ✅ 共有パスから取得
         var query = ref.child("post-comments/\(postId.uuidString)")
             .queryOrdered(byChild: "timestamp")
 
         if let before = before {
             query = query.queryEnding(atValue: before.timeIntervalSince1970)
         }
-
         query = query.queryLimited(toLast: UInt(limit))
 
         do {
             let snapshot = try await query.getData()
-
-            guard let value = snapshot.value as? [String: [String: Any]] else {
-                return []
-            }
+            guard let value = snapshot.value as? [String: [String: Any]] else { return [] }
 
             var comments: [Comment] = []
-
             for (_, commentData) in value {
                 if let comment = parseComment(from: commentData) {
                     comments.append(comment)
                 }
             }
-
             return comments.sorted { $0.timestamp < $1.timestamp }
         } catch let error as NSError {
-            if error.domain == "com.firebase.core" && error.code == 1 {
-                return []
-            }
+            if error.domain == "com.firebase.core" && error.code == 1 { return [] }
             throw error
         }
     }
 
-    /// コメントを削除 (共有対応)
     func removeComment(_ commentId: UUID, from postId: UUID) async throws {
-        // 1. 共有パスから削除
         let commentRef = ref.child("post-comments/\(postId.uuidString)/\(commentId.uuidString)")
         try await commentRef.removeValue()
 
-        // 2. 共有投稿のcommentCountをデクリメント
         let countRef = ref.child("posts/\(postId.uuidString)/commentCount")
         try await countRef.setValue(ServerValue.increment(-1))
     }
@@ -583,18 +504,15 @@ class FirebaseDatabaseManager {
     
     func saveChatRoom(_ chatRoom: ChatRoom) async throws {
         let roomRef = ref.child("users/\(userId)/chatRooms/\(chatRoom.oshiId.uuidString)")
-
         let roomData: [String: Any] = [
             "id": chatRoom.id.uuidString,
             "oshiId": chatRoom.oshiId.uuidString,
             "lastMessageDate": chatRoom.lastMessageDate?.timeIntervalSince1970 ?? 0,
             "unreadCount": chatRoom.unreadCount
         ]
-
         try await roomRef.setValue(roomData)
 
         let messagesRef = ref.child("users/\(userId)/messages/\(chatRoom.oshiId.uuidString)")
-
         for message in chatRoom.messages.suffix(100) {
             let messageData: [String: Any] = [
                 "id": message.id.uuidString,
@@ -604,29 +522,21 @@ class FirebaseDatabaseManager {
                 "timestamp": message.timestamp.timeIntervalSince1970,
                 "isRead": message.isRead
             ]
-
             try await messagesRef.child(message.id.uuidString).setValue(messageData)
         }
     }
 
     func loadChatRooms() async throws -> [ChatRoom] {
         let roomsSnapshot = try await ref.child("users/\(userId)/chatRooms").getData()
-
-        guard let roomsValue = roomsSnapshot.value as? [String: [String: Any]] else {
-            return []
-        }
+        guard let roomsValue = roomsSnapshot.value as? [String: [String: Any]] else { return [] }
 
         var chatRooms: [ChatRoom] = []
-
         for (oshiIdString, roomData) in roomsValue {
             guard let id = UUID(uuidString: roomData["id"] as? String ?? ""),
-                  let oshiId = UUID(uuidString: oshiIdString) else {
-                continue
-            }
+                  let oshiId = UUID(uuidString: oshiIdString) else { continue }
 
             let messagesSnapshot = try await ref.child("users/\(userId)/messages/\(oshiIdString)").getData()
             var messages: [Message] = []
-
             if let messagesValue = messagesSnapshot.value as? [String: [String: Any]] {
                 for (_, messageData) in messagesValue {
                     if let message = parseMessage(from: messageData) {
@@ -634,13 +544,11 @@ class FirebaseDatabaseManager {
                     }
                 }
             }
-
             messages.sort { $0.timestamp < $1.timestamp }
 
             let lastMessageDate = (roomData["lastMessageDate"] as? TimeInterval).flatMap {
                 $0 > 0 ? Date(timeIntervalSince1970: $0) : nil
             }
-
             let chatRoom = ChatRoom(
                 id: id,
                 oshiId: oshiId,
@@ -648,16 +556,13 @@ class FirebaseDatabaseManager {
                 lastMessageDate: lastMessageDate,
                 unreadCount: roomData["unreadCount"] as? Int ?? 0
             )
-
             chatRooms.append(chatRoom)
         }
-
         return chatRooms
     }
 
     func addMessage(to oshiId: UUID, message: Message) async throws {
         let messageRef = ref.child("users/\(userId)/messages/\(oshiId.uuidString)/\(message.id.uuidString)")
-
         let messageData: [String: Any] = [
             "id": message.id.uuidString,
             "content": message.content,
@@ -666,7 +571,6 @@ class FirebaseDatabaseManager {
             "timestamp": message.timestamp.timeIntervalSince1970,
             "isRead": message.isRead
         ]
-
         try await messageRef.setValue(messageData)
 
         let roomRef = ref.child("users/\(userId)/chatRooms/\(oshiId.uuidString)")
@@ -686,7 +590,6 @@ class FirebaseDatabaseManager {
 
         let messagesRef = ref.child("users/\(userId)/messages/\(oshiId.uuidString)")
         let snapshot = try await messagesRef.getData()
-
         if let messages = snapshot.value as? [String: [String: Any]] {
             for (messageId, _) in messages {
                 try await messagesRef.child(messageId).updateChildValues(["isRead": true])
@@ -702,23 +605,18 @@ class FirebaseDatabaseManager {
               let name = data["name"] as? String,
               let personalityText = data["personalityText"] as? String,
               let speechStyleText = data["speechStyleText"] as? String,
-              let createdAtTimestamp = data["createdAt"] as? TimeInterval else {
-            return nil
-        }
+              let createdAtTimestamp = data["createdAt"] as? TimeInterval else { return nil }
 
-        let genderRaw = data["gender"] as? String
-        let gender = genderRaw.flatMap { Gender(rawValue: $0) }
+        let gender = (data["gender"] as? String).flatMap { Gender(rawValue: $0) }
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
-        
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
         let isPublic = data["isPublic"] as? Bool ?? false
-        let followerCount = data["followerCount"] as? Int ?? 0 // 追加
-        
+        let followerCount = data["followerCount"] as? Int ?? 0
         let creatorId = data["creatorId"] as? String
 
         var oshi = OshiCharacter(
@@ -733,13 +631,11 @@ class FirebaseDatabaseManager {
             isFollowingUser: isFollowingUser,
             isFollowedByUser: isFollowedByUser,
             isPublic: isPublic,
-            followerCount: followerCount, // 追加
+            followerCount: followerCount,
             creatorId: creatorId
         )
-
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil
-
         return oshi
     }
 
@@ -748,7 +644,6 @@ class FirebaseDatabaseManager {
     func savePresetOshi(_ oshi: OshiCharacter) async throws {
         let path = "presets/oshiList/\(oshi.id.uuidString)"
         let oshiRef = ref.child(path)
-
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
@@ -760,25 +655,15 @@ class FirebaseDatabaseManager {
             "totalInteractions": 0,
             "avatarImageURL": oshi.avatarImageURL ?? "",
         ]
-        
-        // 👇 追加: creatorIdを保存
-        if let creatorId = oshi.creatorId {
-            oshiData["creatorId"] = creatorId
-        }
-
-        if let gender = oshi.gender {
-            oshiData["gender"] = gender.rawValue
-        }
-
+        if let creatorId = oshi.creatorId { oshiData["creatorId"] = creatorId }
+        if let gender = oshi.gender { oshiData["gender"] = gender.rawValue }
         try await oshiRef.updateChildValues(oshiData)
-        print("✅ プリセット保存（公式）: \(oshi.name)")
     }
 
     func sendNotification(to targetUserId: String, notification: AppNotification) async throws {
         guard targetUserId != userId else { return }
         
         let notificationRef = ref.child("users/\(targetUserId)/notifications/\(notification.id.uuidString)")
-        
         var data: [String: Any] = [
             "id": notification.id.uuidString,
             "type": notification.type.rawValue,
@@ -789,32 +674,21 @@ class FirebaseDatabaseManager {
             "isRead": notification.isRead,
             "category": notification.category.rawValue
         ]
-        
-        if let relatedPostId = notification.relatedPostId {
-            data["relatedPostId"] = relatedPostId.uuidString
-        }
-        if let targetName = notification.targetOshiName {
-            data["targetOshiName"] = targetName
-        }
-        if let avatarURL = notification.senderAvatarURL {  // ✅ 追加
-            data["senderAvatarURL"] = avatarURL
-        }
+        if let relatedPostId = notification.relatedPostId { data["relatedPostId"] = relatedPostId.uuidString }
+        if let targetName = notification.targetOshiName { data["targetOshiName"] = targetName }
+        if let avatarURL = notification.senderAvatarURL { data["senderAvatarURL"] = avatarURL }
         
         try await notificationRef.setValue(data)
     }
     
     func fetchUserProfile(userId: String) async throws -> OshiCharacter? {
         let snapshot = try await ref.child("users/\(userId)/profile").getData()
-        
-        guard let v = snapshot.value as? [String: Any] else {
-            return nil
-        }
+        guard let v = snapshot.value as? [String: Any] else { return nil }
         
         let name = v["userName"] as? String ?? "不明なユーザー"
         let bio = v["userBio"] as? String ?? ""
         let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         
-        // ユーザー情報をOshiCharacterモデルとして構築
         return OshiCharacter(
             id: UUID(uuidString: userId) ?? UUID(),
             name: name,
@@ -830,12 +704,8 @@ class FirebaseDatabaseManager {
         )
     }
 
-    // 既存の saveNotification は「自分への保存」として残すか、上記メソッドを使う形に修正
     func saveNotification(_ notification: AppNotification) async throws {
-        // sendNotification(to: userId...) を呼ぶとガードされるため、直接書き込む
-        
         let notificationRef = ref.child("users/\(userId)/notifications/\(notification.id.uuidString)")
-        
         var data: [String: Any] = [
             "id": notification.id.uuidString,
             "type": notification.type.rawValue,
@@ -846,65 +716,43 @@ class FirebaseDatabaseManager {
             "isRead": notification.isRead,
             "category": notification.category.rawValue
         ]
-        
-        if let relatedPostId = notification.relatedPostId {
-            data["relatedPostId"] = relatedPostId.uuidString
-        }
-        if let targetName = notification.targetOshiName {
-            data["targetOshiName"] = targetName
-        }
-        if let avatarURL = notification.senderAvatarURL {
-            data["senderAvatarURL"] = avatarURL
-        }
+        if let relatedPostId = notification.relatedPostId { data["relatedPostId"] = relatedPostId.uuidString }
+        if let targetName = notification.targetOshiName { data["targetOshiName"] = targetName }
+        if let avatarURL = notification.senderAvatarURL { data["senderAvatarURL"] = avatarURL }
         
         try await notificationRef.setValue(data)
-        print("💾 [Debug] saveNotification: Firebaseに保存完了 (ID: \(notification.id))")
     }
 
     func fetchPresetOshis() async throws -> [OshiCharacter] {
-        do {
-            let snap = try await ref.child("presets/oshiList").getData()
-            guard snap.exists() else { return [] }
-
-            var items: [(Int, OshiCharacter)] = []
-
-            for child in snap.children {
-                guard let c = child as? DataSnapshot,
-                      let v = c.value as? [String: Any] else { continue }
-
-                guard
-                    let idStr = v["id"] as? String,
-                    let id = UUID(uuidString: idStr),
-                    let name = v["name"] as? String,
-                    let personalityText = v["personalityText"] as? String,
-                    let speechStyleText = v["speechStyleText"] as? String
-                else { continue }
-
-                let gender = (v["gender"] as? String).flatMap { Gender(rawValue: $0) }
-                let speechCharacteristics = v["speechCharacteristics"] as? String ?? ""
-                let userCallingName = v["userCallingName"] as? String ?? ""
-                let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                let sortOrder = v["sortOrder"] as? Int ?? 9999
-
-                let oshi = OshiCharacter(
-                    id: id,
-                    name: name,
-                    gender: gender,
-                    personalityText: personalityText,
-                    speechCharacteristics: speechCharacteristics,
-                    userCallingName: userCallingName,
-                    speechStyleText: speechStyleText,
-                    avatarImageURL: avatar
-                )
-
-                items.append((sortOrder, oshi))
-            }
-
-            return items.sorted { $0.0 < $1.0 }.map { $0.1 }
-
-        } catch {
-            throw error
+        let snap = try await ref.child("presets/oshiList").getData()
+        guard snap.exists() else { return [] }
+        var items: [(Int, OshiCharacter)] = []
+        for child in snap.children {
+            guard let c = child as? DataSnapshot, let v = c.value as? [String: Any] else { continue }
+            guard let idStr = v["id"] as? String, let id = UUID(uuidString: idStr),
+                  let name = v["name"] as? String,
+                  let personalityText = v["personalityText"] as? String,
+                  let speechStyleText = v["speechStyleText"] as? String else { continue }
+            
+            let gender = (v["gender"] as? String).flatMap { Gender(rawValue: $0) }
+            let speechCharacteristics = v["speechCharacteristics"] as? String ?? ""
+            let userCallingName = v["userCallingName"] as? String ?? ""
+            let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let sortOrder = v["sortOrder"] as? Int ?? 9999
+            
+            let oshi = OshiCharacter(
+                id: id,
+                name: name,
+                gender: gender,
+                personalityText: personalityText,
+                speechCharacteristics: speechCharacteristics,
+                userCallingName: userCallingName,
+                speechStyleText: speechStyleText,
+                avatarImageURL: avatar
+            )
+            items.append((sortOrder, oshi))
         }
+        return items.sorted { $0.0 < $1.0 }.map { $0.1 }
     }
 
     func loadPresetOshiList() async throws -> [OshiCharacter] {
@@ -920,101 +768,43 @@ class FirebaseDatabaseManager {
     }
 
     func loadNotifications(limit: Int = 100) async throws -> [AppNotification] {
-        print("🔔 [Debug] loadNotifications: データ取得開始 (UserId: \(userId))")
-        
         let snapshot = try await ref.child("users/\(userId)/notifications")
             .queryOrdered(byChild: "timestamp")
             .queryLimited(toLast: UInt(limit))
             .getData()
         
-        // 生データがnilかどうか確認
-        guard let rawValue = snapshot.value, !(rawValue is NSNull) else {
-            print("🔔 [Debug] loadNotifications: データが存在しません (nil または NSNull)")
-            return []
-        }
-        
-        print("🔔 [Debug] loadNotifications: 取得データの型: \(type(of: rawValue))")
-        
+        guard let rawValue = snapshot.value, !(rawValue is NSNull) else { return [] }
         var notifications: [AppNotification] = []
         
-        // パターンA: 辞書型 [String: Any] として取得できた場合 (通常はこちら)
         if let dictValue = rawValue as? [String: Any] {
-            print("🔔 [Debug] loadNotifications: 辞書型として処理します")
-            for (key, item) in dictValue {
-                if let data = item as? [String: Any] {
-                    if let notification = parseNotification(from: data) {
-                        notifications.append(notification)
-                    } else {
-                        print("⚠️ [Debug] パース失敗 (Key: \(key)): 必須フィールドが不足している可能性があります")
-                    }
-                } else {
-                    print("⚠️ [Debug] データ型不一致 (Key: \(key)): [String: Any] ではありません")
+            for (_, item) in dictValue {
+                if let data = item as? [String: Any], let n = parseNotification(from: data) {
+                    notifications.append(n)
+                }
+            }
+        } else if let arrayValue = rawValue as? [Any] {
+            for item in arrayValue {
+                if let data = item as? [String: Any], let n = parseNotification(from: data) {
+                    notifications.append(n)
                 }
             }
         }
-        // パターンB: 配列型 [Any] として取得された場合 (キーが整数の連番に近い場合など)
-        else if let arrayValue = rawValue as? [Any] {
-            print("🔔 [Debug] loadNotifications: 配列型として処理します")
-            for (index, item) in arrayValue.enumerated() {
-                // 配列の要素が辞書型か確認
-                if let data = item as? [String: Any] {
-                    if let notification = parseNotification(from: data) {
-                        notifications.append(notification)
-                    } else {
-                        print("⚠️ [Debug] パース失敗 (Index: \(index))")
-                    }
-                } else if item is NSNull {
-                    // 配列の欠番などは無視
-                    continue
-                } else {
-                    print("⚠️ [Debug] 配列要素の型が予期せぬものです (Index: \(index)): \(type(of: item))")
-                }
-            }
-        } else {
-            print("❌ [Debug] loadNotifications: 想定外のデータ構造です。処理できません。")
-            return []
-        }
-        
-        print("🔔 [Debug] loadNotifications: 最終的な取得件数 -> \(notifications.count)件")
         return notifications.sorted { $0.timestamp > $1.timestamp }
     }
     
     func markAllNotificationsAsRead() async throws {
         let notificationsRef = ref.child("users/\(userId)/notifications")
-        
         let snapshot = try await notificationsRef.queryOrdered(byChild: "isRead").queryEqual(toValue: false).getData()
-        
         guard let value = snapshot.value as? [String: Any] else { return }
         
         var updates: [String: Any] = [:]
-        for (key, _) in value {
-            updates["\(key)/isRead"] = true
-        }
-        
-        if !updates.isEmpty {
-            try await notificationsRef.updateChildValues(updates)
-        }
+        for (key, _) in value { updates["\(key)/isRead"] = true }
+        if !updates.isEmpty { try await notificationsRef.updateChildValues(updates) }
     }
     
     func updateNotificationReadStatus(_ notificationId: UUID, isRead: Bool) async throws {
         try await ref.child("users/\(userId)/notifications/\(notificationId.uuidString)")
             .updateChildValues(["isRead": isRead])
-    }
-    
-    func deleteOldNotifications(olderThan date: Date) async throws {
-        let timestamp = date.timeIntervalSince1970
-        let query = ref.child("users/\(userId)/notifications")
-            .queryOrdered(byChild: "timestamp")
-            .queryEnding(atValue: timestamp)
-            
-        let snapshot = try await query.getData()
-        guard let value = snapshot.value as? [String: [String: Any]] else { return }
-        
-        for (key, data) in value {
-            if let itemTimestamp = data["timestamp"] as? TimeInterval, itemTimestamp <= timestamp {
-                try await ref.child("users/\(userId)/notifications/\(key)").removeValue()
-            }
-        }
     }
     
     func saveBookmark(postId: UUID) async throws {
@@ -1047,17 +837,14 @@ class FirebaseDatabaseManager {
               let senderId = UUID(uuidString: senderIdString),
               let senderName = data["senderName"] as? String,
               let content = data["content"] as? String,
-              let timestampInterval = data["timestamp"] as? TimeInterval else {
-            return nil
-        }
+              let timestampInterval = data["timestamp"] as? TimeInterval else { return nil }
         
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let isRead = data["isRead"] as? Bool ?? false
         let relatedPostId = (data["relatedPostId"] as? String).flatMap { UUID(uuidString: $0) }
-        let categoryString = data["category"] as? String
-        let category = categoryString.flatMap { NotificationCategory(rawValue: $0) } ?? .me
+        let category = (data["category"] as? String).flatMap { NotificationCategory(rawValue: $0) } ?? .me
         let targetOshiName = data["targetOshiName"] as? String
-        let senderAvatarURL = data["senderAvatarURL"] as? String  // ✅ 追加
+        let senderAvatarURL = data["senderAvatarURL"] as? String
         
         return AppNotification(
             id: id,
@@ -1070,31 +857,27 @@ class FirebaseDatabaseManager {
             isRead: isRead,
             category: category,
             targetOshiName: targetOshiName,
-            senderAvatarURL: senderAvatarURL  // ✅ 追加
+            senderAvatarURL: senderAvatarURL
         )
     }
 
     // MARK: - Parsers
 
-    private func parsePost(from data: [String: Any]) -> Post? {
+    func parsePost(from data: [String: Any]) -> Post? {
         guard let idString = data["id"] as? String,
               let id = UUID(uuidString: idString),
               let authorName = data["authorName"] as? String,
               let content = data["content"] as? String,
               let timestampInterval = data["timestamp"] as? TimeInterval,
-              let isUserPost = data["isUserPost"] as? Bool else {
-            return nil
-        }
+              let isUserPost = data["isUserPost"] as? Bool else { return nil }
+        
         let authorId = (data["authorId"] as? String).flatMap { UUID(uuidString: $0) }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let reactionCount = data["reactionCount"] as? Int ?? 0
         let commentCount = data["commentCount"] as? Int ?? 0
         let repostCount = data["repostCount"] as? Int ?? 0
-        
         let authorAvatarURL = data["authorAvatarURL"] as? String
         let imageURLs = data["imageURLs"] as? [String] ?? []
-        
-        // 👇 追加: creatorIdの取得
         let creatorId = data["creatorId"] as? String
 
         var post = Post(
@@ -1106,33 +889,24 @@ class FirebaseDatabaseManager {
             isUserPost: isUserPost,
             authorAvatarURL: authorAvatarURL,
             imageURLs: imageURLs,
-            creatorId: creatorId // 👇 追加
+            creatorId: creatorId
         )
-
         post.reactionCount = reactionCount
         post.commentCount = commentCount
         post.repostCount = repostCount
-
         return post
     }
     
     func repostPost(postId: UUID) async throws {
-        // 1. ユーザーのリツイートリストに追加
         let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
         try await repostRef.setValue(Date().timeIntervalSince1970)
-
-        // 2. 共有投稿のrepostCountをインクリメント
-        // ✅ users/{userId}/posts ではなく root/posts を更新
         let countRef = ref.child("posts/\(postId.uuidString)/repostCount")
         try await countRef.setValue(ServerValue.increment(1))
     }
 
     func unrepostPost(postId: UUID) async throws {
-        // 1. ユーザーのリツイートリストから削除
         let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
         try await repostRef.removeValue()
-
-        // 2. 共有投稿のrepostCountをデクリメント
         let countRef = ref.child("posts/\(postId.uuidString)/repostCount")
         try await countRef.setValue(ServerValue.increment(-1))
     }
@@ -1148,34 +922,17 @@ class FirebaseDatabaseManager {
               let id = UUID(uuidString: idString),
               let content = data["content"] as? String,
               let isFromUser = data["isFromUser"] as? Bool,
-              let timestampInterval = data["timestamp"] as? TimeInterval else {
-            return nil
-        }
-
+              let timestampInterval = data["timestamp"] as? TimeInterval else { return nil }
+        
         let oshiId = (data["oshiId"] as? String).flatMap { UUID(uuidString: $0) }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         let isRead = data["isRead"] as? Bool ?? false
-
-        return Message(
-            id: id,
-            content: content,
-            isFromUser: isFromUser,
-            oshiId: oshiId,
-            timestamp: timestamp,
-            isRead: isRead
-        )
+        return Message(id: id, content: content, isFromUser: isFromUser, oshiId: oshiId, timestamp: timestamp, isRead: isRead)
     }
 
-    /// 「いいね」した投稿のID一覧を取得 (高速化版)
     func loadUserLikedPostIDs() async throws -> [UUID] {
-        // ✅ users/{userId}/likes から取得するように変更
         let snapshot = try await ref.child("users/\(userId)/likes").getData()
-        
-        guard let value = snapshot.value as? [String: TimeInterval] else {
-            return []
-        }
-        
-        // IDのみ抽出
+        guard let value = snapshot.value as? [String: TimeInterval] else { return [] }
         return value.keys.compactMap { UUID(uuidString: $0) }
     }
 
@@ -1186,10 +943,7 @@ class FirebaseDatabaseManager {
               let oshiId = UUID(uuidString: oshiIdString),
               let oshiName = data["oshiName"] as? String,
               let emoji = data["emoji"] as? String,
-              let timestampInterval = data["timestamp"] as? TimeInterval else {
-            return nil
-        }
-
+              let timestampInterval = data["timestamp"] as? TimeInterval else { return nil }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         return Reaction(id: id, oshiId: oshiId, oshiName: oshiName, emoji: emoji, timestamp: timestamp)
     }
@@ -1201,10 +955,7 @@ class FirebaseDatabaseManager {
               let oshiId = UUID(uuidString: oshiIdString),
               let oshiName = data["oshiName"] as? String,
               let content = data["content"] as? String,
-              let timestampInterval = data["timestamp"] as? TimeInterval else {
-            return nil
-        }
-
+              let timestampInterval = data["timestamp"] as? TimeInterval else { return nil }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
         return Comment(id: id, oshiId: oshiId, oshiName: oshiName, content: content, timestamp: timestamp)
     }

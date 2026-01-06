@@ -679,12 +679,13 @@ struct PostCardView: View {
     }
     
     private func loadImages() async {
-        // 推しのアバター
+        if avatarImage != nil && (postImages.count == post.imageURLs.count) {
+            return
+        }
+        
         if let oshi = oshi, let urlString = oshi.avatarImageURL {
             avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
-        }
-        // 2. 👈 追加: いない場合、投稿データのURLを使う
-        else if let urlString = post.authorAvatarURL, !urlString.isEmpty {
+        } else if let urlString = post.authorAvatarURL, !urlString.isEmpty {
             avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
         }
         // ユーザーのアバター
@@ -693,15 +694,21 @@ struct PostCardView: View {
         }
         
         // 投稿画像
-        if !post.imageURLs.isEmpty && postImages.count != post.imageURLs.count {
-            var loaded: [UIImage] = []
-            for imageURL in post.imageURLs {
-                if let image = try? await FirebaseStorageManager.shared.downloadImage(from: imageURL) {
-                    loaded.append(image)
+        if !post.imageURLs.isEmpty && postImages.isEmpty {
+            await withTaskGroup(of: UIImage?.self) { group in
+                for url in post.imageURLs {
+                    group.addTask {
+                        return try? await FirebaseStorageManager.shared.downloadImage(from: url)
+                    }
                 }
-            }
-            await MainActor.run {
-                self.postImages = loaded
+                
+                var loaded: [UIImage] = []
+                for await image in group {
+                    if let img = image { loaded.append(img) }
+                }
+                await MainActor.run {
+                    self.postImages = loaded
+                }
             }
         }
     }

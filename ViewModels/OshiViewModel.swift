@@ -56,33 +56,13 @@ class OshiViewModel: ObservableObject {
     }
     
     var timelinePosts: [Post] {
-        // 1. ベースは自分の投稿(posts)
-        var combined = posts
-        
-        // 2. 公開タイムライン(publicTimelinePosts)から、フォローしている人の投稿を抽出して追加
-        let followedPosts = publicTimelinePosts.filter { post in
-            guard let authorId = post.authorId else { return false }
-            
-            // ローカルの推し、またはリモートでフォローしている推しなら表示
-            let isLocalOshi = oshiList.contains(where: { $0.id == authorId })
-            let isRemoteFollow = followingRemoteOshiIDs.contains(authorId)
-            
-            return isLocalOshi || isRemoteFollow
-        }
-        
-        combined.append(contentsOf: followedPosts)
-        
-        // 3. 重複排除（念のため）と日付順ソート
-        // PostがHashable準拠でない場合はIDで重複排除
-        let uniquePosts = Array(Dictionary(grouping: combined, by: { $0.id }).values.compactMap { $0.first })
-        
-        return uniquePosts.sorted { $0.timestamp > $1.timestamp }
+        return posts // ViewModel内ですでにマージ・ソート済み
     }
     
     // ✅ 修正: 公開タイムラインの投稿をそのまま返すように変更
     // これにより、他のユーザーが作成した共有(公開)推しの投稿が表示されるようになります
     var recommendedPosts: [Post] {
-        return publicTimelinePosts.sorted { $0.timestamp > $1.timestamp }
+        return publicTimelinePosts
     }
     
     init() {
@@ -745,30 +725,52 @@ class OshiViewModel: ObservableObject {
         errorMessage = nil
 
         do {
+            // 1. 各種リストの並列ロード
             async let oshiListTask = dbManager.loadOshiList()
-            async let myPostsTask = dbManager.loadMyPosts(limit: 50)
-            async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
             async let chatRoomsTask = dbManager.loadChatRooms()
             async let userProfileTask = dbManager.loadUserProfile()
             async let followingTask = dbManager.loadFollowingIds()
-            
             async let presetsTask = dbManager.fetchPresetOshis()
+            
+            // 2. タイムラインデータの最適化ロード
+            async let myPostsTask = dbManager.loadMyPosts(limit: 50)
+            async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
 
-            // タプルに追加して待機
             let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets) =
                 try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask)
 
-            // データを反映
+            // 3. データ反映
             oshiList = loadedOshi
-            posts = loadedMyPosts
             publicTimelinePosts = loadedPublicPosts
             followingRemoteOshiIDs = Set(loadedFollowingIDs)
             chatRooms = loadedRooms
             userProfileName = profile.userName
             userProfileAvatarURL = profile.avatarImageURL
-            
-            // ★ 追加: recommendedOshis に格納
             recommendedOshis = loadedPresets
+
+            // 4. フォロー中タイムラインの構築 (重要: ここでマージ)
+            // 自分の推し(Local) + リモートフォロー(Remote) のIDリストを作成
+            let localOshiIds = oshiList.map { $0.id }
+            let remoteOshiIds = Array(followingRemoteOshiIDs)
+            let allFollowingIds = Set(localOshiIds + remoteOshiIds) // 重複排除
+            
+            // フォローしている推しの投稿を取得
+            let followingPosts = try await dbManager.loadFollowingPosts(followingIds: Array(allFollowingIds))
+            
+            // 自分の投稿とマージしてソート
+            let mergedPosts = (loadedMyPosts + followingPosts)
+                // 重複排除 (念のため)
+                .reduce(into: [Post]()) { res, post in
+                    if !res.contains(where: { $0.id == post.id }) { res.append(post) }
+                }
+                .sorted { $0.timestamp > $1.timestamp }
+            
+            self.posts = mergedPosts
+            
+            // 5. 古い通知の削除 (バックグラウンドで実行)
+            Task {
+                try? await dbManager.deleteOldNotifications(olderThan: Date().addingTimeInterval(-60*60*24*30))
+            }
 
         } catch {
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
@@ -965,24 +967,24 @@ class OshiViewModel: ObservableObject {
     
     // MARK: - タイムライン(最適化版)
     
-    func createUserPost(content: String) {
-        let post = Post(authorName: "あなた", content: content, isUserPost: true)
-        posts.insert(post, at: 0)
+    func createUserPost(content: String, imageURLs: [String] = []) {
+        let post = Post(
+            authorName: "あなた",
+            content: content,
+            isUserPost: true,
+            imageURLs: imageURLs
+        )
         
-        // ✅ 空のPostDetailsを作成(即座に表示できるように)
+        // UI即時反映
+        posts.insert(post, at: 0)
         postDetails[post.id] = PostDetails(post: post, reactions: [], comments: [], hasMoreComments: false)
         
         Task {
             do {
                 try await dbManager.savePost(post)
-                
-                // すべての推しが反応(遅延実行)
-//                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.startDelayRange)))
                 await generateReactionsForPost(post)
-                
             } catch {
-                errorMessage = "投稿の保存に失敗しました: \(error.localizedDescription)"
-                print("❌ 投稿保存エラー: \(error)")
+                errorMessage = "保存失敗: \(error.localizedDescription)"
             }
         }
     }
@@ -1170,53 +1172,6 @@ class OshiViewModel: ObservableObject {
                 try await dbManager.saveOshi(oshiList[oshiIndex])
             } catch {
                 print("❌ 親密度更新エラー: \(error)")
-            }
-        }
-    }
-    
-    func createUserPost(content: String, imageURLs: [String] = []) {
-        print("📝 createUserPost開始")
-        print("  - テキスト: \(content)")
-        print("  - 画像数: \(imageURLs.count)")
-        
-        let post = Post(
-            authorName: "あなた",
-            content: content,
-            isUserPost: true,
-            imageURLs: imageURLs
-        )
-        
-        posts.insert(post, at: 0)
-        
-        // ✅ 空のPostDetailsを作成(即座に表示できるように)
-        postDetails[post.id] = PostDetails(
-            post: post,
-            reactions: [],
-            comments: [],
-            hasMoreComments: false
-        )
-        
-        print("✅ ローカルに投稿追加完了")
-        
-        Task {
-            do {
-                print("💾 Firebaseに保存中...")
-                try await dbManager.savePost(post)
-                print("✅ Firebase保存完了")
-                
-                // すべての推しが反応(遅延実行)
-                let delay = UInt64.random(in: 60_000_000_000...300_000_000_000)
-                print("⏱️ \(Double(delay) / 1_000_000_000)秒後に反応生成開始")
-                try await Task.sleep(nanoseconds: delay)
-                
-                await generateReactionsForPost(post)
-                print("✅ 反応生成完了")
-                
-            } catch {
-                await MainActor.run {
-                    errorMessage = "投稿の保存に失敗しました: \(error.localizedDescription)"
-                    print("❌ 投稿保存エラー: \(error)")
-                }
             }
         }
     }
