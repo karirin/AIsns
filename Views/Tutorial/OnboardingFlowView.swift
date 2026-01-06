@@ -2,7 +2,7 @@
 //  OnboardingFlowView.swift
 //  AIsns
 //
-//  Updated: 2026/01/02 - Complete UI/UX Redesign
+//  Updated: 2026/01/06 - 簡単入力機能追加
 //
 
 import SwiftUI
@@ -327,15 +327,22 @@ struct OnboardingOshiSetupView: View {
     @State private var avatarImage: UIImage?
     @State private var showImagePicker = false
     @State private var isProcessing = false
-    @State private var avatarPulse = false
+    
+    // クイック入力の展開状態
+    @State private var showPersonalityOptions = false
+    @State private var showToneOptions = false
+    
+    // クイック入力オプション
+    private let personalityOptions = ["優しい", "明るい", "クール", "天然", "しっかり者", "甘えん坊", "ツンデレ", "元気"]
+    private let toneOptions = ["丁寧語", "タメ口", "関西弁", "方言", "クール", "フレンドリー", "敬語", "ギャル語"]
     
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: DesignTokens.Spacing.xl) {
-                Spacer(minLength: DesignTokens.Spacing.lg)
+            VStack(spacing: DesignTokens.Spacing.lg) {
+                Spacer(minLength: DesignTokens.Spacing.md)
                 
                 // タイトル
-                VStack(spacing: DesignTokens.Spacing.sm) {
+                VStack(spacing: DesignTokens.Spacing.xs) {
                     Text("最初のパートナーを選ぶ")
                         .font(AppTypography.title2)
                         .foregroundColor(AppColors.textPrimary)
@@ -353,7 +360,6 @@ struct OnboardingOshiSetupView: View {
                     LoadingView(message: "おすすめを読み込み中...")
                         .frame(height: 180)
                 } else {
-                    // 追加: データが空かつロード中でない場合の表示（エラーまたは0件）
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 32))
@@ -373,6 +379,7 @@ struct OnboardingOshiSetupView: View {
                     .frame(maxWidth: .infinity)
                     .background(AppColors.backgroundSecondary.opacity(0.5))
                     .cornerRadius(12)
+                    .padding(.horizontal, DesignTokens.Spacing.xl)
                 }
                 
                 // 区切り線
@@ -392,7 +399,7 @@ struct OnboardingOshiSetupView: View {
                 // カスタム作成フォーム
                 customCreationForm
                 
-                Spacer(minLength: DesignTokens.Spacing.xxxl)
+                Spacer(minLength: DesignTokens.Spacing.xxl)
             }
         }
         .sheet(isPresented: $showImagePicker) {
@@ -427,24 +434,18 @@ struct OnboardingOshiSetupView: View {
     
     private var customCreationForm: some View {
         VStack(spacing: DesignTokens.Spacing.md) {
-            // アバター選択
-            Button(action: {
-                generateHapticFeedback()
-                showImagePicker = true
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(AppColors.pinkGradient)
-                        .frame(width: 110, height: 110)
-                        .blur(radius: avatarPulse ? 16 : 12)
-                        .opacity(avatarPulse ? 0.4 : 0.3)
-                        .scaleEffect(avatarPulse ? 1.05 : 1.0)
-                    
+            // アバター + 名前（横並び）
+            HStack(spacing: 16) {
+                // アバター選択
+                Button(action: {
+                    generateHapticFeedback()
+                    showImagePicker = true
+                }) {
                     if let image = avatarImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 100, height: 100)
+                            .frame(width: 72, height: 72)
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
@@ -453,29 +454,85 @@ struct OnboardingOshiSetupView: View {
                     } else {
                         ZStack {
                             Circle()
-                                .fill(AppColors.pinkGradient)
-                                .frame(width: 100, height: 100)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: "FEE2E2"), Color(hex: "FCE7F3")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 72, height: 72)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(Color(hex: "EC4899").opacity(0.3), lineWidth: 2)
+                                )
                             
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 36, weight: .bold))
-                                .foregroundColor(.white)
+                            VStack(spacing: 2) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(Color(hex: "EC4899"))
+                                Text("写真")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(Color(hex: "EC4899"))
+                            }
                         }
                     }
                 }
-            }
-            .pressableStyle()
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                    avatarPulse = true
+                .buttonStyle(ScaleButtonStyle())
+                
+                // 名前入力
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("フォロワーの名前")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    
+                    TextField("例: レン", text: $name)
+                        .font(.system(size: 16, weight: .medium))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(hex: "F3F4F6"))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(
+                                            name.isEmpty ? Color.clear : Color(hex: "EC4899").opacity(0.4),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                        )
                 }
             }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+            )
+            .padding(.horizontal, DesignTokens.Spacing.xl)
             
-            // 入力フィールド
-            VStack(spacing: DesignTokens.Spacing.sm) {
-                inputField(title: "フォロワーの名前", placeholder: "例: レン", text: $name)
-                inputField(title: "性格", placeholder: "例: 優しくて甘えん坊", text: $personality)
-                inputField(title: "口調", placeholder: "例: タメ口、語尾に「〜だよ」", text: $tone)
-            }
+            // 性格入力カード
+            compactInputCard(
+                icon: "heart.fill",
+                iconColor: Color(hex: "EF4444"),
+                label: "性格",
+                placeholder: "優しい、明るい、ツンデレ など",
+                text: $personality,
+                options: personalityOptions,
+                isExpanded: $showPersonalityOptions
+            )
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            
+            // 口調入力カード
+            compactInputCard(
+                icon: "text.bubble.fill",
+                iconColor: Color(hex: "10B981"),
+                label: "口調",
+                placeholder: "丁寧語、タメ口、方言 など",
+                text: $tone,
+                options: toneOptions,
+                isExpanded: $showToneOptions
+            )
             .padding(.horizontal, DesignTokens.Spacing.xl)
             
             // 作成ボタン
@@ -488,17 +545,21 @@ struct OnboardingOshiSetupView: View {
                         .background(AppColors.pink.opacity(0.7))
                         .cornerRadius(DesignTokens.Radius.md)
                 } else {
-                    Text("作成してはじめる")
-                        .font(AppTypography.bodyMedium)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, DesignTokens.Spacing.md)
-                        .background(
-                            name.isEmpty
-                            ? LinearGradient(colors: [.gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
-                            : AppColors.pinkGradient
-                        )
-                        .cornerRadius(DesignTokens.Radius.md)
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("作成してはじめる")
+                            .font(AppTypography.bodyMedium)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DesignTokens.Spacing.md)
+                    .background(
+                        name.isEmpty
+                        ? LinearGradient(colors: [.gray.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
+                        : AppColors.pinkGradient
+                    )
+                    .cornerRadius(DesignTokens.Radius.md)
                 }
             }
             .disabled(name.isEmpty || isProcessing)
@@ -507,17 +568,113 @@ struct OnboardingOshiSetupView: View {
         }
     }
     
-    private func inputField(title: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-            Text(title)
-                .font(AppTypography.captionMedium)
-                .foregroundColor(AppColors.textSecondary)
+    // MARK: - コンパクト入力カード
+    private func compactInputCard(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        options: [String],
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // ヘッダー
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(iconColor.opacity(0.12)))
+                
+                Text(label)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "374151"))
+                
+                Spacer()
+                
+                // 簡単入力ボタン
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isExpanded.wrappedValue.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("簡単入力")
+                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundColor(Color(hex: "EC4899"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule().fill(Color(hex: "EC4899").opacity(0.1))
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
             
+            // テキスト入力
             TextField(placeholder, text: text)
-                .font(AppTypography.body)
-                .padding(DesignTokens.Spacing.sm)
-                .background(AppColors.backgroundSecondary)
-                .cornerRadius(DesignTokens.Radius.sm)
+                .font(.system(size: 14))
+                .foregroundColor(Color(hex: "374151"))
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(hex: "F9FAFB"))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(
+                                    text.wrappedValue.isEmpty ? Color(hex: "E5E7EB") : iconColor.opacity(0.3),
+                                    lineWidth: 1
+                                )
+                        )
+                )
+            
+            // クイック入力オプション
+            if isExpanded.wrappedValue {
+                OnboardingFlowLayout(spacing: 6) {
+                    ForEach(options, id: \.self) { option in
+                        OnboardingQuickInputTag(
+                            text: option,
+                            isSelected: text.wrappedValue.contains(option),
+                            color: iconColor
+                        ) {
+                            appendToText(option, to: text)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+        )
+    }
+    
+    // MARK: - テキスト追加ヘルパー
+    private func appendToText(_ option: String, to text: Binding<String>) {
+        generateHapticFeedback()
+        
+        if text.wrappedValue.isEmpty {
+            text.wrappedValue = option
+        } else if text.wrappedValue.contains(option) {
+            let patterns = ["\(option)、", "、\(option)", option]
+            for pattern in patterns {
+                if text.wrappedValue.contains(pattern) {
+                    text.wrappedValue = text.wrappedValue.replacingOccurrences(of: pattern, with: "")
+                    break
+                }
+            }
+            text.wrappedValue = text.wrappedValue.trimmingCharacters(in: CharacterSet(charactersIn: "、 "))
+        } else {
+            text.wrappedValue += "、\(option)"
         }
     }
     
@@ -571,6 +728,87 @@ struct OnboardingOshiSetupView: View {
                 onComplete()
             }
         }
+    }
+}
+
+// MARK: - Onboarding用FlowLayout（名前衝突回避）
+
+struct OnboardingFlowLayout: Layout {
+    var spacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = FlowResult(
+            in: proposal.replacingUnspecifiedDimensions().width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        return result.size
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = FlowResult(
+            in: bounds.width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x,
+                                      y: bounds.minY + result.positions[index].y),
+                         proposal: .unspecified)
+        }
+    }
+    
+    struct FlowResult {
+        var size: CGSize = .zero
+        var positions: [CGPoint] = []
+        
+        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
+            var currentX: CGFloat = 0
+            var currentY: CGFloat = 0
+            var lineHeight: CGFloat = 0
+            
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                
+                if currentX + size.width > maxWidth && currentX > 0 {
+                    currentX = 0
+                    currentY += lineHeight + spacing
+                    lineHeight = 0
+                }
+                
+                positions.append(CGPoint(x: currentX, y: currentY))
+                lineHeight = max(lineHeight, size.height)
+                currentX += size.width + spacing
+                
+                self.size.width = max(self.size.width, currentX - spacing)
+            }
+            
+            self.size.height = currentY + lineHeight
+        }
+    }
+}
+
+// MARK: - Onboarding用QuickInputTag（名前衝突回避）
+
+struct OnboardingQuickInputTag: View {
+    let text: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(isSelected ? .white : color)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? color : color.opacity(0.1))
+                )
+        }
+        .buttonStyle(ScaleButtonStyle())
     }
 }
 

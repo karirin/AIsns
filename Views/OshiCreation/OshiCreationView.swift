@@ -10,11 +10,6 @@ import SwiftUI
 struct OshiCreationView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
-    private let presets = [
-        ("ツンデレ", "普段は厳しいけど、たまに優しくなる性格。"),
-        ("癒やし系", "いつも穏やかで、ユーザーを包み込むような性格。"),
-        ("熱血", "常に前向きで、ユーザーを全力で応援してくれる性格。")
-    ]
     
     // 入力State
     @State private var name: String = ""
@@ -32,8 +27,17 @@ struct OshiCreationView: View {
     
     // アニメーション用State
     @State private var appearAnimation = false
-    @State private var avatarPulse = false
     @State private var isSaving = false
+    
+    // クイック入力の展開状態
+    @State private var showPersonalityOptions = false
+    @State private var showSpeechCharacteristicsOptions = false
+    @State private var showSpeechStyleOptions = false
+    
+    // クイック入力オプション
+    private let personalityOptions = ["優しい", "明るい", "クール", "天然", "しっかり者", "甘えん坊", "ツンデレ", "元気"]
+    private let speechCharacteristicsOptions = ["柔らかい口調", "元気いっぱい", "落ち着いている", "おっとり", "ハキハキ", "ゆっくり", "早口", "囁くような"]
+    private let speechStyleOptions = ["丁寧語", "タメ口", "関西弁", "方言", "クール", "フレンドリー", "敬語", "ギャル語"]
     
     // カラーテーマ
     private let accentGradient = LinearGradient(
@@ -42,16 +46,10 @@ struct OshiCreationView: View {
         endPoint: .bottomTrailing
     )
     
-    private let softGradient = LinearGradient(
-        colors: [Color(hex: "F0F4FF"), Color(hex: "FAF5FF")],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-    
     private let cardGradient = LinearGradient(
         colors: [
-            Color.white.opacity(0.9),
-            Color.white.opacity(0.7)
+            Color.white.opacity(0.95),
+            Color.white.opacity(0.85)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -59,37 +57,31 @@ struct OshiCreationView: View {
     
     var body: some View {
         ZStack {
-            // 背景レイヤー
-            backgroundLayer
+            // 背景
+            Color(hex: "F8FAFC")
+                .ignoresSafeArea()
             
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 28) {
-                    // ヘッダーカード
+                VStack(spacing: 16) {
+                    // ヘッダー（アバター＋名前＋性別）
                     headerCard
-                        .offset(y: appearAnimation ? 0 : 30)
                         .opacity(appearAnimation ? 1 : 0)
-                    
-                    // 基本設定セクション
-                    basicSettingsSection
-                        .offset(y: appearAnimation ? 0 : 40)
-                        .opacity(appearAnimation ? 1 : 0)
+                        .offset(y: appearAnimation ? 0 : 20)
                     
                     // キャラクター設定セクション
                     characterSettingsSection
-                        .offset(y: appearAnimation ? 0 : 50)
                         .opacity(appearAnimation ? 1 : 0)
+                        .offset(y: appearAnimation ? 0 : 20)
                     
-                    // ユーザーとの関係セクション
-                    relationshipSection
-                        .offset(y: appearAnimation ? 0 : 60)
+                    // ユーザーとの関係 + 共有設定
+                    bottomSettingsSection
                         .opacity(appearAnimation ? 1 : 0)
+                        .offset(y: appearAnimation ? 0 : 20)
                     
-                    shareSettingsSection
-                        .offset(y: appearAnimation ? 0 : 70)
-                        .opacity(appearAnimation ? 1 : 0)
-                    
-                    Spacer(minLength: 120)
+                    Spacer(minLength: 100)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 100)
             }
             
@@ -131,374 +123,397 @@ struct OshiCreationView: View {
             ImagePickerWithCrop(selectedImage: $avatarImage)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.7).delay(0.1)) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                 appearAnimation = true
             }
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                avatarPulse = true
-            }
         }
     }
     
-    // MARK: - 背景レイヤー
-    private var backgroundLayer: some View {
-        ZStack {
-            // ベースグラデーション
-            softGradient
-                .ignoresSafeArea()
-            
-            // 装飾的な図形
-            GeometryReader { geometry in
-                // 上部の装飾円
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color(hex: "6366F1").opacity(0.15),
-                                Color(hex: "6366F1").opacity(0)
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: geometry.size.width * 0.6
-                        )
-                    )
-                    .frame(width: geometry.size.width * 1.2, height: geometry.size.width * 1.2)
-                    .position(x: geometry.size.width * 0.8, y: -geometry.size.width * 0.3)
-                
-                // 下部の装飾円
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color(hex: "A855F7").opacity(0.12),
-                                Color(hex: "A855F7").opacity(0)
-                            ],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: geometry.size.width * 0.5
-                        )
-                    )
-                    .frame(width: geometry.size.width * 1.0, height: geometry.size.width * 1.0)
-                    .position(x: geometry.size.width * 0.1, y: geometry.size.height * 0.85)
-            }
-            .ignoresSafeArea()
-        }
-    }
-    
-    // MARK: - ヘッダーカード
+    // MARK: - ヘッダーカード（アバター＋名前＋性別）
     private var headerCard: some View {
-        VStack(spacing: 20) {
-            // プロフィール画像
-            avatarSection
-            
-            // 名前入力
-            nameInputSection
-        }
-        .padding(24)
-        .background(
-            ZStack {
-                // ガラスモーフィズム効果
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(.ultraThinMaterial)
+        VStack(spacing: 16) {
+            // アバター + 名前（横並び）
+            HStack(spacing: 16) {
+                // アバター
+                avatarButton
                 
-                RoundedRectangle(cornerRadius: 28)
-                    .fill(cardGradient)
-                
-                // 内側のボーダー
-                RoundedRectangle(cornerRadius: 28)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.6),
-                                Color.white.opacity(0.2)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                // 名前入力
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("フォロワーの名前")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    
+                    TextField("例: さくら", text: $name)
+                        .font(.system(size: 17, weight: .medium))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(hex: "F3F4F6"))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(
+                                            name.isEmpty ? Color.clear : Color(hex: "6366F1").opacity(0.4),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                        )
+                }
             }
-        )
-        .shadow(color: Color(hex: "6366F1").opacity(0.08), radius: 20, y: 10)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+            
+            // 性別選択（インライン）
+            VStack(alignment: .leading, spacing: 8) {
+                Text("性別")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "6B7280"))
+                
+                HStack(spacing: 10) {
+                    ForEach(Gender.allCases, id: \.self) { g in
+                        genderButton(g)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(cardBackground)
     }
     
-    // MARK: - アバターセクション
-    private var avatarSection: some View {
-        Button(action: {
+    // MARK: - アバターボタン
+    private var avatarButton: some View {
+        Button {
             generateHapticFeedback()
             showingImagePicker = true
-        }) {
+        } label: {
             ZStack {
-                // 外側のグロー効果
-                Circle()
-                    .fill(accentGradient)
-                    .frame(width: 134, height: 134)
-                    .blur(radius: avatarPulse ? 20 : 15)
-                    .opacity(avatarPulse ? 0.4 : 0.3)
-                    .scaleEffect(avatarPulse ? 1.05 : 1.0)
-                
                 if isLoadingImage {
-                    loadingAvatarView
+                    Circle()
+                        .fill(Color(hex: "F3F4F6"))
+                        .frame(width: 80, height: 80)
+                    ProgressView()
                 } else if let avatarImage = avatarImage {
-                    existingAvatarView(avatarImage)
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 80, height: 80)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(accentGradient, lineWidth: 3)
+                        )
                 } else {
-                    placeholderAvatarView
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "EEF2FF"), Color(hex: "F5F3FF")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 80, height: 80)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color(hex: "6366F1").opacity(0.3), lineWidth: 2)
+                        )
+                        .overlay(
+                            VStack(spacing: 4) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(Color(hex: "6366F1"))
+                                Text("写真")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(Color(hex: "6366F1"))
+                            }
+                        )
                 }
             }
         }
         .buttonStyle(ScaleButtonStyle())
     }
     
-    private var loadingAvatarView: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(hex: "F0F4FF"), Color(hex: "FAF5FF")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 120, height: 120)
-            
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "6366F1")))
-                .scaleEffect(1.2)
-        }
-    }
-    
-    private func existingAvatarView(_ image: UIImage) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(width: 120, height: 120)
-            .clipShape(Circle())
-            .overlay(
-                Circle()
-                    .strokeBorder(
-                        accentGradient,
-                        lineWidth: 4
-                    )
-            )
-            .shadow(color: Color(hex: "6366F1").opacity(0.3), radius: 15, y: 8)
-    }
-    
-    private var placeholderAvatarView: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(hex: "EEF2FF"), Color(hex: "F5F3FF")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 120, height: 120)
-                .overlay(
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(hex: "6366F1").opacity(0.5),
-                                    Color(hex: "A855F7").opacity(0.5)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                )
-            
-            VStack(spacing: 8) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(accentGradient)
-                
-                Text("写真を追加")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: "6366F1"))
+    // MARK: - 性別ボタン
+    private func genderButton(_ g: Gender) -> some View {
+        Button {
+            generateHapticFeedback()
+            withAnimation(.easeInOut(duration: 0.2)) {
+                gender = g
             }
-        }
-    }
-    
-    // MARK: - 名前入力セクション
-    private var nameInputSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        } label: {
             HStack(spacing: 6) {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(accentGradient)
-                
-                Text("フォロワーの名前")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color(hex: "374151"))
+                Image(systemName: genderIcon(g))
+                    .font(.system(size: 14, weight: .medium))
+                Text(g.rawValue)
+                    .font(.system(size: 14, weight: .medium))
             }
-            
-            TextField("例: さくら", text: $name)
-                .font(.system(size: 18, weight: .medium, design: .rounded))
-                .multilineTextAlignment(.center)
-                .padding(.vertical, 16)
-                .padding(.horizontal, 20)
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(hex: "F9FAFB"))
-                        
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(
-                                name.isEmpty
-                                ? Color(hex: "E5E7EB")
-                                : Color(hex: "6366F1").opacity(0.5),
-                                lineWidth: 1.5
-                            )
-                    }
-                )
-                .animation(.easeInOut(duration: 0.2), value: name.isEmpty)
+            .foregroundColor(gender == g ? .white : Color(hex: "6B7280"))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(gender == g ? genderColor(g) : Color(hex: "F3F4F6"))
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+    
+    private func genderIcon(_ g: Gender) -> String {
+        switch g {
+        case .male: return "figure.stand"
+        case .female: return "figure.stand.dress"
+        case .other: return "sparkles"
         }
     }
     
-    // MARK: - 基本設定セクション
-    private var basicSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ModernSectionHeader(title: "基本設定", icon: "person.fill", color: Color(hex: "6366F1"))
-            
-            NavigationLink {
-                GenderSelectionView(selectedGender: $gender)
-            } label: {
-                GlassSettingRow(
-                    icon: "figure.dress.line.vertical.figure",
-                    iconColor: Color(hex: "EC4899"),
-                    label: "性別",
-                    value: gender?.rawValue ?? "未設定"
-                )
-            }
-            .buttonStyle(ScaleButtonStyle())
+    private func genderColor(_ g: Gender) -> Color {
+        switch g {
+        case .male: return Color(hex: "3B82F6")
+        case .female: return Color(hex: "EC4899")
+        case .other: return Color(hex: "8B5CF6")
         }
-        .padding(.horizontal, 20)
     }
     
     // MARK: - キャラクター設定セクション
     private var characterSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ModernSectionHeader(title: "キャラクター設定", icon: "sparkles", color: Color(hex: "8B5CF6"))
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: "キャラクター設定", icon: "sparkles", color: Color(hex: "8B5CF6"))
             
-            VStack(spacing: 2) {
-                NavigationLink {
-                    FreeTextEditView(
-                        title: "性格",
-                        placeholder: "優しい、明るい、ツンデレ など",
-                        text: $personalityText
-                    )
-                } label: {
-                    GlassSettingRow(
-                        icon: "heart.fill",
-                        iconColor: Color(hex: "EF4444"),
-                        label: "性格",
-                        value: personalityText.isEmpty ? "未設定" : personalityText,
-                        position: .top
-                    )
-                }
-                .buttonStyle(ScaleButtonStyle())
+            VStack(spacing: 12) {
+                // 性格
+                compactInputCard(
+                    icon: "heart.fill",
+                    iconColor: Color(hex: "EF4444"),
+                    label: "性格",
+                    placeholder: "優しい、明るい、ツンデレ など",
+                    text: $personalityText,
+                    options: personalityOptions,
+                    isExpanded: $showPersonalityOptions
+                )
                 
-                NavigationLink {
-                    FreeTextEditView(
-                        title: "話し方の特徴",
-                        placeholder: "柔らかい口調、元気いっぱい など",
-                        text: $speechCharacteristics
-                    )
-                } label: {
-                    GlassSettingRow(
-                        icon: "bubble.left.fill",
-                        iconColor: Color(hex: "3B82F6"),
-                        label: "話し方の特徴",
-                        value: speechCharacteristics.isEmpty ? "未設定" : speechCharacteristics,
-                        position: .middle
-                    )
-                }
-                .buttonStyle(ScaleButtonStyle())
+                // 話し方の特徴
+                compactInputCard(
+                    icon: "bubble.left.fill",
+                    iconColor: Color(hex: "3B82F6"),
+                    label: "話し方の特徴",
+                    placeholder: "柔らかい口調、元気いっぱい など",
+                    text: $speechCharacteristics,
+                    options: speechCharacteristicsOptions,
+                    isExpanded: $showSpeechCharacteristicsOptions
+                )
                 
-                NavigationLink {
-                    FreeTextEditView(
-                        title: "口調",
-                        placeholder: "丁寧、タメ口、方言 など",
-                        text: $speechStyleText
-                    )
-                } label: {
-                    GlassSettingRow(
-                        icon: "text.bubble.fill",
-                        iconColor: Color(hex: "10B981"),
-                        label: "口調",
-                        value: speechStyleText.isEmpty ? "未設定" : speechStyleText,
-                        position: .bottom
-                    )
-                }
-                .buttonStyle(ScaleButtonStyle())
+                // 口調
+                compactInputCard(
+                    icon: "text.bubble.fill",
+                    iconColor: Color(hex: "10B981"),
+                    label: "口調",
+                    placeholder: "丁寧、タメ口、方言 など",
+                    text: $speechStyleText,
+                    options: speechStyleOptions,
+                    isExpanded: $showSpeechStyleOptions
+                )
             }
         }
-        .padding(.horizontal, 20)
     }
     
-    // MARK: - ユーザーとの関係セクション
-    private var relationshipSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ModernSectionHeader(title: "ユーザーとの関係", icon: "person.2.fill", color: Color(hex: "F59E0B"))
-            
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: "FEF3C7"))
-                            .frame(width: 32, height: 32)
-                        
-                        Image(systemName: "at")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color(hex: "F59E0B"))
+    // MARK: - コンパクト入力カード
+    private func compactInputCard(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        options: [String],
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // ヘッダー
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(iconColor.opacity(0.12)))
+                
+                Text(label)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "374151"))
+                
+                Spacer()
+                
+                // 簡単入力ボタン
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isExpanded.wrappedValue.toggle()
                     }
-                    
-                    Text("あなたへの呼び方")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(hex: "374151"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("簡単入力")
+                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundColor(Color(hex: "6366F1"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule().fill(Color(hex: "6366F1").opacity(0.1))
+                    )
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+            
+            // テキスト入力
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(hex: "9CA3AF"))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 8)
                 }
                 
-                TextField("例: あなた、きみ", text: $userCallingName)
-                    .font(.system(size: 16, weight: .medium))
-                    .padding(16)
-                    .background(
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color(hex: "F9FAFB"))
-                            
-                            RoundedRectangle(cornerRadius: 14)
-                                .strokeBorder(
-                                    userCallingName.isEmpty
-                                    ? Color(hex: "E5E7EB")
-                                    : Color(hex: "F59E0B").opacity(0.5),
-                                    lineWidth: 1.5
-                                )
-                        }
-                    )
+                TextEditor(text: text)
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(hex: "374151"))
+                    .frame(minHeight: 50, maxHeight: 80)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
             }
-            .padding(20)
+            .padding(10)
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(cardGradient)
-                    
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(
-                            Color.white.opacity(0.5),
-                            lineWidth: 1
-                        )
-                }
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(hex: "F9FAFB"))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(
+                                text.wrappedValue.isEmpty ? Color(hex: "E5E7EB") : iconColor.opacity(0.3),
+                                lineWidth: 1
+                            )
+                    )
             )
-            .shadow(color: Color.black.opacity(0.04), radius: 15, y: 5)
+            
+            // クイック入力オプション
+            if isExpanded.wrappedValue {
+                FlowLayout(spacing: 6) {
+                    ForEach(options, id: \.self) { option in
+                        QuickInputTag(
+                            text: option,
+                            isSelected: text.wrappedValue.contains(option),
+                            color: iconColor
+                        ) {
+                            appendToText(option, to: text)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+            }
         }
-        .padding(.horizontal, 20)
+        .padding(14)
+        .background(cardBackground)
+    }
+    
+    // MARK: - 下部設定セクション（呼び方 + 共有設定）
+    private var bottomSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: "その他の設定", icon: "slider.horizontal.3", color: Color(hex: "F59E0B"))
+            
+            VStack(spacing: 0) {
+                // ユーザーへの呼び方
+                HStack(spacing: 12) {
+                    Image(systemName: "at")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "F59E0B"))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color(hex: "FEF3C7")))
+                    
+                    Text("あなたへの呼び方")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color(hex: "374151"))
+                    
+                    Spacer()
+                    
+                    TextField("例: あなた、きみ", text: $userCallingName)
+                        .font(.system(size: 14))
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 120)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                
+                Divider()
+                    .padding(.leading, 54)
+                
+                // 共有設定
+                HStack(spacing: 12) {
+                    Image(systemName: "globe.asia.australia.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "10B981"))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color(hex: "D1FAE5")))
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("みんなに公開")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "374151"))
+                        Text("他のユーザーからも投稿が見えます")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "9CA3AF"))
+                    }
+                    
+                    Spacer()
+                    
+                    Toggle("", isOn: $isPublic)
+                        .toggleStyle(SwitchToggleStyle(tint: Color(hex: "10B981")))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            }
+            .background(cardBackground)
+        }
+    }
+    
+    // MARK: - セクションヘッダー
+    private func sectionHeader(title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(color.opacity(0.12)))
+            
+            Text(title)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Color(hex: "1F2937"))
+        }
+        .padding(.leading, 4)
+    }
+    
+    // MARK: - カード背景
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color.white)
+            .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+    }
+    
+    // MARK: - テキスト追加ヘルパー
+    private func appendToText(_ option: String, to text: Binding<String>) {
+        generateHapticFeedback()
+        
+        if text.wrappedValue.isEmpty {
+            text.wrappedValue = option
+        } else if text.wrappedValue.contains(option) {
+            let patterns = ["\(option)、", "、\(option)", option]
+            for pattern in patterns {
+                if text.wrappedValue.contains(pattern) {
+                    text.wrappedValue = text.wrappedValue.replacingOccurrences(of: pattern, with: "")
+                    break
+                }
+            }
+            text.wrappedValue = text.wrappedValue.trimmingCharacters(in: CharacterSet(charactersIn: "、 "))
+        } else {
+            text.wrappedValue += "、\(option)"
+        }
     }
     
     // MARK: - フローティングアクションボタン
@@ -506,176 +521,92 @@ struct OshiCreationView: View {
         VStack {
             Spacer()
             
-            VStack(spacing: 0) {
-                // グラデーションボーダー
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.clear, Color(hex: "E5E7EB").opacity(0.5)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(height: 20)
-                
-                Button {
-                    generateHapticFeedback()
-                    createOshi()
-                } label: {
-                    HStack(spacing: 10) {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(0.9)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                            
-                            Text("フォロワーを登録")
-                                .font(.system(size: 17, weight: .bold))
-                        }
+            Button {
+                generateHapticFeedback()
+                createOshi()
+            } label: {
+                HStack(spacing: 8) {
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.9)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("フォロワーを登録")
+                            .font(.system(size: 16, weight: .bold))
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        Group {
-                            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color(hex: "D1D5DB"))
-                            } else {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .fill(accentGradient)
-                                    
-                                    // シャイン効果
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    Color.white.opacity(0.25),
-                                                    Color.white.opacity(0)
-                                                ],
-                                                startPoint: .top,
-                                                endPoint: .center
-                                            )
-                                        )
-                                }
-                            }
-                        }
-                    )
-                    .foregroundColor(.white)
-                    .shadow(
-                        color: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ? .clear
-                        : Color(hex: "6366F1").opacity(0.4),
-                        radius: 15,
-                        y: 8
-                    )
                 }
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
-                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea()
+                    Group {
+                        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color(hex: "D1D5DB"))
+                        } else {
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(accentGradient)
+                        }
+                    }
+                )
+                .foregroundColor(.white)
+                .shadow(
+                    color: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? .clear
+                    : Color(hex: "6366F1").opacity(0.3),
+                    radius: 10,
+                    y: 4
                 )
             }
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "F8FAFC").opacity(0), Color(hex: "F8FAFC")],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 100)
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+            )
         }
     }
     
     // MARK: - 成功トースト
     private var successToast: some View {
         VStack {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.2))
-                        .frame(width: 36, height: 36)
-                    
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                }
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
                 
                 Text("フォロワーを登録しました")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
             .background(
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "10B981"), Color(hex: "059669")],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .shadow(color: Color(hex: "10B981").opacity(0.4), radius: 20, y: 10)
+                    .fill(Color(hex: "10B981"))
+                    .shadow(color: Color(hex: "10B981").opacity(0.3), radius: 10, y: 4)
             )
-            .padding(.top, 80)
+            .padding(.top, 60)
             
             Spacer()
         }
-        .transition(.asymmetric(
-            insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.8)),
-            removal: .opacity.combined(with: .scale(scale: 0.9))
-        ))
+        .transition(.move(edge: .top).combined(with: .opacity))
         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: showingSaveConfirmation)
     }
     
-    private var shareSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ModernSectionHeader(title: "共有設定", icon: "globe.asia.australia.fill", color: Color(hex: "10B981"))
-            
-            Toggle(isOn: $isPublic) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("共有する")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Color(hex: "374151"))
-                    
-                    Text("ONにすると、他のユーザーからも投稿が見えるようになります")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "6B7280"))
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.ultraThinMaterial)
-                    
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(cardGradient)
-                    
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
-                }
-            )
-            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "10B981")))
-            .shadow(color: Color.black.opacity(0.04), radius: 15, y: 5)
-        }
-        .padding(.horizontal, 20)
-    }
-
     // MARK: - 推し作成処理
     private func createOshi() {
         isSaving = true
         
         Task {
-            // ... (Existing creation logic) ...
-            let personality: PersonalityType = {
-                if let matched = PersonalityType.allCases.first(where: { $0.rawValue == personalityText }) { return matched }
-                return .kind
-            }()
-            let style: SpeechStyle = {
-                if let matched = SpeechStyle.allCases.first(where: { $0.rawValue == speechStyleText }) { return matched }
-                return .polite
-            }()
-
             var newOshi = OshiCharacter(
                 name: name.isEmpty ? "名無し" : name,
                 gender: gender,
@@ -684,7 +615,7 @@ struct OshiCreationView: View {
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
                 avatarImageURL: nil,
-                isPublic: isPublic // ✅ ここでは初期値として渡すが、ViewModelで上書きされるか確認
+                isPublic: isPublic
             )
 
             if let image = avatarImage {
@@ -696,23 +627,142 @@ struct OshiCreationView: View {
                 }
             }
 
-            // ✅ isPublicを渡す
             viewModel.addOshi(newOshi, isPublic: isPublic)
 
             await MainActor.run {
                 isSaving = false
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { showingSaveConfirmation = true }
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                    showingSaveConfirmation = true
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation(.easeOut(duration: 0.3)) { showingSaveConfirmation = false }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dismiss() }
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showingSaveConfirmation = false
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
                 }
             }
         }
     }
 }
 
-// MARK: - Modern Section Header
+// MARK: - クイック入力タグ
+struct QuickInputTag: View {
+    let text: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(isSelected ? .white : color)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? color : color.opacity(0.1))
+                )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
 
+// MARK: - FlowLayout
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = FlowResult(
+            in: proposal.replacingUnspecifiedDimensions().width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        return result.size
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = FlowResult(
+            in: bounds.width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x,
+                                      y: bounds.minY + result.positions[index].y),
+                         proposal: .unspecified)
+        }
+    }
+    
+    struct FlowResult {
+        var size: CGSize = .zero
+        var positions: [CGPoint] = []
+        
+        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
+            var currentX: CGFloat = 0
+            var currentY: CGFloat = 0
+            var lineHeight: CGFloat = 0
+            
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                
+                if currentX + size.width > maxWidth && currentX > 0 {
+                    currentX = 0
+                    currentY += lineHeight + spacing
+                    lineHeight = 0
+                }
+                
+                positions.append(CGPoint(x: currentX, y: currentY))
+                lineHeight = max(lineHeight, size.height)
+                currentX += size.width + spacing
+                
+                self.size.width = max(self.size.width, currentX - spacing)
+            }
+            
+            self.size.height = currentY + lineHeight
+        }
+    }
+}
+
+// クイック登録ボタン
+struct QuickCreateButton: View {
+    let emoji: String
+    let name: String
+    let personality: String
+    let tone: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Text(emoji)
+                    .font(.system(size: 36))
+                
+                VStack(spacing: 4) {
+                    Text(name)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(hex: "1F2937"))
+                    
+                    Text(personality)
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(hex: "6B7280"))
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 100, height: 120)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+// MARK: - Modern Section Header
 struct ModernSectionHeader: View {
     let title: String
     let icon: String
@@ -739,7 +789,6 @@ struct ModernSectionHeader: View {
 }
 
 // MARK: - Glass Setting Row
-
 enum RowPosition {
     case single, top, middle, bottom
 }
@@ -769,7 +818,6 @@ struct GlassSettingRow: View {
     
     var body: some View {
         HStack(spacing: 14) {
-            // アイコン
             ZStack {
                 Circle()
                     .fill(iconColor.opacity(0.12))
@@ -780,20 +828,17 @@ struct GlassSettingRow: View {
                     .foregroundColor(iconColor)
             }
             
-            // ラベル
             Text(label)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(Color(hex: "374151"))
             
             Spacer()
             
-            // 値
             Text(value)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(value == "未設定" ? Color(hex: "9CA3AF") : Color(hex: "6B7280"))
                 .lineLimit(1)
             
-            // シェブロン
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(Color(hex: "D1D5DB"))
@@ -856,7 +901,6 @@ struct GlassSettingRow: View {
 }
 
 // MARK: - Custom Rounded Rectangle
-
 struct CustomRoundedRectangle: Shape {
     let corners: UIRectCorner
     let radius: CGFloat
@@ -872,7 +916,6 @@ struct CustomRoundedRectangle: Shape {
 }
 
 // MARK: - Color Extension
-
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -880,11 +923,11 @@ extension Color {
         Scanner(string: hex).scanHexInt64(&int)
         let a, r, g, b: UInt64
         switch hex.count {
-        case 3: // RGB (12-bit)
+        case 3:
             (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
+        case 6:
             (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
+        case 8:
             (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
         default:
             (a, r, g, b) = (1, 1, 1, 0)
