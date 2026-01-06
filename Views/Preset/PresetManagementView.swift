@@ -192,14 +192,11 @@ struct PresetEditView: View {
         isSaving = true
         
         Task {
-            // IDは既存のものがあれば使い、なければ新規生成
             let id = originalOshi?.id ?? UUID()
             var newImageURL = currentAvatarURL
             
-            // 画像が変更されていればアップロード
             if let image = avatarImage {
                 do {
-                    // プリセット用も通常のOshiと同じStorageロジックを使用
                     newImageURL = try await FirebaseStorageManager.shared.uploadOshiAvatar(image, oshiId: id)
                 } catch {
                     print("❌ 画像アップロード失敗: \(error)")
@@ -215,10 +212,12 @@ struct PresetEditView: View {
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
                 avatarImageURL: newImageURL,
-                // ✅ 修正: 存在しない intimacyLevel と isMutualFollow を削除
                 totalInteractions: originalOshi?.totalInteractions ?? 0,
                 isFollowingUser: originalOshi?.isFollowingUser ?? false,
-                isFollowedByUser: originalOshi?.isFollowedByUser ?? false
+                isFollowedByUser: originalOshi?.isFollowedByUser ?? false,
+                isPublic: true,
+                followerCount: originalOshi?.followerCount ?? 0,
+                creatorId: originalOshi?.creatorId
             )
             
             await viewModel.updatePresetOshi(newOshi)

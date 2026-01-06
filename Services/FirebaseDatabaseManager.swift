@@ -615,7 +615,7 @@ class FirebaseDatabaseManager {
         let avatarImageURL = data["avatarImageURL"] as? String
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
-        let isPublic = data["isPublic"] as? Bool ?? false
+        let isPublic = data["isPublic"] as? Bool ?? true
         let followerCount = data["followerCount"] as? Int ?? 0
         let creatorId = data["creatorId"] as? String
 

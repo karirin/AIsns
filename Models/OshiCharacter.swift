@@ -104,8 +104,8 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         lastInteractionDate: Date? = nil,
         isFollowingUser: Bool = false,
         isFollowedByUser: Bool = false,
-        isPublic: Bool = false,
-        followerCount: Int = 0, // 追加
+        isPublic: Bool = true,
+        followerCount: Int = 0,
         creatorId: String? = nil
     ) {
         self.id = id
@@ -122,7 +122,7 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         self.isFollowingUser = isFollowingUser
         self.isFollowedByUser = isFollowedByUser
         self.isPublic = isPublic
-        self.followerCount = followerCount // 追加
+        self.followerCount = followerCount
         self.creatorId = creatorId
     }
     
