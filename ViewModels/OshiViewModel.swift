@@ -123,15 +123,20 @@ class OshiViewModel: ObservableObject {
     }
     
     func isReposted(_ post: Post) -> Bool {
-        return repostedPostIDs.contains(post.id)
+        let result = repostedPostIDs.contains(post.id)
+        print("🔍 isReposted(\(post.id.uuidString.prefix(8))...) = \(result), repostedPostIDs.count = \(repostedPostIDs.count)")
+        return result
     }
 
     /// リツイート情報の初期読み込み（.taskなどで呼ぶ）
     func loadUserReposts() async {
         do {
             let ids = try await dbManager.loadUserRepostIDs()
+            print("🔄 [Debug] loadUserReposts: 取得したID数 = \(ids.count)")
+            print("🔄 [Debug] loadUserReposts: IDs = \(ids)")
             await MainActor.run {
                 self.repostedPostIDs = Set(ids)
+                print("🔄 [Debug] loadUserReposts: repostedPostIDs更新後 = \(self.repostedPostIDs.count)件")
             }
         } catch {
             print("❌ リツイート情報読み込みエラー: \(error)")
@@ -771,6 +776,11 @@ class OshiViewModel: ObservableObject {
                 .sorted { $0.timestamp > $1.timestamp }
             
             self.posts = mergedPosts
+            
+            async let likesTask = loadUserLikes()
+            async let repostsTask = loadUserReposts()
+            async let bookmarksTask = loadUserBookmarks()
+            _ = await (likesTask, repostsTask, bookmarksTask)
             
             Task {
                 try? await dbManager.deleteOldNotifications(olderThan: Date().addingTimeInterval(-60*60*24*30))

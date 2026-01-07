@@ -341,10 +341,24 @@ struct ActionButtonView: View {
     var inactiveColor: Color = AppColors.textSecondary
     let action: () -> Void
     
+    // ✅ 修正: .fill版が存在しないアイコンを考慮
+    private var displayIcon: String {
+        guard isActive else { return icon }
+        
+        // fill版が存在しないアイコンのリスト
+        let noFillIcons = ["arrow.2.squarepath", "square.and.arrow.up", "paperplane"]
+        
+        if noFillIcons.contains(icon) {
+            return icon  // そのまま返す
+        }
+        
+        return "\(icon).fill"
+    }
+    
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: isActive ? "\(icon).fill" : icon)
+                Image(systemName: displayIcon)
                     .font(.system(size: DesignTokens.IconSize.sm))
                 
                 if let count = count, count > 0 {

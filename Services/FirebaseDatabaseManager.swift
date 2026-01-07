@@ -400,8 +400,8 @@ class FirebaseDatabaseManager {
         updates["users/\(userId)/likes/\(postId.uuidString)"] = Date().timeIntervalSince1970
         try await ref.updateChildValues(updates)
         
-        let countRef = ref.child("posts/\(postId.uuidString)/reactionCount")
-        try await countRef.setValue(ServerValue.increment(1))
+        // ✅ 修正: 全パスのreactionCountをインクリメント
+        try await incrementReactionCount(postId: postId, by: 1)
         
         let (myUserName, _, myAvatarURL) = try await loadUserProfile()
         let category: NotificationCategory = (oshiName != nil) ? .createdOshi : .me
@@ -444,8 +444,42 @@ class FirebaseDatabaseManager {
         let myLikeRef = ref.child("users/\(userId)/likes/\(postId.uuidString)")
         try await myLikeRef.removeValue()
 
-        let countRef = ref.child("posts/\(postId.uuidString)/reactionCount")
-        try await countRef.setValue(ServerValue.increment(-1))
+        // ✅ 修正: 全パスのreactionCountをデクリメント
+        try await incrementReactionCount(postId: postId, by: -1)
+    }
+    
+    private func incrementReactionCount(postId: UUID, by delta: Int) async throws {
+        // 1. まずメインのpostsパスから投稿情報を取得
+        let postSnapshot = try await ref.child("posts/\(postId.uuidString)").getData()
+        guard let postData = postSnapshot.value as? [String: Any] else { return }
+        
+        let isUserPost = postData["isUserPost"] as? Bool ?? true
+        let authorId = postData["authorId"] as? String
+        let creatorId = postData["creatorId"] as? String
+        
+        // 2. 更新するパスを収集
+        var countUpdates: [String: Any] = [:]
+        
+        // メインのpostsパス（常に更新）
+        countUpdates["posts/\(postId.uuidString)/reactionCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // ユーザーの投稿の場合: myPostsを更新
+        if isUserPost {
+            // creatorIdがあればそのユーザーのmyPosts、なければ現在のユーザー
+            let ownerUserId = creatorId ?? userId
+            countUpdates["users/\(ownerUserId)/myPosts/\(postId.uuidString)/reactionCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // 推しの投稿の場合: oshi-postsを更新
+        if !isUserPost, let authorId = authorId {
+            countUpdates["oshi-posts/\(authorId)/\(postId.uuidString)/reactionCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // publicTimelineにある場合も更新
+        countUpdates["publicTimeline/\(postId.uuidString)/reactionCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // 3. 一括更新
+        try await ref.updateChildValues(countUpdates)
     }
     
     // MARK: - Comments (Shared)
@@ -462,8 +496,8 @@ class FirebaseDatabaseManager {
         ]
         try await commentRef.setValue(commentData)
 
-        let countRef = ref.child("posts/\(postId.uuidString)/commentCount")
-        try await countRef.setValue(ServerValue.increment(1))
+        // ✅ 修正: 全パスのcommentCountをインクリメント
+        try await incrementCommentCount(postId: postId, by: 1)
     }
 
     func loadComments(for postId: UUID, limit: Int = 10, before: Date? = nil) async throws -> [Comment] {
@@ -496,8 +530,8 @@ class FirebaseDatabaseManager {
         let commentRef = ref.child("post-comments/\(postId.uuidString)/\(commentId.uuidString)")
         try await commentRef.removeValue()
 
-        let countRef = ref.child("posts/\(postId.uuidString)/commentCount")
-        try await countRef.setValue(ServerValue.increment(-1))
+        // ✅ 修正: 全パスのcommentCountをデクリメント
+        try await incrementCommentCount(postId: postId, by: -1)
     }
 
     // MARK: - Chat Rooms & Messages
@@ -900,15 +934,79 @@ class FirebaseDatabaseManager {
     func repostPost(postId: UUID) async throws {
         let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
         try await repostRef.setValue(Date().timeIntervalSince1970)
-        let countRef = ref.child("posts/\(postId.uuidString)/repostCount")
-        try await countRef.setValue(ServerValue.increment(1))
+        try await incrementRepostCount(postId: postId, by: 1)
     }
 
     func unrepostPost(postId: UUID) async throws {
         let repostRef = ref.child("users/\(userId)/reposts/\(postId.uuidString)")
         try await repostRef.removeValue()
-        let countRef = ref.child("posts/\(postId.uuidString)/repostCount")
-        try await countRef.setValue(ServerValue.increment(-1))
+        try await incrementRepostCount(postId: postId, by: -1)
+    }
+    
+    private func incrementRepostCount(postId: UUID, by delta: Int) async throws {
+        // 1. まずメインのpostsパスから投稿情報を取得
+        let postSnapshot = try await ref.child("posts/\(postId.uuidString)").getData()
+        guard let postData = postSnapshot.value as? [String: Any] else { return }
+        
+        let isUserPost = postData["isUserPost"] as? Bool ?? true
+        let authorId = postData["authorId"] as? String
+        let creatorId = postData["creatorId"] as? String
+        
+        // 2. 更新するパスを収集
+        var countUpdates: [String: Any] = [:]
+        
+        // メインのpostsパス（常に更新）
+        countUpdates["posts/\(postId.uuidString)/repostCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // ユーザーの投稿の場合: myPostsを更新
+        if isUserPost {
+            let ownerUserId = creatorId ?? userId
+            countUpdates["users/\(ownerUserId)/myPosts/\(postId.uuidString)/repostCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // 推しの投稿の場合: oshi-postsを更新
+        if !isUserPost, let authorId = authorId {
+            countUpdates["oshi-posts/\(authorId)/\(postId.uuidString)/repostCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // publicTimelineにある場合も更新
+        countUpdates["publicTimeline/\(postId.uuidString)/repostCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // 3. 一括更新
+        try await ref.updateChildValues(countUpdates)
+    }
+    
+    private func incrementCommentCount(postId: UUID, by delta: Int) async throws {
+        // 1. まずメインのpostsパスから投稿情報を取得
+        let postSnapshot = try await ref.child("posts/\(postId.uuidString)").getData()
+        guard let postData = postSnapshot.value as? [String: Any] else { return }
+        
+        let isUserPost = postData["isUserPost"] as? Bool ?? true
+        let authorId = postData["authorId"] as? String
+        let creatorId = postData["creatorId"] as? String
+        
+        // 2. 更新するパスを収集
+        var countUpdates: [String: Any] = [:]
+        
+        // メインのpostsパス（常に更新）
+        countUpdates["posts/\(postId.uuidString)/commentCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // ユーザーの投稿の場合: myPostsを更新
+        if isUserPost {
+            let ownerUserId = creatorId ?? userId
+            countUpdates["users/\(ownerUserId)/myPosts/\(postId.uuidString)/commentCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // 推しの投稿の場合: oshi-postsを更新
+        if !isUserPost, let authorId = authorId {
+            countUpdates["oshi-posts/\(authorId)/\(postId.uuidString)/commentCount"] = ServerValue.increment(NSNumber(value: delta))
+        }
+        
+        // publicTimelineにある場合も更新
+        countUpdates["publicTimeline/\(postId.uuidString)/commentCount"] = ServerValue.increment(NSNumber(value: delta))
+        
+        // 3. 一括更新
+        try await ref.updateChildValues(countUpdates)
     }
 
     func loadUserRepostIDs() async throws -> [UUID] {
