@@ -673,6 +673,24 @@ struct PostCardView: View {
                 cardContent
             }
         }
+        // ✅ ここに contextMenu を追加
+        .contextMenu {
+            // 自分の投稿以外の場合のみ表示
+            if !post.isUserPost {
+                Button(role: .destructive) {
+                    // クリエイターID、または著者IDを使ってブロック
+                    viewModel.blockUser(creatorId: post.creatorId, authorId: post.authorId)
+                } label: {
+                    Label("このアカウントをブロック", systemImage: "hand.raised.slash")
+                }
+                
+                Button {
+                    // 必要であれば通報機能などもここに追加可能
+                } label: {
+                    Label("報告する", systemImage: "exclamationmark.bubble")
+                }
+            }
+        }
         .task {
             await loadImages()
         }

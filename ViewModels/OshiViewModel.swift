@@ -24,6 +24,7 @@ class OshiViewModel: ObservableObject {
     @Published var likedPostIDs: Set<UUID> = []
     @Published var publicTimelinePosts: [Post] = []
     @Published var followingRemoteOshiIDs: Set<UUID> = []
+    @Published var blockedUserIDs: Set<String> = []
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -100,6 +101,57 @@ class OshiViewModel: ObservableObject {
         room2.addMessage(Message(content: "今日なにしてた?", isFromUser: false, oshiId: oshi2.id))
         
         self.chatRooms = [room1, room2]
+    }
+    
+    func blockUser(creatorId: String?, authorId: UUID?) {
+        // creatorIdがあればそれを、なければauthorId(AI自身のID)をブロック対象とする
+        guard let targetId = creatorId ?? authorId?.uuidString else { return }
+        
+        Task {
+            do {
+                try await dbManager.blockUser(targetUserId: targetId)
+                
+                await MainActor.run {
+                    self.blockedUserIDs.insert(targetId)
+                    
+                    // 即座にリストから除外してUIに反映
+                    self.applyBlockFilter()
+                    
+                    // フォロー中であれば解除
+                    if let uuid = UUID(uuidString: targetId) {
+                        if followingRemoteOshiIDs.contains(uuid) {
+                           toggleFollowRemoteOshi(OshiCharacter(id: uuid, name: "", isPublic: true)) // 簡易的な解除呼び出し
+                        }
+                    }
+                }
+                print("✅ Blocked user: \(targetId)")
+            } catch {
+                print("❌ Block failed: \(error)")
+                errorMessage = "ブロックに失敗しました"
+            }
+        }
+    }
+    
+    /// ブロック状態を適用してリストをフィルタリングするヘルパー
+    private func applyBlockFilter() {
+        // タイムラインのフィルタリング
+        self.posts = self.posts.filter { !isBlocked(post: $0) }
+        self.publicTimelinePosts = self.publicTimelinePosts.filter { !isBlocked(post: $0) }
+        
+        // おすすめ推しのフィルタリング
+        self.recommendedOshis = self.recommendedOshis.filter { !isBlocked(oshi: $0) }
+    }
+    
+    private func isBlocked(post: Post) -> Bool {
+        if let cid = post.creatorId, blockedUserIDs.contains(cid) { return true }
+        if let aid = post.authorId?.uuidString, blockedUserIDs.contains(aid) { return true }
+        return false
+    }
+    
+    private func isBlocked(oshi: OshiCharacter) -> Bool {
+        if let cid = oshi.creatorId, blockedUserIDs.contains(cid) { return true }
+        if blockedUserIDs.contains(oshi.id.uuidString) { return true }
+        return false
     }
     
     func followOshi(_ oshi: OshiCharacter) async {
@@ -726,41 +778,40 @@ class OshiViewModel: ObservableObject {
     }
     
     func loadData() async {
-        print("🔍 [Debug] loadData: 開始") // ログ追加
+        print("🔍 [Debug] loadData: 開始")
         isLoading = true
         errorMessage = nil
 
         do {
-            // 1. 各種リストの並列ロード
+            // 1. 各種リストの並列ロード (★ blockedTask を追加)
             async let oshiListTask = dbManager.loadOshiList()
             async let chatRoomsTask = dbManager.loadChatRooms()
             async let userProfileTask = dbManager.loadUserProfile()
             async let followingTask = dbManager.loadFollowingIds()
             async let presetsTask = dbManager.fetchPresetOshis()
+            async let blockedTask = dbManager.fetchBlockedUsers() // ✅ 追加
             
-            // 2. タイムラインデータの最適化ロード
             async let myPostsTask = dbManager.loadMyPosts(limit: 50)
             async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
 
-            print("🔍 [Debug] loadData: 非同期タスクを実行中...") // ログ追加
-
-            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets) =
-                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask)
-
-            // ログ追加: 取得結果の確認
-            print("✅ [Debug] loadData: 成功")
-            print("   - おすすめ(loadedPresets): \(loadedPresets.count)件")
-            print("   - 推しリスト: \(loadedOshi.count)件")
-            print("   - プロフィール名: \(profile.userName)")
+            // 結果の取り出し (★ loadedBlocked を追加)
+            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets, loadedBlocked) =
+                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask, blockedTask)
 
             // 3. データ反映
             oshiList = loadedOshi
-            publicTimelinePosts = loadedPublicPosts
             followingRemoteOshiIDs = Set(loadedFollowingIDs)
             chatRooms = loadedRooms
             userProfileName = profile.userName
             userProfileAvatarURL = profile.avatarImageURL
-            recommendedOshis = loadedPresets
+            
+            // ✅ ブロックリストの設定
+            blockedUserIDs = Set(loadedBlocked)
+            
+            // ✅ フィルタリングしながら代入
+            recommendedOshis = loadedPresets.filter { !self.blockedUserIDs.contains($0.creatorId ?? "") && !self.blockedUserIDs.contains($0.id.uuidString) }
+            
+            publicTimelinePosts = loadedPublicPosts.filter { !self.isBlocked(post: $0) }
 
             // 4. フォロー中タイムラインの構築
             let localOshiIds = oshiList.map { $0.id }
@@ -775,24 +826,19 @@ class OshiViewModel: ObservableObject {
                 }
                 .sorted { $0.timestamp > $1.timestamp }
             
-            self.posts = mergedPosts
-            
-            async let likesTask = loadUserLikes()
-            async let repostsTask = loadUserReposts()
-            async let bookmarksTask = loadUserBookmarks()
-            _ = await (likesTask, repostsTask, bookmarksTask)
+            // ✅ 自分のタイムラインもフィルタリング
+            self.posts = mergedPosts.filter { !self.isBlocked(post: $0) }
             
             Task {
                 try? await dbManager.deleteOldNotifications(olderThan: Date().addingTimeInterval(-60*60*24*30))
             }
 
         } catch {
-            // ログ追加: 具体的なエラー内容を表示
             print("❌ [Debug] loadData: エラー発生 - \(error)")
             errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
         }
         isLoading = false
-        print("🏁 [Debug] loadData: 完了 (isLoading = false)") // ログ追加
+        print("🏁 [Debug] loadData: 完了")
     }
     
     func loadFollowingList() async {

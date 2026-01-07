@@ -1008,6 +1008,25 @@ class FirebaseDatabaseManager {
         // 3. 一括更新
         try await ref.updateChildValues(countUpdates)
     }
+    
+    func blockUser(targetUserId: String) async throws {
+        // users/{myId}/blocked/{targetId} にタイムスタンプを保存
+        let refPath = "users/\(userId)/blocked/\(targetUserId)"
+        try await ref.child(refPath).setValue(Date().timeIntervalSince1970)
+    }
+
+    /// ブロックを解除する
+    func unblockUser(targetUserId: String) async throws {
+        let refPath = "users/\(userId)/blocked/\(targetUserId)"
+        try await ref.child(refPath).removeValue()
+    }
+
+    /// ブロック中のユーザーIDリストを取得
+    func fetchBlockedUsers() async throws -> [String] {
+        let snapshot = try await ref.child("users/\(userId)/blocked").getData()
+        guard let value = snapshot.value as? [String: Any] else { return [] }
+        return Array(value.keys)
+    }
 
     func loadUserRepostIDs() async throws -> [UUID] {
         let snapshot = try await ref.child("users/\(userId)/reposts").getData()
