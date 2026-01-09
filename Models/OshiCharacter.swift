@@ -104,7 +104,7 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
         lastInteractionDate: Date? = nil,
         isFollowingUser: Bool = false,
         isFollowedByUser: Bool = false,
-        isPublic: Bool = true,
+        isPublic: Bool = false,
         followerCount: Int = 0,
         creatorId: String? = nil
     ) {

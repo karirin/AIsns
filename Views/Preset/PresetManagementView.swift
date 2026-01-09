@@ -215,7 +215,7 @@ struct PresetEditView: View {
                 totalInteractions: originalOshi?.totalInteractions ?? 0,
                 isFollowingUser: originalOshi?.isFollowingUser ?? false,
                 isFollowedByUser: originalOshi?.isFollowedByUser ?? false,
-                isPublic: true,
+                isPublic: false,
                 followerCount: originalOshi?.followerCount ?? 0,
                 creatorId: originalOshi?.creatorId
             )
