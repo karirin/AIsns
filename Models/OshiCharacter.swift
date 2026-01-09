@@ -84,10 +84,16 @@ struct OshiCharacter: Identifiable, Codable, Hashable {
     }
     
     func callingName(userName: String) -> String {
+        // 1. 推し個別の設定で「ユーザーの呼び方」が決まっている場合はそれを最優先
         if !userCallingName.isEmpty {
             return userCallingName
         }
-        return userName.isEmpty ? "あなた" : "\(userName)さん"
+        // 2. 個別の設定がない場合、アプリ全体のユーザープロフィール名があれば「〜さん」と呼ぶ
+        if !userName.isEmpty {
+            return "\(userName)さん"
+        }
+        // 3. どちらも空の場合は「あなた」と呼ぶ
+        return "あなた"
     }
     
     init(
