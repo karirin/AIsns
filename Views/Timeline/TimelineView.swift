@@ -48,23 +48,6 @@ struct TimelineScreenView: View {
     @StateObject private var spotlightManager = HomeSpotlightManager()
     @State private var spotlightAnchors: [String: CGRect] = [:]
     
-    // フィルタリングされた投稿
-    private var filteredPosts: [Post] {
-        switch selectedTab {
-        case .forYou:
-            return viewModel.timelinePosts.filter { post in
-                if post.isUserPost { return true }
-                if let authorId = post.authorId {
-                    return viewModel.followingOshiIds.contains(authorId) ||
-                           viewModel.followingRemoteOshiIDs.contains(authorId)
-                }
-                return false
-            }
-        case .following:
-            return viewModel.recommendedPosts
-        }
-    }
-    
     var body: some View {
         // 【重要】iPadでの2画面分割を防ぐため、一番外側でStackスタイルを強制
         NavigationStack(path: $navigationPath) {
@@ -171,6 +154,96 @@ struct TimelineScreenView: View {
         )
     }
     
+    private var filteredPosts: [Post] {
+        switch selectedTab {
+        case .forYou:
+            let allPosts = viewModel.timelinePosts.filter { post in
+                if post.isUserPost { return true }
+                if let authorId = post.authorId {
+                    return viewModel.followingOshiIds.contains(authorId) ||
+                           viewModel.followingRemoteOshiIDs.contains(authorId)
+                }
+                return false
+            }
+            return Array(allPosts.prefix(viewModel.displayedPostsCount))
+            
+        case .following:
+            return Array(viewModel.recommendedPosts.prefix(viewModel.displayedPostsCount))
+        }
+    }
+
+    // timelineScrollView を更新
+    private var timelineScrollView: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(filteredPosts.enumerated()), id: \.element.id) { index, post in
+                    VStack(spacing: 0) {
+                        PostCardView(
+                            post: post,
+                            viewModel: viewModel,
+                            onAvatarTap: { handleAvatarTap(for: post) }
+                        )
+                        AppDivider(leadingPadding: 68)
+                    }
+                }
+                
+                //                        if (index + 1) % 5 == 0 {
+                //                            if let nativeAd = adViewModel.nativeAd {
+                //                                NativeAdView(nativeAd: nativeAd)
+                //                                    .frame(maxWidth: .infinity)
+                //                                    .frame(height: 320)
+                //                                    .background(AppColors.backgroundPrimary)
+                //                                AppDivider()
+                //                            }
+                //                        }
+                
+                // ✅ もっと見るボタンを追加
+                if viewModel.hasMorePosts(for: selectedTab) {
+                    loadMoreButton
+                        .padding(.vertical, DesignTokens.Spacing.lg)
+                }
+            }
+            .padding(.bottom, 100)
+        }
+        .refreshable {
+            viewModel.resetDisplayedPostsCount()
+            await viewModel.loadData()
+            adViewModel.loadNativeAd()
+        }
+    }
+
+    // ✅ もっと見るボタンのビューを追加
+    private var loadMoreButton: some View {
+        Button {
+            generateHapticFeedback()
+            viewModel.loadMorePosts()
+        } label: {
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                if viewModel.isLoadingMore {
+                    ProgressView()
+                        .tint(AppColors.primary)
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 16, weight: .medium))
+                    Text("さらに表示")
+                        .font(AppTypography.bodyMedium)
+                }
+            }
+            .foregroundColor(AppColors.primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, DesignTokens.Spacing.md)
+            .background(AppColors.backgroundSecondary)
+            .cornerRadius(DesignTokens.Radius.lg)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                    .stroke(AppColors.primary.opacity(0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isLoadingMore)
+        .padding(.horizontal, DesignTokens.Spacing.md)
+    }
+    
     // MARK: - Subviews
     
     private var mainContent: some View {
@@ -201,38 +274,6 @@ struct TimelineScreenView: View {
                 .padding(.trailing, DesignTokens.Spacing.lg)
                 .padding(.bottom, DesignTokens.Spacing.xl)
             }
-        }
-    }
-
-    private var timelineScrollView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(filteredPosts.enumerated()), id: \.element.id) { index, post in
-                    VStack(spacing: 0) {
-                        PostCardView(
-                            post: post,
-                            viewModel: viewModel,
-                            onAvatarTap: { handleAvatarTap(for: post) }
-                        )
-                        AppDivider(leadingPadding: 68)
-                        
-//                        if (index + 1) % 5 == 0 {
-//                            if let nativeAd = adViewModel.nativeAd {
-//                                NativeAdView(nativeAd: nativeAd)
-//                                    .frame(maxWidth: .infinity)
-//                                    .frame(height: 320)
-//                                    .background(AppColors.backgroundPrimary)
-//                                AppDivider()
-//                            }
-//                        }
-                    }
-                }
-            }
-            .padding(.bottom, 100)
-        }
-        .refreshable {
-            await viewModel.loadData()
-            adViewModel.loadNativeAd()
         }
     }
 
@@ -277,7 +318,10 @@ struct TimelineScreenView: View {
             ForEach(TimelineTab.allCases, id: \.self) { tab in
                 Button {
                     generateHapticFeedback()
-                    withAnimation(DesignTokens.Animation.spring) { selectedTab = tab }
+                    withAnimation(DesignTokens.Animation.spring) {
+                        selectedTab = tab
+                        viewModel.resetDisplayedPostsCount()
+                    }
                 } label: {
                     VStack(spacing: DesignTokens.Spacing.xs) {
                         Text(tab.rawValue)

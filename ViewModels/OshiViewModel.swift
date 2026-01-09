@@ -27,6 +27,9 @@ class OshiViewModel: ObservableObject {
     @Published var blockedUserIDs: Set<String> = []
     @Published var messageCount: Int = 0
     private let maxMessageLimit = 10
+    @Published var displayedPostsCount = 30
+    @Published var isLoadingMore = false
+    private let postsPerPage = 30
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -37,6 +40,39 @@ class OshiViewModel: ObservableObject {
     private var autoPostTimer: Timer?
     private var autoFollowTimer: Timer?
     private let notificationsStorageKey = "local_notifications_v1"
+    
+    var displayedTimelinePosts: [Post] {
+        let filtered = timelinePosts
+        return Array(filtered.prefix(displayedPostsCount))
+    }
+
+    var displayedRecommendedPosts: [Post] {
+        let filtered = recommendedPosts
+        return Array(filtered.prefix(displayedPostsCount))
+    }
+
+    func hasMorePosts(for tab: TimelineTab) -> Bool {
+        switch tab {
+        case .forYou:
+            return displayedPostsCount < timelinePosts.count
+        case .following:
+            return displayedPostsCount < recommendedPosts.count
+        }
+    }
+
+    func loadMorePosts() {
+        guard !isLoadingMore else { return }
+        isLoadingMore = true
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.displayedPostsCount += self.postsPerPage
+            self.isLoadingMore = false
+        }
+    }
+
+    func resetDisplayedPostsCount() {
+        displayedPostsCount = postsPerPage
+    }
     
     var isMessageLimitReached: Bool {
         AppConfig.adGateEnabled && messageCount >= maxMessageLimit
