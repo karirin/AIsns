@@ -2,12 +2,9 @@
 //  MainTabView.swift
 //  AIsns
 //
-//  Updated: 2026/01/02 - Complete UI/UX Redesign
-//
 
 import SwiftUI
 
-// タブの識別用Enum
 enum Tab {
     case timeline
     case notification
@@ -17,6 +14,7 @@ enum Tab {
 
 struct MainTabView: View {
     @StateObject private var viewModel = OshiViewModel()
+    @StateObject private var adViewModel = AdViewModel()
     @State private var selectedTab: Tab = .timeline
     
     var totalUnreadCount: Int {
@@ -28,47 +26,55 @@ struct MainTabView: View {
     }
     
     var body: some View {
-        ZStack{
-            TabView(selection: $selectedTab) {
-                TimelineScreenView(viewModel: viewModel)
-                    .tabItem {
-                        Image(systemName: selectedTab == .timeline ? "house.fill" : "house")
-                            .environment(\.symbolVariants, .none)
-                    }
-                    .tag(Tab.timeline)
-                
-                OshiListView(viewModel: viewModel, isPresented: .constant(false))
-                    .tabItem {
-                        Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
-                            .environment(\.symbolVariants, .none)
-                    }
-                    .tag(Tab.oshi)
-                
-                NavigationStack {
-                    NotificationView(
-                        viewModel: viewModel,
-                        isPresented: .constant(false)
-                    )
-                }
+        // TabView 自体を NavigationView で囲まず、中身の各画面で完結させます
+        TabView(selection: $selectedTab) {
+            
+            // タイムライン
+            TimelineScreenView(viewModel: viewModel, adViewModel: adViewModel)
                 .tabItem {
-                    Image(systemName: selectedTab == .notification ? "bell.fill" : "bell")
+                    Image(systemName: selectedTab == .timeline ? "house.fill" : "house")
                         .environment(\.symbolVariants, .none)
                 }
-                .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
-                .tag(Tab.notification)
-                
-                ChatListView(viewModel: viewModel, isPresented: .constant(false))
-                    .tabItem {
-                        Image(systemName: selectedTab == .chat ? "envelope.fill" : "envelope")
-                            .environment(\.symbolVariants, .none)
-                    }
-                    .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
-                    .tag(Tab.chat)
+                .tag(Tab.timeline)
+            
+            // 推しリスト
+            OshiListView(viewModel: viewModel, isPresented: .constant(false))
+                .tabItem {
+                    Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
+                        .environment(\.symbolVariants, .none)
+                }
+                .tag(Tab.oshi)
+            
+            // 通知
+            // iPadのバグを防ぐため、NavigationStackの外側でスタイルを固定
+            NavigationStack {
+                NotificationView(
+                    viewModel: viewModel,
+                    isPresented: .constant(false)
+                )
             }
+            .tabItem {
+                Image(systemName: selectedTab == .notification ? "bell.fill" : "bell")
+                    .environment(\.symbolVariants, .none)
+            }
+            .badge(unreadNotificationCount > 0 ? unreadNotificationCount : 0)
+            .tag(Tab.notification)
+            
+            // チャット
+            ChatListView(viewModel: viewModel, isPresented: .constant(false), adViewModel: adViewModel)
+                .tabItem {
+                    Image(systemName: selectedTab == .chat ? "envelope.fill" : "envelope")
+                        .environment(\.symbolVariants, .none)
+                }
+                .badge(totalUnreadCount > 0 ? totalUnreadCount : 0)
+                .tag(Tab.chat)
         }
         .tint(AppColors.primary)
+        // ここが重要：iPadで全体の挙動をスタックに固定する（互換性のためNavigationViewStyleも併記）
+        .navigationViewStyle(.stack)
         .onAppear {
             setupTabBarAppearance()
+            adViewModel.loadNativeAd()
         }
     }
     
@@ -77,7 +83,6 @@ struct MainTabView: View {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor.systemBackground
         
-        // 選択時のカラー
         let selectedColor = UIColor(AppColors.primary)
         let unselectedColor = UIColor.secondaryLabel
         
@@ -88,20 +93,5 @@ struct MainTabView: View {
         
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
-    }
-}
-
-// MARK: - Haptic Feedback
-
-func generateHapticFeedback() {
-    let generator = UIImpactFeedbackGenerator(style: .medium)
-    generator.impactOccurred()
-}
-
-// MARK: - Preview
-
-struct MainTabView_Previews: PreviewProvider {
-    static var previews: some View {
-        MainTabView()
     }
 }

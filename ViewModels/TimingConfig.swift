@@ -24,7 +24,7 @@ struct TimingConfig {
     
     struct Chat {
         // チャットの返信が来るまでの待機時間（秒）
-        static let replyDelayRange: ClosedRange<UInt64> = 10...20
+        static let replyDelayRange: ClosedRange<UInt64> = 1...5
     }
     
     struct AutoEvent {

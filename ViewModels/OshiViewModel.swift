@@ -25,6 +25,8 @@ class OshiViewModel: ObservableObject {
     @Published var publicTimelinePosts: [Post] = []
     @Published var followingRemoteOshiIDs: Set<UUID> = []
     @Published var blockedUserIDs: Set<String> = []
+    @Published var messageCount: Int = 0
+    private let maxMessageLimit = 10
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -35,6 +37,10 @@ class OshiViewModel: ObservableObject {
     private var autoPostTimer: Timer?
     private var autoFollowTimer: Timer?
     private let notificationsStorageKey = "local_notifications_v1"
+    
+    var isMessageLimitReached: Bool {
+        AppConfig.adGateEnabled && messageCount >= maxMessageLimit
+    }
 
     var unreadNotificationCount: Int {
         notifications.filter { !$0.isRead }.count
@@ -101,6 +107,10 @@ class OshiViewModel: ObservableObject {
         room2.addMessage(Message(content: "今日なにしてた?", isFromUser: false, oshiId: oshi2.id))
         
         self.chatRooms = [room1, room2]
+    }
+    
+    func resetMessageLimit() {
+        messageCount = 0
     }
     
     func blockUser(creatorId: String?, authorId: UUID?) {
@@ -1319,6 +1329,8 @@ class OshiViewModel: ObservableObject {
     // MARK: - チャット
     
     func sendMessage(to oshiId: UUID, content: String) {
+        guard !isMessageLimitReached else { return }
+
         guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshiId }),
               let oshi = oshiList.first(where: { $0.id == oshiId }) else { return }
         
@@ -1352,6 +1364,8 @@ class OshiViewModel: ObservableObject {
                 errorMessage = "メッセージ送信エラー"
             }
         }
+        
+        messageCount += 1
     }
     
     func markChatAsRead(oshiId: UUID) {
@@ -1561,4 +1575,11 @@ class OshiViewModel: ObservableObject {
             }
         }
     }
+}
+
+import Foundation
+
+enum AppConfig {
+    /// 審査通過まで false（無制限送信）
+    static let adGateEnabled = false
 }

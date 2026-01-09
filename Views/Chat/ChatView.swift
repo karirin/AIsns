@@ -16,6 +16,7 @@ struct ChatListView: View {
     @State private var helpFlag: Bool = false
     @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
+    @ObservedObject var adViewModel: AdViewModel
     
     @State private var isLoading = true
     
@@ -134,7 +135,7 @@ struct ChatListView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sortedChatRooms) { room in
                     if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
-                        NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel)) {
+                        NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel, adViewModel: adViewModel)) {
                             ChatRoomRow(oshi: oshi, room: room)
                         }
                         .buttonStyle(.plain)
@@ -272,9 +273,11 @@ struct ChatRoomRow: View {
 struct ChatDetailView: View {
     let oshi: OshiCharacter
     @ObservedObject var viewModel: OshiViewModel
+    @ObservedObject var adViewModel: AdViewModel
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
     @Environment(\.dismiss) var dismiss
+    @State private var showingAdAlert = false
     
     var chatRoom: ChatRoom? {
         viewModel.chatRooms.first { $0.oshiId == oshi.id }
@@ -347,8 +350,12 @@ struct ChatDetailView: View {
                 
                 // 送信ボタン
                 Button(action: {
-                    sendMessage()
                     generateHapticFeedback()
+                    if viewModel.isMessageLimitReached {
+                        showingAdAlert = true
+                    } else {
+                        sendMessage()
+                    }
                 }) {
                     Image(systemName: messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                           ? "arrow.up.circle.fill"
@@ -366,6 +373,22 @@ struct ChatDetailView: View {
             .padding(.vertical, DesignTokens.Spacing.sm)
         }
         .background(AppColors.backgroundPrimary)
+        .alert("送信制限", isPresented: $showingAdAlert) {
+            Button("広告を見て10通追加") {
+                adViewModel.showRewardedAd {
+                    viewModel.resetMessageLimit()
+                    Task { await adViewModel.loadRewardedAd() } // 次のために再ロード
+                }
+            }
+            Button("キャンセル", role: .cancel) { }
+        } message: {
+            Text("10通送信しました。続けて推しと話すには広告を視聴してください。")
+        }
+        .task {
+            if AppConfig.adGateEnabled {
+                await adViewModel.loadRewardedAd()
+            }
+        }
     }
     
     private func sendMessage() {
@@ -471,5 +494,5 @@ struct RoundedCorner: Shape {
 }
 
 #Preview {
-    ChatListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false))
+    ChatListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false), adViewModel: AdViewModel())
 }

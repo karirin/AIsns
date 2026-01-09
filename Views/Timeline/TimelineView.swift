@@ -2,7 +2,7 @@
 //  TimelineView.swift
 //  AIsns
 //
-//  Updated: 2026/01/02 - Complete UI/UX Redesign
+//  Updated: 2026/01/08 - Fixed Spotlight Tutorial positioning
 //
 
 import SwiftUI
@@ -42,41 +42,44 @@ struct TimelineScreenView: View {
     @State private var helpFlag: Bool = false
     @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
+    @ObservedObject var adViewModel: AdViewModel
+    
+    // スポットライトチュートリアル用
+    @StateObject private var spotlightManager = HomeSpotlightManager()
+    @State private var spotlightAnchors: [String: CGRect] = [:]
     
     // フィルタリングされた投稿
     private var filteredPosts: [Post] {
         switch selectedTab {
-        case .forYou: // フォロー中タブ
+        case .forYou:
             return viewModel.timelinePosts.filter { post in
                 if post.isUserPost { return true }
-                
                 if let authorId = post.authorId {
                     return viewModel.followingOshiIds.contains(authorId) ||
                            viewModel.followingRemoteOshiIDs.contains(authorId)
                 }
-                
                 return false
             }
-            
         case .following:
             return viewModel.recommendedPosts
         }
     }
     
     var body: some View {
+        // 【重要】iPadでの2画面分割を防ぐため、一番外側でStackスタイルを強制
         NavigationStack(path: $navigationPath) {
             ZStack(alignment: .leading) {
                 // メインコンテンツ
                 mainContent
                     .offset(x: showingSidebar ? 280 : 0)
-                    .scaleEffect(showingSidebar ? 0.92 : 1.0)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .scaleEffect(showingSidebar ? (UIDevice.current.userInterfaceIdiom == .pad ? 1.0 : 0.92) : 1.0)
                     .disabled(showingSidebar)
                 
-                // オーバーレイ
+                // サイドバー表示時のオーバーレイ
                 if showingSidebar {
-                    Color.black.opacity(0.5)
+                    Color.black.opacity(0.4)
                         .ignoresSafeArea()
-                        .offset(x: showingSidebar ? 280 : 0)
                         .onTapGesture {
                             withAnimation(DesignTokens.Animation.spring) {
                                 showingSidebar = false
@@ -84,7 +87,7 @@ struct TimelineScreenView: View {
                         }
                 }
                 
-                // サイドバー
+                // サイドバーメニュー
                 SidebarMenuView(
                     userName: userName,
                     userAvatarImage: userAvatarImage,
@@ -100,306 +103,188 @@ struct TimelineScreenView: View {
                 )
                 .offset(x: showingSidebar ? 0 : -300)
                 
+                // ポップアップ類
                 if helpFlag {
                     HelpModalView(isPresented: $helpFlag)
                 }
-                
                 if customerFlag {
                     ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
                 }
+                
+                // チュートリアル
+                if spotlightManager.isShowing && !spotlightManager.steps.isEmpty {
+                    SpotlightTutorialView(
+                        steps: spotlightManager.steps,
+                        currentStepIndex: $spotlightManager.currentStepIndex,
+                        isShowing: $spotlightManager.isShowing
+                    )
+                    .ignoresSafeArea()
+                    .zIndex(100)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .navigationBarHidden(true)
             .navigationDestination(for: SidebarDestination.self) { destination in
                 switch destination {
-                case .profile:
-                    UserProfileView(viewModel: viewModel)
-                case .followers:
-                    OshiListView(viewModel: viewModel, isPresented: .constant(true))
-                case .chat:
-                    ChatListView(viewModel: viewModel, isPresented: .constant(true))
-                case .notifications:
-                    NotificationView(viewModel: viewModel, isPresented: .constant(true))
-                case .bookmarks:
-                    BookmarkListView(viewModel: viewModel)
-                case .settings:
-                    EmptyView()
+                case .profile: UserProfileView(viewModel: viewModel)
+                case .followers: OshiListView(viewModel: viewModel, isPresented: .constant(true))
+                case .chat: ChatListView(viewModel: viewModel, isPresented: .constant(true), adViewModel: adViewModel)
+                case .notifications: NotificationView(viewModel: viewModel, isPresented: .constant(true))
+                case .bookmarks: BookmarkListView(viewModel: viewModel)
+                case .settings: EmptyView()
                 }
             }
             .navigationDestination(for: OshiCharacter.self) { oshi in
                 OshiProfileDetailView(oshi: oshi, viewModel: viewModel)
             }
-            .task {
-                await loadInitialData()
-            }
+            .task { await loadInitialData() }
             .sheet(isPresented: $showingPostSheet) {
                 PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
             }
-            .onAppear{
-                dbManager.fetchUserFlag { userFlag, error in
-                    if let error = error {
-                        print(error.localizedDescription)
-                    } else if let userFlag = userFlag {
+            .onAppear {
+                dbManager.fetchUserFlag { userFlag, _ in
+                    if let userFlag = userFlag {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            if userFlag == 0 {
+                            if userFlag == 0 && spotlightManager.hasSeenTutorial {
                                 executeProcessEveryfifTimes()
                                 executeProcessEveryThreeTimes()
                             }
                         }
                     }
                 }
+                spotlightManager.startTutorialIfNeeded()
             }
         }
+        // 【重要】iPadで1画面(iPhone形式)を強制する
+        .navigationViewStyle(.stack)
         .gesture(
             DragGesture(minimumDistance: 20, coordinateSpace: .global)
                 .onEnded { value in
                     let dx = value.translation.width
                     let dy = value.translation.height
                     guard abs(dx) > abs(dy) else { return }
-                    
                     withAnimation(DesignTokens.Animation.spring) {
-                        if dx > 60, !showingSidebar {
-                            showingSidebar = true
-                        }
-                        if dx < -60, showingSidebar {
-                            showingSidebar = false
-                        }
+                        if dx > 60, !showingSidebar { showingSidebar = true }
+                        if dx < -60, showingSidebar { showingSidebar = false }
                     }
                 }
         )
     }
     
+    // MARK: - Subviews
+    
+    private var mainContent: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                headerView(geometry: geometry)
+                tabBarView(geometry: geometry)
+                
+                Group {
+                    if viewModel.isLoading && viewModel.posts.isEmpty {
+                        LoadingView(message: "読み込み中...", subtitle: "最新の投稿を取得しています")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if filteredPosts.isEmpty {
+                        timelineEmptyView
+                    } else {
+                        timelineScrollView
+                    }
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+            .background(AppColors.backgroundPrimary)
+            .overlay(alignment: .bottomTrailing) {
+                FloatingActionButton(icon: "plus") {
+                    generateHapticFeedback()
+                    showingPostSheet = true
+                }
+                .spotlightAnchor("fab_button")
+                .padding(.trailing, DesignTokens.Spacing.lg)
+                .padding(.bottom, DesignTokens.Spacing.xl)
+            }
+        }
+    }
+
     private var timelineScrollView: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(filteredPosts) { post in
-                    // ★ 修正: onAvatarTap を追加して、アイコンタップ時の処理を渡す
-                    PostCardView(
-                        post: post,
-                        viewModel: viewModel,
-                        onAvatarTap: {
-                            handleAvatarTap(for: post)
-                        }
-                    )
-                    
-                    AppDivider(leadingPadding: 68)
+                ForEach(Array(filteredPosts.enumerated()), id: \.element.id) { index, post in
+                    VStack(spacing: 0) {
+                        PostCardView(
+                            post: post,
+                            viewModel: viewModel,
+                            onAvatarTap: { handleAvatarTap(for: post) }
+                        )
+                        AppDivider(leadingPadding: 68)
+                        
+//                        if (index + 1) % 5 == 0 {
+//                            if let nativeAd = adViewModel.nativeAd {
+//                                NativeAdView(nativeAd: nativeAd)
+//                                    .frame(maxWidth: .infinity)
+//                                    .frame(height: 320)
+//                                    .background(AppColors.backgroundPrimary)
+//                                AppDivider()
+//                            }
+//                        }
+                    }
                 }
             }
             .padding(.bottom, 100)
         }
         .refreshable {
             await viewModel.loadData()
+            adViewModel.loadNativeAd()
         }
     }
 
-    // 👇 追加: タップ時の遷移ロジック
-    private func handleAvatarTap(for post: Post) {
-        if post.isUserPost {
-            // 自分の投稿なら、自分のプロフィールへ
-            navigationPath.append(SidebarDestination.profile)
-        } else {
-            // 1. フォロー中の推しから探す
-            if let oshi = viewModel.oshiList.first(where: { $0.id == post.authorId }) {
-                navigationPath.append(oshi)
-            }
-            // 2. おすすめ（未フォロー）の推しから探す
-            else if let preset = viewModel.recommendedOshis.first(where: { $0.id == post.authorId }) {
-                navigationPath.append(preset)
-            }
-            // 3. 【追加】それ以外（リストにない公開ユーザー）の場合
-            else if let authorId = post.authorId {
-                // Postの情報から一時的なOshiCharacterを生成して遷移
-                // ※性格や口調などの詳細情報は取得できませんが、プロフィール表示とフォローは可能になります
-                let unknownOshi = OshiCharacter(
-                    id: authorId,
-                    name: post.authorName,
-                    avatarImageURL: post.authorAvatarURL,
-                    isPublic: true,
-                    creatorId: post.creatorId // 👈 【ここを追加】これにより通知先にIDが渡ります
-                )
-                navigationPath.append(unknownOshi)
-            }
-        }
-    }
-
-    func executeProcessEveryfifTimes() {
-        // UserDefaultsからカウンターを取得
-        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
-        
-        // カウンターを更新
-        UserDefaults.standard.set(count, forKey: "launchHelpCount")
-
-        if count % 15 == 0 {
-            helpFlag = true
-        }
-    }
-
-    func executeProcessEveryThreeTimes() {
-        // UserDefaultsからカウンターを取得
-        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
-        
-        // カウンターを更新
-        UserDefaults.standard.set(count, forKey: "launchCount")
-        
-        // 3回に1回の割合で処理を実行
-        if count % 10 == 0 {
-            customerFlag = true
-        }
-    }
-    
-    // MARK: - Data Loading
-    
-    private func loadInitialData() async {
-        do {
-            let profile = try await dbManager.loadUserProfile()
-            userName = profile.userName
-            
-            if let url = profile.avatarImageURL {
-                isLoadingUserAvatar = true
-                userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
-                isLoadingUserAvatar = false
-            }
-            
-            await viewModel.loadUserReposts()
-            await viewModel.loadUserLikes()
-            await viewModel.loadUserBookmarks()
-        } catch {
-            print("❌ Timeline load error:", error.localizedDescription)
-            isLoadingUserAvatar = false
-        }
-    }
-    
-    private func navigateAndCloseSidebar(_ destination: SidebarDestination) {
-        generateHapticFeedback()
-        navigationPath.append(destination)
-        withAnimation(DesignTokens.Animation.spring) {
-            showingSidebar = false
-        }
-    }
-    
-    // MARK: - Main Content
-    
-    private var mainContent: some View {
-        VStack(spacing: 0) {
-            // ヘッダー
-            headerView
-            
-            // タブバー
-            tabBarView
-            
-            // コンテンツ
-            Group {
-                if viewModel.isLoading && viewModel.posts.isEmpty {
-                    LoadingView(
-                        message: "読み込み中...",
-                        subtitle: "最新の投稿を取得しています"
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if filteredPosts.isEmpty {
-                    timelineEmptyView
-                } else {
-                    timelineScrollView
-                }
-            }
-        }
-        .background(AppColors.backgroundPrimary)
-        .overlay(alignment: .bottomTrailing) {
-            FloatingActionButton(icon: "plus") {
-                generateHapticFeedback()
-                showingPostSheet = true
-            }
-            .padding(.trailing, DesignTokens.Spacing.lg)
-            .padding(.bottom, DesignTokens.Spacing.xl)
-        }
-    }
-    
-    // MARK: - Header View
-    
-    private var headerView: some View {
-        HStack(spacing: DesignTokens.Spacing.md) {
-            // プロフィールボタン
+    private func headerView(geometry: GeometryProxy) -> some View {
+        HStack {
             Button {
                 generateHapticFeedback()
-                withAnimation(DesignTokens.Animation.spring) {
-                    showingSidebar.toggle()
-                }
+                withAnimation(DesignTokens.Animation.spring) { showingSidebar.toggle() }
             } label: {
                 profileButton
             }
+            .spotlightAnchor("profile_button")
             
             Spacer()
-            
-            // ロゴ
             HStack(spacing: 6) {
                 Image("アイコン")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width:30)
-                    .cornerRadius(50)
-                
+                    .resizable().scaledToFit().frame(width:30).cornerRadius(50)
                 Text("AImate")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(AppColors.primaryGradient)
             }
-            
             Spacer()
-            Button {
-                generateHapticFeedback()
-                withAnimation(DesignTokens.Animation.spring) {
-                    showingSidebar.toggle()
-                }
-            } label: {
-                profileButton
-            }
-            .opacity(0) // レイアウトバランス用
-            .disabled(true)
+            profileButton.opacity(0).disabled(true)
         }
         .padding(.horizontal, DesignTokens.Spacing.md)
         .padding(.vertical, DesignTokens.Spacing.sm)
-        .background(
-            AppColors.backgroundPrimary
-                .shadow(color: Color.black.opacity(0.03), radius: 1, y: 1)
-        )
+        .background(AppColors.backgroundPrimary.shadow(color: Color.black.opacity(0.03), radius: 1, y: 1))
     }
-    
-    // MARK: - Profile Button
-    
+
     private var profileButton: some View {
         Group {
             if isLoadingUserAvatar {
                 SkeletonView(width: 32, height: 32, cornerRadius: 16)
             } else {
-                AvatarView(
-                    image: userAvatarImage,
-                    name: userName,
-                    size: 32,
-                    placeholderGradient: AppColors.primaryGradient
-                )
+                AvatarView(image: userAvatarImage, name: userName, size: 32, placeholderGradient: AppColors.primaryGradient)
             }
         }
     }
-    
-    // MARK: - Tab Bar View
-    
-    private var tabBarView: some View {
+
+    private func tabBarView(geometry: GeometryProxy) -> some View {
         HStack(spacing: 0) {
             ForEach(TimelineTab.allCases, id: \.self) { tab in
                 Button {
                     generateHapticFeedback()
-                    withAnimation(DesignTokens.Animation.spring) {
-                        selectedTab = tab
-                    }
+                    withAnimation(DesignTokens.Animation.spring) { selectedTab = tab }
                 } label: {
                     VStack(spacing: DesignTokens.Spacing.xs) {
                         Text(tab.rawValue)
                             .font(selectedTab == tab ? AppTypography.bodyMedium : AppTypography.body)
                             .foregroundColor(selectedTab == tab ? AppColors.textPrimary : AppColors.textSecondary)
-                        
-                        // インジケーター
                         ZStack {
-                            Rectangle()
-                                .fill(Color.clear)
-                                .frame(height: 3)
-                            
+                            Rectangle().fill(Color.clear).frame(height: 3)
                             if selectedTab == tab {
                                 RoundedRectangle(cornerRadius: 1.5)
                                     .fill(AppColors.primaryGradientH)
@@ -415,43 +300,74 @@ struct TimelineScreenView: View {
         }
         .padding(.top, DesignTokens.Spacing.xxs)
         .background(AppColors.backgroundPrimary)
-        .overlay(
-            AppDivider(),
-            alignment: .bottom
-        )
+        .spotlightAnchor("tab_bar")
+        .overlay(AppDivider(), alignment: .bottom)
     }
-    
-    // MARK: - Empty State (Updated)
+
     private var timelineEmptyView: some View {
         ScrollView {
-            // タブに応じたコンテンツの切り替え
             if selectedTab == .following {
-                // おすすめ（公式）タブが空の場合
-                EmptyStateView(
-                    icon: "sparkles", // アイコン変更
-                    title: "おすすめの投稿はまだありません",
-                    subtitle: "公式アカウントからの最新情報を\nお待ちください",
-                    actionTitle: nil, // アクションボタンなし
-                    action: nil
-                )
+                EmptyStateView(icon: "sparkles", title: "おすすめの投稿はまだありません", subtitle: "公式アカウントからの最新情報を\nお待ちください", actionTitle: nil, action: nil)
             } else {
-                // フォロー中タブが空の場合
-                EmptyStateView(
-                    icon: "bubble.left.and.bubble.right",
-                    title: "タイムラインがまだ空です",
-                    subtitle: "新しい投稿を作成するか\nアカウントをフォローしてみましょう",
-                    actionTitle: "アカウントを探す",
-                    action: {
-                        generateHapticFeedback()
-                        navigationPath.append(SidebarDestination.followers)
-                    }
-                )
+                EmptyStateView(icon: "bubble.left.and.bubble.right", title: "タイムラインがまだ空です", subtitle: "新しい投稿を作成するか\nアカウントをフォローしてみましょう", actionTitle: "アカウントを探す", action: {
+                    generateHapticFeedback()
+                    navigationPath.append(SidebarDestination.followers)
+                })
             }
         }
         .padding(.top, DesignTokens.Spacing.xxxxl)
-        .refreshable {
-            await viewModel.loadData()
+        .refreshable { await viewModel.loadData() }
+    }
+
+    // MARK: - Actions & Data Loading
+
+    private func handleAvatarTap(for post: Post) {
+        if post.isUserPost {
+            navigationPath.append(SidebarDestination.profile)
+        } else if let oshi = viewModel.oshiList.first(where: { $0.id == post.authorId }) {
+            navigationPath.append(oshi)
+        } else if let preset = viewModel.recommendedOshis.first(where: { $0.id == post.authorId }) {
+            navigationPath.append(preset)
+        } else if let authorId = post.authorId {
+            let unknownOshi = OshiCharacter(id: authorId, name: post.authorName, avatarImageURL: post.authorAvatarURL, isPublic: true, creatorId: post.creatorId)
+            navigationPath.append(unknownOshi)
         }
+    }
+
+    private func loadInitialData() async {
+        do {
+            let profile = try await dbManager.loadUserProfile()
+            userName = profile.userName
+            if let url = profile.avatarImageURL {
+                isLoadingUserAvatar = true
+                userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
+                isLoadingUserAvatar = false
+            }
+            await viewModel.loadUserReposts()
+            await viewModel.loadUserLikes()
+            await viewModel.loadUserBookmarks()
+        } catch {
+            print("❌ Timeline load error:", error.localizedDescription)
+            isLoadingUserAvatar = false
+        }
+    }
+
+    private func navigateAndCloseSidebar(_ destination: SidebarDestination) {
+        generateHapticFeedback()
+        navigationPath.append(destination)
+        withAnimation(DesignTokens.Animation.spring) { showingSidebar = false }
+    }
+
+    func executeProcessEveryfifTimes() {
+        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
+        UserDefaults.standard.set(count, forKey: "launchHelpCount")
+        if count % 15 == 0 { helpFlag = true }
+    }
+
+    func executeProcessEveryThreeTimes() {
+        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
+        UserDefaults.standard.set(count, forKey: "launchCount")
+        if count % 10 == 0 { customerFlag = true }
     }
 }
 
@@ -671,24 +587,6 @@ struct PostCardView: View {
                 .buttonStyle(.plain)
             } else {
                 cardContent
-            }
-        }
-        // ✅ ここに contextMenu を追加
-        .contextMenu {
-            // 自分の投稿以外の場合のみ表示
-            if !post.isUserPost {
-                Button(role: .destructive) {
-                    // クリエイターID、または著者IDを使ってブロック
-                    viewModel.blockUser(creatorId: post.creatorId, authorId: post.authorId)
-                } label: {
-                    Label("このアカウントをブロック", systemImage: "hand.raised.slash")
-                }
-                
-                Button {
-                    // 必要であれば通報機能などもここに追加可能
-                } label: {
-                    Label("報告する", systemImage: "exclamationmark.bubble")
-                }
             }
         }
         .task {
@@ -1014,6 +912,7 @@ struct PostComposerView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     // MARK: - Toolbar
@@ -1329,5 +1228,5 @@ struct ActionButton: View {
 }
 
 #Preview {
-    TimelineScreenView(viewModel: OshiViewModel())
+    TimelineScreenView(viewModel: OshiViewModel(), adViewModel: AdViewModel())
 }

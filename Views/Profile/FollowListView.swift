@@ -18,6 +18,7 @@ struct FollowListView: View {
     @ObservedObject var viewModel: OshiViewModel
     @State private var users: [OshiCharacter] = []
     @State private var isLoading = true
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
         List {
@@ -63,6 +64,18 @@ struct FollowListView: View {
         .listStyle(.plain)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(AppColors.textPrimary)
+                }
+            }
+        }
         .task {
             await loadData()
         }
