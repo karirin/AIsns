@@ -9,6 +9,33 @@ class AdViewModel: NSObject, ObservableObject {
     
     // ✅ 追加: リワード広告を保持するプロパティ
     private var rewardedAd: RewardedAd?
+    private var interstitialAd: InterstitialAd?
+
+    func loadInterstitialAd() async {
+        do {
+            // テスト用ID: ca-app-pub-3940256099942544/4411468910
+            interstitialAd = try await InterstitialAd.load(with: "ca-app-pub-3940256099942544/4411468910", request: Request())
+            print("✅ インタースティシャル広告のロード成功")
+        } catch {
+            print("❌ インタースティシャル広告のロード失敗: \(error.localizedDescription)")
+        }
+    }
+
+    // ✅ インタースティシャル広告を表示
+    func showInterstitialAd() {
+        guard let interstitialAd = interstitialAd else {
+            print("⚠️ インタースティシャル広告の準備ができていません")
+            return
+        }
+
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = windowScene.windows.first?.rootViewController {
+            interstitialAd.present(from: root)
+            // 表示後は再ロードが必要なため、参照を消す
+            self.interstitialAd = nil
+            Task { await loadInterstitialAd() }
+        }
+    }
 
     // 広告をロードするメソッド
     func loadNativeAd() {

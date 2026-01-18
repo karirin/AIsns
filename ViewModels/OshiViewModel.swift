@@ -1101,64 +1101,63 @@ class OshiViewModel: ObservableObject {
     // ✅ 最適化版: リアクション・コメントを個別に保存し、即座にUIに反映
     private func generateReactionsForPost(_ post: Post) async {
         guard let postIndex = posts.firstIndex(where: { $0.id == post.id }) else { return }
-        
-        // analyzeMoodは String を返すようになっています
         let mood = aiService.analyzeMood(from: post.content)
-        
         let commentersCount = min(Int.random(in: 2...3), oshiList.count)
         let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
         
         for oshi in oshiList {
-            try? await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.likeDelayRange)))
-            // いいね処理 (変更なし)
-            if Double.random(in: 0...1) < Double.random(in: 0.6...0.9) {
-                let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
-                let targetAuthorId = post.authorId?.uuidString ?? dbManager.currentUserId
-                let targetOshiName = post.isUserPost ? nil : post.authorName
-                
-                try? await dbManager.addReaction(
-                    reaction,
-                    to: post.id,
-                    postAuthorId: targetAuthorId,
-                    oshiName: targetOshiName
-                )
-                
-                if post.isUserPost { createReactionNotification(oshi: oshi, post: post) }
-                if let idx = posts.firstIndex(where: { $0.id == post.id }) { posts[idx].reactionCount += 1 }
-                if var details = postDetails[post.id] {
-                    details.reactions.append(reaction)
-                    postDetails[post.id] = details
+            // キャラクターごとに非同期タスクを生成（並列化）
+            Task {
+                // --- いいね処理のタスク ---
+                let shouldLike = Double.random(in: 0...1) < Double.random(in: 0.6...0.9)
+                if shouldLike {
+                    // いいねの待機を独立して行う
+                    try? await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.likeDelayRange)))
+                    
+                    let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
+                    let targetAuthorId = post.authorId?.uuidString ?? dbManager.currentUserId
+                    let targetOshiName = post.isUserPost ? nil : post.authorName
+                    
+                    try? await dbManager.addReaction(reaction, to: post.id, postAuthorId: targetAuthorId, oshiName: targetOshiName)
+                    
+                    await MainActor.run {
+                        if post.isUserPost { createReactionNotification(oshi: oshi, post: post) }
+                        if let idx = posts.firstIndex(where: { $0.id == post.id }) { posts[idx].reactionCount += 1 }
+                        if var details = postDetails[post.id] {
+                            details.reactions.append(reaction)
+                            postDetails[post.id] = details
+                        }
+                    }
                 }
             }
             
-            // コメント処理
-            if selectedCommenters.contains(where: { $0.id == oshi.id }) {
-                do {
-                    try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.commentDelayRange)))
-                    
-                    // ✅ 修正: mood は String なので .rawValue は不要
-                    let commentText = try await aiService.generateComment(
-                        for: post,
-                        by: oshi,
-                        userMood: mood, // ← ここを修正
-                        userName: userProfileName
-                    )
-                    
-                    let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
-                    try await dbManager.addComment(comment, to: post.id)
-                    
-                    if post.isUserPost { createCommentNotification(oshi: oshi, post: post, commentContent: commentText) }
-                    if let idx = posts.firstIndex(where: { $0.id == post.id }) { posts[idx].commentCount += 1 }
-                    if var details = postDetails[post.id] {
-                        details.comments.append(comment)
-                        postDetails[post.id] = details
+            Task {
+                // --- コメント処理のタスク ---
+                if selectedCommenters.contains(where: { $0.id == oshi.id }) {
+                    do {
+                        // コメントの待機を独立して行う（いいねの待機に邪魔されない）
+                        try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.commentDelayRange)))
+                        
+                        let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood, userName: userProfileName)
+                        let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
+                        
+                        try await dbManager.addComment(comment, to: post.id)
+                        
+                        await MainActor.run {
+                            if post.isUserPost { createCommentNotification(oshi: oshi, post: post, commentContent: commentText) }
+                            if let idx = posts.firstIndex(where: { $0.id == post.id }) { posts[idx].commentCount += 1 }
+                            if var details = postDetails[post.id] {
+                                details.comments.append(comment)
+                                postDetails[post.id] = details
+                            }
+                            if let oshiIdx = oshiList.firstIndex(where: { $0.id == oshi.id }) {
+                                oshiList[oshiIdx].increaseIntimacy(by: 2)
+                                Task { try? await dbManager.saveOshi(oshiList[oshiIdx]) }
+                            }
+                        }
+                    } catch {
+                        print("❌ コメント生成エラー: \(error)")
                     }
-                    if let oshiIdx = oshiList.firstIndex(where: { $0.id == oshi.id }) {
-                        oshiList[oshiIdx].increaseIntimacy(by: 2)
-                        try await dbManager.saveOshi(oshiList[oshiIdx])
-                    }
-                } catch {
-                    print("❌ コメント生成エラー: \(error)")
                 }
             }
         }

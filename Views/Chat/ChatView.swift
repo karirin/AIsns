@@ -352,7 +352,11 @@ struct ChatDetailView: View {
                 Button(action: {
                     generateHapticFeedback()
                     if viewModel.isMessageLimitReached {
-                        showingAdAlert = true
+                        if AppConfig.adGateEnabled {
+                            showingAdAlert = true
+                        } else {
+                            sendMessage()
+                        }
                     } else {
                         sendMessage()
                     }

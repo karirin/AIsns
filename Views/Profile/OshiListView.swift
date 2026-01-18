@@ -17,6 +17,7 @@ struct OshiListView: View {
     @State private var helpFlag: Bool = false
     @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
+    @ObservedObject var adViewModel: AdViewModel
     
     var body: some View {
         NavigationView {
@@ -56,7 +57,7 @@ struct OshiListView: View {
                 }
                 
                 // アカウント追加ボタン
-                NavigationLink(destination: OshiCreationView(viewModel: viewModel)) {
+                NavigationLink(destination: OshiCreationView(viewModel: viewModel, adViewModel: adViewModel)) {
                     ZStack {
                         Circle()
                             .fill(AppColors.primaryGradient)
@@ -325,5 +326,5 @@ struct TabButton: View {
 }
 
 #Preview {
-    OshiListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false))
+    OshiListView(viewModel: OshiViewModel(mock: true), isPresented: .constant(false), adViewModel: AdViewModel())
 }

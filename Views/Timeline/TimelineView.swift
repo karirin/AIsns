@@ -110,7 +110,7 @@ struct TimelineScreenView: View {
             .navigationDestination(for: SidebarDestination.self) { destination in
                 switch destination {
                 case .profile: UserProfileView(viewModel: viewModel)
-                case .followers: OshiListView(viewModel: viewModel, isPresented: .constant(true))
+                case .followers: OshiListView(viewModel: viewModel, isPresented: .constant(true), adViewModel: adViewModel)
                 case .chat: ChatListView(viewModel: viewModel, isPresented: .constant(true), adViewModel: adViewModel)
                 case .notifications: NotificationView(viewModel: viewModel, isPresented: .constant(true))
                 case .bookmarks: BookmarkListView(viewModel: viewModel)
@@ -135,7 +135,15 @@ struct TimelineScreenView: View {
                         }
                     }
                 }
-                spotlightManager.startTutorialIfNeeded()
+                if !spotlightManager.hasSeenTutorial {
+                    spotlightManager.startTutorialIfNeeded()
+                }
+            }
+        }
+        .onChange(of: spotlightManager.isShowing) { isShowing in
+            // チュートリアルが表示状態から非表示（完了・スキップ）になった時
+            if !isShowing && !spotlightManager.hasSeenTutorial {
+                spotlightManager.completeTutorial()
             }
         }
         // 【重要】iPadで1画面(iPhone形式)を強制する
@@ -185,17 +193,19 @@ struct TimelineScreenView: View {
                         )
                         AppDivider(leadingPadding: 68)
                     }
+                    if AppConfig.adGateEnabled {
+                        // ✅ ここに移動（ForEach の中）
+                        if (index + 1) % 5 == 0 {
+                            if let nativeAd = adViewModel.nativeAd {
+                                NativeAdView(nativeAd: nativeAd)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 320)
+                                    .background(AppColors.backgroundPrimary)
+                                AppDivider()
+                            }
+                        }
+                    }
                 }
-                
-                //                        if (index + 1) % 5 == 0 {
-                //                            if let nativeAd = adViewModel.nativeAd {
-                //                                NativeAdView(nativeAd: nativeAd)
-                //                                    .frame(maxWidth: .infinity)
-                //                                    .frame(height: 320)
-                //                                    .background(AppColors.backgroundPrimary)
-                //                                AppDivider()
-                //                            }
-                //                        }
                 
                 // ✅ もっと見るボタンを追加
                 if viewModel.hasMorePosts(for: selectedTab) {

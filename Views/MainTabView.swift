@@ -38,7 +38,7 @@ struct MainTabView: View {
                 .tag(Tab.timeline)
             
             // 推しリスト
-            OshiListView(viewModel: viewModel, isPresented: .constant(false))
+            OshiListView(viewModel: viewModel, isPresented: .constant(false), adViewModel: adViewModel)
                 .tabItem {
                     Image(systemName: selectedTab == .oshi ? "person.2.fill" : "person.2")
                         .environment(\.symbolVariants, .none)
@@ -94,4 +94,8 @@ struct MainTabView: View {
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
     }
+}
+
+#Preview {
+    MainTabView()
 }

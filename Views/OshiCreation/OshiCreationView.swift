@@ -34,6 +34,8 @@ struct OshiCreationView: View {
     @State private var showSpeechCharacteristicsOptions = false
     @State private var showSpeechStyleOptions = false
     
+    @ObservedObject var adViewModel: AdViewModel
+    
     // クイック入力オプション
     private let personalityOptions = ["優しい", "明るい", "クール", "天然", "しっかり者", "甘えん坊", "ツンデレ", "元気"]
     private let speechCharacteristicsOptions = ["柔らかい口調", "元気いっぱい", "落ち着いている", "おっとり", "ハキハキ", "ゆっくり", "早口", "囁くような"]
@@ -631,6 +633,9 @@ struct OshiCreationView: View {
 
             await MainActor.run {
                 isSaving = false
+                if AppConfig.adGateEnabled {
+                    adViewModel.showInterstitialAd()
+                }
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
                     showingSaveConfirmation = true
                 }
@@ -979,6 +984,6 @@ extension Color {
 
 #Preview {
     NavigationStack {
-        OshiCreationView(viewModel: OshiViewModel())
+        OshiCreationView(viewModel: OshiViewModel(), adViewModel: AdViewModel())
     }
 }
