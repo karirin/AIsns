@@ -32,6 +32,13 @@ struct OshiListView: View {
                     .background(AppColors.backgroundPrimary)
                     .zIndex(1)
                     
+                    if AppConfig.adGateEnabled {
+                        BannerAdView()
+                            .frame(width: 320, height: 50)
+                            .frame(maxWidth: .infinity) // 横幅いっぱいの領域の中で中央寄せ
+                            .padding(.vertical, 4)
+                            .background(Color(.systemBackground))
+                    }
                     // コンテンツエリア
                     TabView(selection: $selectedTab) {
                         OshiListPage(

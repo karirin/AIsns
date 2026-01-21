@@ -6,15 +6,21 @@ import UIKit // UIApplication を使用するために必要
 class AdViewModel: NSObject, ObservableObject {
     @Published var nativeAd: NativeAd? = nil
     private var adLoader: AdLoader?
-    
+    private let interstitialCountKey = "interstitial_create_count"
     // ✅ 追加: リワード広告を保持するプロパティ
     private var rewardedAd: RewardedAd?
     private var interstitialAd: InterstitialAd?
+    
+    func shouldShowInterstitialEvery3rd() -> Bool {
+        let next = UserDefaults.standard.integer(forKey: interstitialCountKey) + 1
+        UserDefaults.standard.set(next, forKey: interstitialCountKey)
+        return next % 3 == 0
+    }
 
     func loadInterstitialAd() async {
         do {
             // テスト用ID: ca-app-pub-3940256099942544/4411468910
-            interstitialAd = try await InterstitialAd.load(with: "ca-app-pub-3940256099942544/4411468910", request: Request())
+            interstitialAd = try await InterstitialAd.load(with: "ca-app-pub-4898800212808837/3380377117", request: Request())
             print("✅ インタースティシャル広告のロード成功")
         } catch {
             print("❌ インタースティシャル広告のロード失敗: \(error.localizedDescription)")
@@ -24,14 +30,15 @@ class AdViewModel: NSObject, ObservableObject {
     // ✅ インタースティシャル広告を表示
     func showInterstitialAd() {
         guard let interstitialAd = interstitialAd else {
-            print("⚠️ インタースティシャル広告の準備ができていません")
+            print("⚠️ インタースティシャル広告の準備ができていません（今からロードします）")
+            Task { await loadInterstitialAd() }   // ✅ 追加
             return
         }
 
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = windowScene.windows.first?.rootViewController {
             interstitialAd.present(from: root)
-            // 表示後は再ロードが必要なため、参照を消す
+
             self.interstitialAd = nil
             Task { await loadInterstitialAd() }
         }
@@ -39,7 +46,7 @@ class AdViewModel: NSObject, ObservableObject {
 
     // 広告をロードするメソッド
     func loadNativeAd() {
-        let adUnitID = "ca-app-pub-3940256099942544/3986624511"
+        let adUnitID = "ca-app-pub-4898800212808837/4913451643"
         adLoader = AdLoader(
             adUnitID: adUnitID,
             rootViewController: nil,
@@ -54,7 +61,7 @@ class AdViewModel: NSObject, ObservableObject {
     func loadRewardedAd() async {
         do {
             // ここで宣言済みの rewardedAd に代入されます
-            rewardedAd = try await RewardedAd.load(with: "ca-app-pub-3940256099942544/1712485313", request: Request())
+            rewardedAd = try await RewardedAd.load(with: "ca-app-pub-4898800212808837/8635561465", request: Request())
             print("✅ リワード広告のロード成功")
         } catch {
             print("❌ リワード広告のロード失敗: \(error.localizedDescription)")

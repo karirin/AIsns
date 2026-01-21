@@ -105,3 +105,7 @@ struct FollowListView: View {
         isLoading = false
     }
 }
+
+#Preview {
+    MainTabView()
+}

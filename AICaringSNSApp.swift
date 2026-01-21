@@ -23,6 +23,8 @@ struct OshiSNSApp: App {
     var body: some Scene {
         WindowGroup {
             LaunchScreenView()
+//            SNSCommentDemoView()
+//            SNSProfileView()
         }
     }
 }

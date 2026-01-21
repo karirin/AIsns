@@ -128,6 +128,7 @@ struct OshiCreationView: View {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                 appearAnimation = true
             }
+            Task { await adViewModel.loadInterstitialAd() }
         }
     }
     
@@ -633,7 +634,7 @@ struct OshiCreationView: View {
 
             await MainActor.run {
                 isSaving = false
-                if AppConfig.adGateEnabled {
+                if AppConfig.adGateEnabled, adViewModel.shouldShowInterstitialEvery3rd() {
                     adViewModel.showInterstitialAd()
                 }
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
