@@ -10,18 +10,48 @@ import PhotosUI
 
 // MARK: - Profile Data Model
 class ProfileViewModel: ObservableObject {
-    @Published var username: String = "user_name"
-    @Published var displayName: String = "Display Name"
-    @Published var bio: String = "ここに自己紹介文が入ります 🎨✨"
+    @Published var username: String = "you"
+    @Published var displayName: String = "あなた"
+    @Published var bio: String = ""
     @Published var followingCount: Int = 128
     @Published var followersCount: Int = 1024
     @Published var postsCount: Int = 42
     @Published var profileImage: UIImage? = nil
     @Published var isCountUpEnabled: Bool = false
+    @Published var countMode: CountMode = .up
     
     private var countUpTimer: Timer?
     
+    enum CountMode: String, CaseIterable, Identifiable {
+        case up = "カウントアップ"
+        case down = "カウントダウン"
+        var id: String { rawValue }
+    }
+    
+    // 置き換え（startCountUp → 汎用化してもOKだが、最小差分で中身だけ変更）
     func startCountUp() {
+        guard isCountUpEnabled else { return }
+        countUpTimer?.invalidate()
+        countUpTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self, self.isCountUpEnabled else {
+                self?.countUpTimer?.invalidate()
+                return
+            }
+
+            let delta = Int.random(in: 1...5)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                switch self.countMode {
+                case .up:
+                    self.followersCount += delta
+                case .down:
+                    self.followersCount = max(0, self.followersCount - delta)
+                }
+            }
+        }
+    }
+
+    
+    func startCountUp1() {
         guard isCountUpEnabled else { return }
         countUpTimer?.invalidate()
         countUpTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -211,13 +241,6 @@ struct SNSProfileView: View {
             Text("@\(viewModel.username)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            
-            Text(viewModel.bio)
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.primary.opacity(0.8))
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
         }
         .animation(.spring(response: 0.3), value: viewModel.isCountUpEnabled)
     }
@@ -424,6 +447,17 @@ struct EditProfileSheet: View {
                 }
                 
                 Section {
+                    Picker("モード", selection: $viewModel.countMode) {
+                        ForEach(ProfileViewModel.CountMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: viewModel.countMode) { _ in
+                        if viewModel.isCountUpEnabled {
+                            viewModel.startCountUp1() // タイマーをリスタートして反映
+                        }
+                    }
                     Toggle(isOn: $viewModel.isCountUpEnabled) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("カウントアップ")

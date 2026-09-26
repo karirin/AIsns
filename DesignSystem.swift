@@ -81,22 +81,29 @@ enum DesignTokens {
     }
     
     // MARK: - Shadow
-    
+
     enum Shadow {
-        static let sm = (color: Color.black.opacity(0.04), radius: CGFloat(4), y: CGFloat(2))
-        static let md = (color: Color.black.opacity(0.06), radius: CGFloat(8), y: CGFloat(4))
-        static let lg = (color: Color.black.opacity(0.08), radius: CGFloat(16), y: CGFloat(8))
-        static let xl = (color: Color.black.opacity(0.12), radius: CGFloat(24), y: CGFloat(12))
+        /// わずかにブランドカラー（インディゴ）を帯びたソフトシャドウ
+        static let sm = (color: Color(hex: "312E81").opacity(0.05), radius: CGFloat(4), y: CGFloat(2))
+        static let md = (color: Color(hex: "312E81").opacity(0.07), radius: CGFloat(10), y: CGFloat(4))
+        static let lg = (color: Color(hex: "312E81").opacity(0.09), radius: CGFloat(18), y: CGFloat(8))
+        static let xl = (color: Color(hex: "312E81").opacity(0.13), radius: CGFloat(28), y: CGFloat(12))
+        /// プライマリボタン・FABなどブランド色の発光シャドウ
+        static let brand = (color: Color(hex: "6366F1").opacity(0.35), radius: CGFloat(12), y: CGFloat(6))
     }
-    
+
     // MARK: - Animation
-    
+
     enum Animation {
         static let fast = SwiftUI.Animation.easeOut(duration: 0.15)
         static let normal = SwiftUI.Animation.easeOut(duration: 0.25)
         static let slow = SwiftUI.Animation.easeOut(duration: 0.35)
         static let spring = SwiftUI.Animation.spring(response: 0.35, dampingFraction: 0.7)
         static let bouncy = SwiftUI.Animation.spring(response: 0.4, dampingFraction: 0.6)
+        /// なめらかな状態遷移用（オーバーシュートなし・iOS16互換）
+        static let smooth = SwiftUI.Animation.spring(response: 0.3, dampingFraction: 1.0)
+        /// 軽快な操作フィードバック用（iOS16互換）
+        static let snappy = SwiftUI.Animation.spring(response: 0.25, dampingFraction: 0.85)
     }
 }
 
@@ -187,10 +194,22 @@ struct AppColors {
     static let pink = Color(hex: "EC4899")
     
     // MARK: - Background Colors
-    
+
     static let backgroundPrimary = Color(.systemBackground)
     static let backgroundSecondary = Color(.secondarySystemBackground)
     static let backgroundTertiary = Color(.tertiarySystemBackground)
+
+    /// 画面全体の背景（ごく淡いブランドカラーのウォッシュ・ダークモード対応）
+    static let canvas = Color(light: Color(hex: "F6F7FB"), dark: Color(hex: "0B0F1A"))
+
+    /// カードなどの浮き上がる面（ダークモード対応）
+    static let surface = Color(light: Color.white, dark: Color(hex: "161B2C"))
+
+    /// 面の上に重ねるサブ面（入力欄・チップなど）
+    static let surfaceSecondary = Color(light: Color(hex: "F1F2F7"), dark: Color(hex: "1F2537"))
+
+    /// ブランドカラーの淡い塗り（選択状態・アイコン背景など）
+    static let brandWash = Color(light: Color(hex: "EEF2FF"), dark: Color(hex: "1E1B4B"))
     
     /// 柔らかいグラデーション背景
     static let softBackground: LinearGradient = LinearGradient(
@@ -227,6 +246,44 @@ struct AppColors {
     
     static let overlay = Color.black.opacity(0.4)
     static let overlayLight = Color.black.opacity(0.2)
+}
+
+// MARK: - Aurora Background
+
+/// 画面全体に敷く、ごく淡いオーロラ調の背景。
+/// canvas の上にブランドカラーのぼかしを重ねて奥行きを出す。
+struct AuroraBackground: View {
+    var body: some View {
+        ZStack {
+            AppColors.canvas
+
+            RadialGradient(
+                colors: [AppColors.primary.opacity(0.07), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 420
+            )
+
+            RadialGradient(
+                colors: [AppColors.pink.opacity(0.05), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 380
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Adaptive Color Helper
+
+extension Color {
+    /// ライト/ダークで切り替わる動的カラー
+    init(light: Color, dark: Color) {
+        self.init(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        })
+    }
 }
 
 // MARK: - App Typography
@@ -275,19 +332,55 @@ extension View {
         shadowSize: (color: Color, radius: CGFloat, y: CGFloat) = DesignTokens.Shadow.md
     ) -> some View {
         self
-            .background(Color(.systemBackground))
-            .cornerRadius(cornerRadius)
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(color: shadowSize.color, radius: shadowSize.radius, x: 0, y: shadowSize.y)
     }
-    
+
+    /// タイムラインなどで使う「浮いたカード」スタイル
+    func floatingCardStyle(cornerRadius: CGFloat = DesignTokens.Radius.xl) -> some View {
+        self
+            .background(AppColors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(AppColors.borderLight.opacity(0.6), lineWidth: 0.5)
+            )
+            .shadow(
+                color: DesignTokens.Shadow.md.color,
+                radius: DesignTokens.Shadow.md.radius,
+                x: 0,
+                y: DesignTokens.Shadow.md.y
+            )
+    }
+
+    /// 画面全体の背景（オーロラ調のウォッシュ）を適用
+    func screenBackground() -> some View {
+        self.background(AuroraBackground())
+    }
+
+    /// スクロール端でカードをフェード＆縮小させる（iOS17未満では無効）
+    @ViewBuilder
+    func fadingScrollTransition() -> some View {
+        if #available(iOS 17.0, *) {
+            self.scrollTransition(.interactive, axis: .vertical) { content, phase in
+                content
+                    .opacity(phase.isIdentity ? 1 : 0.55)
+                    .scaleEffect(phase.isIdentity ? 1 : 0.96)
+            }
+        } else {
+            self
+        }
+    }
+
     /// グラスモーフィズム効果
     func glassStyle(cornerRadius: CGFloat = DesignTokens.Radius.xl) -> some View {
         self
             .background(.ultraThinMaterial)
-            .cornerRadius(cornerRadius)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
             )
     }
     
@@ -308,22 +401,22 @@ extension View {
 struct PressableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(DesignTokens.Animation.fast, value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(DesignTokens.Animation.snappy, value: configuration.isPressed)
     }
 }
 
 /// プライマリボタンスタイル
 struct PrimaryButtonStyle: ButtonStyle {
     var isEnabled: Bool = true
-    
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(AppTypography.bodyMedium)
             .foregroundColor(.white)
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .padding(.vertical, DesignTokens.Spacing.sm)
+            .padding(.horizontal, DesignTokens.Spacing.xl)
+            .padding(.vertical, DesignTokens.Spacing.sm + 2)
             .background(
                 Group {
                     if isEnabled {
@@ -337,7 +430,43 @@ struct PrimaryButtonStyle: ButtonStyle {
                     }
                 }
             )
-            .cornerRadius(DesignTokens.Radius.full)
+            .overlay(
+                // 上端のハイライトで立体感を出す
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(isEnabled ? 0.35 : 0), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .clipShape(Capsule())
+            .shadow(
+                color: isEnabled ? DesignTokens.Shadow.brand.color : .clear,
+                radius: DesignTokens.Shadow.brand.radius,
+                x: 0,
+                y: DesignTokens.Shadow.brand.y
+            )
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(DesignTokens.Animation.snappy, value: configuration.isPressed)
+    }
+}
+
+/// トーナルボタンスタイル（淡い塗り）
+struct TonalButtonStyle: ButtonStyle {
+    var tint: Color = AppColors.primary
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(AppTypography.bodyMedium)
+            .foregroundColor(tint)
+            .padding(.horizontal, DesignTokens.Spacing.lg)
+            .padding(.vertical, DesignTokens.Spacing.sm)
+            .background(tint.opacity(0.12))
+            .clipShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.9 : 1)
             .animation(DesignTokens.Animation.fast, value: configuration.isPressed)

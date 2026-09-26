@@ -26,4 +26,8 @@ class FirebaseConfig {
         UserDefaults.standard.set(newId, forKey: "userId")
         return newId
     }
+
+    func clearUserId() {
+        UserDefaults.standard.removeObject(forKey: "userId")
+    }
 }

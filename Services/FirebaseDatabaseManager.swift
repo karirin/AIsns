@@ -6,12 +6,11 @@ class FirebaseDatabaseManager {
     static let shared = FirebaseDatabaseManager()
 
     private let ref: DatabaseReference
-    private let userId: String
+    private var userId: String { FirebaseConfig.shared.userId }
     var currentUserId: String { userId }
 
     private init() {
         self.ref = FirebaseConfig.shared.databaseRef
-        self.userId = FirebaseConfig.shared.userId
     }
     
     // MARK: - User Flags & Contacts
@@ -48,6 +47,8 @@ class FirebaseDatabaseManager {
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
+            "appearanceDescription": oshi.appearanceDescription,
+            "backgroundStory": oshi.backgroundStory,
             "personalityText": oshi.personalityText,
             "speechCharacteristics": oshi.speechCharacteristics,
             "userCallingName": oshi.userCallingName,
@@ -58,11 +59,16 @@ class FirebaseDatabaseManager {
             "isFollowingUser": oshi.isFollowingUser,
             "isFollowedByUser": oshi.isFollowedByUser,
             "isPublic": oshi.isPublic,
+            "isCreatedByUser": oshi.isCreatedByUser,
             "followerCount": oshi.followerCount
         ]
         if let gender = oshi.gender { oshiData["gender"] = gender.rawValue }
         if let imageURL = oshi.avatarImageURL { oshiData["avatarImageURL"] = imageURL }
         if let creatorId = oshi.creatorId { oshiData["creatorId"] = creatorId }
+        if let relationshipStyle = oshi.relationshipStyle { oshiData["relationshipStyle"] = relationshipStyle }
+        if let replyLengthPreference = oshi.replyLengthPreference { oshiData["replyLengthPreference"] = replyLengthPreference }
+        if let memoryMemo = oshi.memoryMemo { oshiData["memoryMemo"] = memoryMemo }
+        if let replyFrequencyPreference = oshi.replyFrequencyPreference { oshiData["replyFrequencyPreference"] = replyFrequencyPreference }
         
         try await oshiRef.setValue(oshiData)
     }
@@ -80,11 +86,53 @@ class FirebaseDatabaseManager {
 
     func loadUserProfile() async throws -> (userName: String, userBio: String, avatarImageURL: String?) {
         let snap = try await ref.child("users/\(userId)/profile").getData()
-        guard let v = snap.value as? [String: Any] else { return ("あなた", "", nil) }
-        let name = v["userName"] as? String ?? "あなた"
+        guard let v = snap.value as? [String: Any] else { return ("ユーザー", "", nil) }
+        let storedName = (v["userName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name: String
+        if let storedName, !storedName.isEmpty, storedName != "あなた" {
+            name = storedName
+        } else {
+            name = "ユーザー"
+        }
         let bio = v["userBio"] as? String ?? ""
         let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return (name, bio, avatar)
+    }
+
+    func deleteCurrentUserData() async throws {
+        let deletingUserId = userId
+
+        let myPostsSnapshot = try? await ref.child("users/\(deletingUserId)/myPosts").getData()
+        if let myPosts = myPostsSnapshot?.value as? [String: Any] {
+            for postId in myPosts.keys {
+                _ = try? await ref.child("posts/\(postId)").removeValue()
+                _ = try? await ref.child("publicTimeline/\(postId)").removeValue()
+                _ = try? await ref.child("post-comments/\(postId)").removeValue()
+                _ = try? await ref.child("post-reactions/\(postId)").removeValue()
+            }
+        }
+
+        let followingSnapshot = try? await ref.child("users/\(deletingUserId)/following").getData()
+        if let following = followingSnapshot?.value as? [String: Any] {
+            for oshiId in following.keys {
+                _ = try? await ref.child("oshi-followers/\(oshiId)/\(deletingUserId)").removeValue()
+            }
+        }
+
+        let oshiSnapshot = try? await ref.child("users/\(deletingUserId)/oshiList").getData()
+        if let oshis = oshiSnapshot?.value as? [String: Any] {
+            for oshiId in oshis.keys {
+                if let uuid = UUID(uuidString: oshiId) {
+                    try? await FirebaseStorageManager.shared.deleteOshiAvatar(oshiId: uuid)
+                }
+                _ = try? await ref.child("oshi-posts/\(oshiId)").removeValue()
+            }
+        }
+
+        try? await FirebaseStorageManager.shared.deleteUserAvatar(userId: deletingUserId)
+        _ = try? await ref.child("contacts/\(deletingUserId)").removeValue()
+        try await ref.child("users/\(deletingUserId)").removeValue()
+        FirebaseConfig.shared.clearUserId()
     }
     
     func deletePresetOshi(_ oshiId: UUID) async throws {
@@ -115,8 +163,23 @@ class FirebaseDatabaseManager {
     func deleteOshi(_ oshiId: UUID) async throws {
         try? await FirebaseStorageManager.shared.deleteOshiAvatar(oshiId: oshiId)
 
-        // 1. 推しデータの削除
-        let oshiRef = ref.child("users/\(userId)/oshiList/\(oshiId.uuidString)")
+        let oshiIdString = oshiId.uuidString
+
+        let postSnapshot = try? await ref.child("oshi-posts/\(oshiIdString)").getData()
+        if let posts = postSnapshot?.value as? [String: Any] {
+            for postId in posts.keys {
+                _ = try? await ref.child("posts/\(postId)").removeValue()
+                _ = try? await ref.child("publicTimeline/\(postId)").removeValue()
+                _ = try? await ref.child("post-comments/\(postId)").removeValue()
+                _ = try? await ref.child("post-reactions/\(postId)").removeValue()
+            }
+        }
+
+        _ = try? await ref.child("oshi-posts/\(oshiIdString)").removeValue()
+        _ = try? await ref.child("users/\(userId)/chatRooms/\(oshiIdString)").removeValue()
+        _ = try? await ref.child("users/\(userId)/messages/\(oshiIdString)").removeValue()
+
+        let oshiRef = ref.child("users/\(userId)/oshiList/\(oshiIdString)")
         try await oshiRef.removeValue()
     }
 
@@ -486,7 +549,7 @@ class FirebaseDatabaseManager {
 
     func addComment(_ comment: Comment, to postId: UUID) async throws {
         let commentRef = ref.child("post-comments/\(postId.uuidString)/\(comment.id.uuidString)")
-        let commentData: [String: Any] = [
+        var commentData: [String: Any] = [
             "id": comment.id.uuidString,
             "oshiId": comment.oshiId.uuidString,
             "oshiName": comment.oshiName,
@@ -494,10 +557,20 @@ class FirebaseDatabaseManager {
             "timestamp": comment.timestamp.timeIntervalSince1970,
             "userId": userId
         ]
+        if let replyToName = comment.replyToName {
+            commentData["replyToName"] = replyToName
+        }
         try await commentRef.setValue(commentData)
 
         // ✅ 修正: 全パスのcommentCountをインクリメント
         try await incrementCommentCount(postId: postId, by: 1)
+    }
+
+    func commentExists(_ commentId: UUID, on postId: UUID) async throws -> Bool {
+        let snapshot = try await ref
+            .child("post-comments/\(postId.uuidString)/\(commentId.uuidString)")
+            .getData()
+        return snapshot.exists()
     }
 
     func loadComments(for postId: UUID, limit: Int = 10, before: Date? = nil) async throws -> [Comment] {
@@ -560,39 +633,109 @@ class FirebaseDatabaseManager {
         }
     }
 
+    func loadChatRoomSummaries() async throws -> [ChatRoom] {
+        let roomsSnapshot = try await ref.child("users/\(userId)/chatRooms").getData()
+        guard let roomsValue = roomsSnapshot.value as? [String: [String: Any]] else { return [] }
+
+        return await withTaskGroup(of: ChatRoom?.self) { group in
+            for (oshiIdString, roomData) in roomsValue {
+                group.addTask {
+                    guard let id = UUID(uuidString: roomData["id"] as? String ?? ""),
+                          let oshiId = UUID(uuidString: oshiIdString) else { return nil }
+
+                    let lastMessageDate = (roomData["lastMessageDate"] as? TimeInterval).flatMap {
+                        $0 > 0 ? Date(timeIntervalSince1970: $0) : nil
+                    }
+
+                    var latestMessages: [Message] = []
+                    do {
+                        let messagesSnapshot = try await self.ref.child("users/\(self.userId)/messages/\(oshiIdString)")
+                            .queryOrdered(byChild: "timestamp")
+                            .queryLimited(toLast: 1)
+                            .getData()
+                        if let messagesValue = messagesSnapshot.value as? [String: [String: Any]] {
+                            latestMessages = messagesValue.compactMap { _, messageData in
+                                self.parseMessage(from: messageData)
+                            }
+                            .sorted { $0.timestamp < $1.timestamp }
+                        }
+                    } catch {
+                        latestMessages = []
+                    }
+
+                    return ChatRoom(
+                        id: id,
+                        oshiId: oshiId,
+                        messages: latestMessages,
+                        lastMessageDate: latestMessages.last?.timestamp ?? lastMessageDate,
+                        unreadCount: roomData["unreadCount"] as? Int ?? 0
+                    )
+                }
+            }
+
+            var chatRooms: [ChatRoom] = []
+            for await room in group {
+                if let room { chatRooms.append(room) }
+            }
+
+            return chatRooms.sorted {
+                ($0.lastMessageDate ?? Date.distantPast) > ($1.lastMessageDate ?? Date.distantPast)
+            }
+        }
+    }
+
+    func loadChatRoom(oshiId: UUID) async throws -> ChatRoom? {
+        let oshiIdString = oshiId.uuidString
+        let roomSnapshot = try await ref.child("users/\(userId)/chatRooms/\(oshiIdString)").getData()
+        guard let roomData = roomSnapshot.value as? [String: Any],
+              let id = UUID(uuidString: roomData["id"] as? String ?? "") else { return nil }
+
+        let messagesSnapshot = try await ref.child("users/\(userId)/messages/\(oshiIdString)")
+            .queryOrdered(byChild: "timestamp")
+            .queryLimited(toLast: 100)
+            .getData()
+        var messages: [Message] = []
+        if let messagesValue = messagesSnapshot.value as? [String: [String: Any]] {
+            messages = messagesValue.compactMap { _, messageData in
+                parseMessage(from: messageData)
+            }
+            .sorted { $0.timestamp < $1.timestamp }
+        }
+
+        let lastMessageDate = (roomData["lastMessageDate"] as? TimeInterval).flatMap {
+            $0 > 0 ? Date(timeIntervalSince1970: $0) : nil
+        }
+
+        return ChatRoom(
+            id: id,
+            oshiId: oshiId,
+            messages: messages,
+            lastMessageDate: messages.last?.timestamp ?? lastMessageDate,
+            unreadCount: roomData["unreadCount"] as? Int ?? 0
+        )
+    }
+
     func loadChatRooms() async throws -> [ChatRoom] {
         let roomsSnapshot = try await ref.child("users/\(userId)/chatRooms").getData()
         guard let roomsValue = roomsSnapshot.value as? [String: [String: Any]] else { return [] }
 
-        var chatRooms: [ChatRoom] = []
-        for (oshiIdString, roomData) in roomsValue {
-            guard let id = UUID(uuidString: roomData["id"] as? String ?? ""),
-                  let oshiId = UUID(uuidString: oshiIdString) else { continue }
-
-            let messagesSnapshot = try await ref.child("users/\(userId)/messages/\(oshiIdString)").getData()
-            var messages: [Message] = []
-            if let messagesValue = messagesSnapshot.value as? [String: [String: Any]] {
-                for (_, messageData) in messagesValue {
-                    if let message = parseMessage(from: messageData) {
-                        messages.append(message)
-                    }
+        return await withTaskGroup(of: ChatRoom?.self) { group in
+            for (oshiIdString, _) in roomsValue {
+                group.addTask {
+                    guard let oshiId = UUID(uuidString: oshiIdString) else { return nil }
+                    return try? await self.loadChatRoom(oshiId: oshiId)
                 }
             }
-            messages.sort { $0.timestamp < $1.timestamp }
 
-            let lastMessageDate = (roomData["lastMessageDate"] as? TimeInterval).flatMap {
-                $0 > 0 ? Date(timeIntervalSince1970: $0) : nil
+            var chatRooms: [ChatRoom] = []
+            for await room in group {
+                if let room { chatRooms.append(room) }
             }
-            let chatRoom = ChatRoom(
-                id: id,
-                oshiId: oshiId,
-                messages: messages,
-                lastMessageDate: lastMessageDate,
-                unreadCount: roomData["unreadCount"] as? Int ?? 0
-            )
-            chatRooms.append(chatRoom)
+
+            return chatRooms.sorted {
+                ($0.lastMessageDate ?? Date.distantPast) > ($1.lastMessageDate ?? Date.distantPast)
+            }
         }
-        return chatRooms
     }
 
     func addMessage(to oshiId: UUID, message: Message) async throws {
@@ -631,6 +774,12 @@ class FirebaseDatabaseManager {
         }
     }
 
+    func deleteChatRoom(oshiId: UUID) async throws {
+        let oshiIdString = oshiId.uuidString
+        _ = try? await ref.child("users/\(userId)/messages/\(oshiIdString)").removeValue()
+        try await ref.child("users/\(userId)/chatRooms/\(oshiIdString)").removeValue()
+    }
+
     // MARK: - Helpers
 
     private func parseOshiCharacter(from data: [String: Any]) -> OshiCharacter? {
@@ -642,14 +791,21 @@ class FirebaseDatabaseManager {
               let createdAtTimestamp = data["createdAt"] as? TimeInterval else { return nil }
 
         let gender = (data["gender"] as? String).flatMap { Gender(rawValue: $0) }
+        let appearanceDescription = data["appearanceDescription"] as? String ?? ""
+        let backgroundStory = data["backgroundStory"] as? String ?? ""
         let speechCharacteristics = data["speechCharacteristics"] as? String ?? ""
         let userCallingName = data["userCallingName"] as? String ?? ""
+        let relationshipStyle = nonEmptyString(data["relationshipStyle"])
+        let replyLengthPreference = nonEmptyString(data["replyLengthPreference"])
+        let memoryMemo = nonEmptyString(data["memoryMemo"])
+        let replyFrequencyPreference = nonEmptyString(data["replyFrequencyPreference"])
         let totalInteractions = data["totalInteractions"] as? Int ?? 0
         let lastInteractionTimestamp = data["lastInteractionDate"] as? TimeInterval ?? 0
         let avatarImageURL = data["avatarImageURL"] as? String
         let isFollowingUser = data["isFollowingUser"] as? Bool ?? false
         let isFollowedByUser = data["isFollowedByUser"] as? Bool ?? false
         let isPublic = data["isPublic"] as? Bool ?? true
+        let isCreatedByUser = data["isCreatedByUser"] as? Bool ?? false
         let followerCount = data["followerCount"] as? Int ?? 0
         let creatorId = data["creatorId"] as? String
 
@@ -657,20 +813,34 @@ class FirebaseDatabaseManager {
             id: id,
             name: name,
             gender: gender,
+            appearanceDescription: appearanceDescription,
+            backgroundStory: backgroundStory,
             personalityText: personalityText,
             speechCharacteristics: speechCharacteristics,
             userCallingName: userCallingName,
             speechStyleText: speechStyleText,
+            relationshipStyle: relationshipStyle,
+            replyLengthPreference: replyLengthPreference,
+            memoryMemo: memoryMemo,
+            replyFrequencyPreference: replyFrequencyPreference,
             avatarImageURL: avatarImageURL,
+            createdAt: Date(timeIntervalSince1970: createdAtTimestamp),
             isFollowingUser: isFollowingUser,
             isFollowedByUser: isFollowedByUser,
             isPublic: isPublic,
+            isCreatedByUser: isCreatedByUser,
             followerCount: followerCount,
             creatorId: creatorId
         )
         oshi.totalInteractions = totalInteractions
         oshi.lastInteractionDate = lastInteractionTimestamp > 0 ? Date(timeIntervalSince1970: lastInteractionTimestamp) : nil
         return oshi
+    }
+
+    private func nonEmptyString(_ value: Any?) -> String? {
+        guard let string = value as? String else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : string
     }
 
     // MARK: - Presets
@@ -681,6 +851,8 @@ class FirebaseDatabaseManager {
         var oshiData: [String: Any] = [
             "id": oshi.id.uuidString,
             "name": oshi.name,
+            "appearanceDescription": oshi.appearanceDescription,
+            "backgroundStory": oshi.backgroundStory,
             "personalityText": oshi.personalityText,
             "speechCharacteristics": oshi.speechCharacteristics,
             "userCallingName": oshi.userCallingName,
@@ -691,6 +863,10 @@ class FirebaseDatabaseManager {
         ]
         if let creatorId = oshi.creatorId { oshiData["creatorId"] = creatorId }
         if let gender = oshi.gender { oshiData["gender"] = gender.rawValue }
+        oshiData["relationshipStyle"] = oshi.relationshipStyle ?? ""
+        oshiData["replyLengthPreference"] = oshi.replyLengthPreference ?? ""
+        oshiData["memoryMemo"] = oshi.memoryMemo ?? ""
+        oshiData["replyFrequencyPreference"] = oshi.replyFrequencyPreference ?? ""
         try await oshiRef.updateChildValues(oshiData)
     }
 
@@ -769,8 +945,14 @@ class FirebaseDatabaseManager {
                   let speechStyleText = v["speechStyleText"] as? String else { continue }
             
             let gender = (v["gender"] as? String).flatMap { Gender(rawValue: $0) }
+            let appearanceDescription = v["appearanceDescription"] as? String ?? ""
+            let backgroundStory = v["backgroundStory"] as? String ?? ""
             let speechCharacteristics = v["speechCharacteristics"] as? String ?? ""
             let userCallingName = v["userCallingName"] as? String ?? ""
+            let relationshipStyle = nonEmptyString(v["relationshipStyle"])
+            let replyLengthPreference = nonEmptyString(v["replyLengthPreference"])
+            let memoryMemo = nonEmptyString(v["memoryMemo"])
+            let replyFrequencyPreference = nonEmptyString(v["replyFrequencyPreference"])
             let avatar = (v["avatarImageURL"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             let sortOrder = v["sortOrder"] as? Int ?? 9999
             
@@ -778,10 +960,16 @@ class FirebaseDatabaseManager {
                 id: id,
                 name: name,
                 gender: gender,
+                appearanceDescription: appearanceDescription,
+                backgroundStory: backgroundStory,
                 personalityText: personalityText,
                 speechCharacteristics: speechCharacteristics,
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
+                relationshipStyle: relationshipStyle,
+                replyLengthPreference: replyLengthPreference,
+                memoryMemo: memoryMemo,
+                replyFrequencyPreference: replyFrequencyPreference,
                 avatarImageURL: avatar
             )
             items.append((sortOrder, oshi))
@@ -1074,6 +1262,14 @@ class FirebaseDatabaseManager {
               let content = data["content"] as? String,
               let timestampInterval = data["timestamp"] as? TimeInterval else { return nil }
         let timestamp = Date(timeIntervalSince1970: timestampInterval)
-        return Comment(id: id, oshiId: oshiId, oshiName: oshiName, content: content, timestamp: timestamp)
+        let replyToName = data["replyToName"] as? String
+        return Comment(
+            id: id,
+            oshiId: oshiId,
+            oshiName: oshiName,
+            content: content,
+            timestamp: timestamp,
+            replyToName: replyToName
+        )
     }
 }

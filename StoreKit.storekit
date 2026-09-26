@@ -1,0 +1,184 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "ja_JP",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "A1A7E001",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ja_JP",
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "A1A7E100",
+      "localizations" : [
+        {
+          "description" : "チャット無制限や広告非表示など、すべてのプレミアム機能を利用できます。",
+          "displayName" : "AImate プレミアム",
+          "locale" : "ja_JP"
+        }
+      ],
+      "name" : "AImate Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "480",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A1A7E101",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "すべてのプレミアム機能を週額で利用できます。",
+              "displayName" : "週間プラン",
+              "locale" : "ja_JP"
+            }
+          ],
+          "productID" : "aimate_plus_weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "AImate Plus Weekly",
+          "subscriptionGroupID" : "A1A7E100",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "980",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A1A7E102",
+          "introductoryOffer" : {
+            "internalID" : "A1A7E112",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "すべてのプレミアム機能を月額で利用できます。",
+              "displayName" : "月間プラン",
+              "locale" : "ja_JP"
+            }
+          ],
+          "productID" : "aimate_plus_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "AImate Plus Monthly",
+          "subscriptionGroupID" : "A1A7E100",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9800",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A1A7E103",
+          "introductoryOffer" : {
+            "internalID" : "A1A7E113",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "すべてのプレミアム機能を年額で利用できます。",
+              "displayName" : "年間プラン",
+              "locale" : "ja_JP"
+            }
+          ],
+          "productID" : "aimate_plus_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "AImate Plus Yearly",
+          "subscriptionGroupID" : "A1A7E100",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

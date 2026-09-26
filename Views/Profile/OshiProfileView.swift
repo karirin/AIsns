@@ -37,28 +37,20 @@ struct OshiProfileView: View {
                                 .shadow(radius: 5)
                         } else {
                             Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(.red),
-                                            Color(.red).opacity(0.7)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                                .fill(AppColors.pinkGradient)
                                 .frame(width: 100, height: 100)
                                 .overlay(
                                     Text(String(oshi.name.prefix(1)))
-                                        .font(.system(size: 40, weight: .bold))
+                                        .font(.system(size: 40, weight: .bold, design: .rounded))
                                         .foregroundColor(.white)
                                 )
                         }
                     }
-                    
+
                     Text("写真を変更")
                         .font(.subheadline)
-                        .foregroundColor(.primary)
+                        .fontWeight(.medium)
+                        .foregroundColor(AppColors.primary)
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 32)
@@ -123,17 +115,14 @@ struct OshiProfileView: View {
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 14)
-                        .background(Color(.systemBackground))
                         .contentShape(Rectangle())
                     }
-                    .background(Color(.systemBackground))
+                    .floatingCardStyle()
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
                 }
-                
-                // 自己紹介
+
+                // 自己紹介・リンク
                 VStack(spacing: 0) {
-                    Divider()
-                        .padding(.leading, 16)
-                    
                     ProfileRowButton(
                         label: "自己紹介",
                         value: oshi.speechCharacteristics.isEmpty ? "自己紹介を追加" : oshi.speechCharacteristics,
@@ -142,15 +131,10 @@ struct OshiProfileView: View {
                     ) {
                         showingEditView = true
                     }
-                }
-                .background(Color(.systemBackground))
-                .padding(.top, 20)
-                
-                // リンク
-                VStack(spacing: 0) {
+
                     Divider()
                         .padding(.leading, 16)
-                    
+
                     ProfileRowButton(
                         label: "リンク",
                         value: "追加",
@@ -160,7 +144,9 @@ struct OshiProfileView: View {
                         // リンク追加処理
                     }
                 }
-                .background(Color(.systemBackground))
+                .floatingCardStyle()
+                .padding(.horizontal, DesignTokens.Spacing.sm)
+                .padding(.top, 20)
                 
                 // キャラクター設定セクション
                 VStack(spacing: 0) {
@@ -221,10 +207,35 @@ struct OshiProfileView: View {
                         ) {
                             showingEditView = true
                         }
+
+                        Divider()
+                            .padding(.leading, 16)
+
+                        ProfileRowButton(
+                            label: "外見",
+                            value: oshi.appearanceDescription.isEmpty ? "追加" : oshi.appearanceDescription,
+                            valueColor: oshi.appearanceDescription.isEmpty ? .secondary : .primary,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
+
+                        Divider()
+                            .padding(.leading, 16)
+
+                        ProfileRowButton(
+                            label: "背景設定",
+                            value: oshi.backgroundStory.isEmpty ? "追加" : oshi.backgroundStory,
+                            valueColor: oshi.backgroundStory.isEmpty ? .secondary : .primary,
+                            showChevron: true
+                        ) {
+                            showingEditView = true
+                        }
                     }
-                    .background(Color(.systemBackground))
+                    .floatingCardStyle()
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
                 }
-                
+
                 // 統計情報
                 VStack(spacing: 0) {
                     Text("統計")
@@ -280,9 +291,10 @@ struct OshiProfileView: View {
                             showChevron: false
                         ) { }
                     }
-                    .background(Color(.systemBackground))
+                    .floatingCardStyle()
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
                 }
-                
+
                 // 削除ボタン
                 Button(action: {
                     generateHapticFeedback()
@@ -290,16 +302,18 @@ struct OshiProfileView: View {
                 }) {
                     Text("アカウントを削除")
                         .font(.body)
-                        .foregroundColor(.red)
+                        .fontWeight(.medium)
+                        .foregroundColor(AppColors.error)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
+                        .floatingCardStyle()
                 }
-                .background(Color(.systemBackground))
+                .padding(.horizontal, DesignTokens.Spacing.sm)
                 .padding(.top, 32)
                 .padding(.bottom, 32)
             }
         }
-        .background(Color(.systemGray6))
+        .background(AuroraBackground())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -385,7 +399,6 @@ struct ProfileRowButton: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 14)
-            .background(Color(.systemBackground))
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())

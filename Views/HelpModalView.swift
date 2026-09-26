@@ -34,21 +34,20 @@ struct HelpModalView: View {
                 // ヘッダー部分
                 VStack(alignment: .center, spacing: 15) {
                     Text("お問い合わせ")
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.black)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundColor(AppColors.textPrimary)
                     Text("ご意見やご要望がありましたら、お気軽にお知らせください。可能な限り対応いたします。")
                         .font(.system(size: isSmallDevice() ? 16 : 17))
                         .multilineTextAlignment(.leading)
                         .padding(.bottom, 5)
-                        .foregroundColor(.black)
+                        .foregroundColor(AppColors.textPrimary)
                 }
                 
                 // テキスト入力エリア - より洗練されたデザイン
                 VStack(alignment: .leading, spacing: 8) {
                     Text("問い合わせ内容")
                         .font(.subheadline)
-                        .foregroundStyle(.black)
+                        .foregroundColor(AppColors.textSecondary)
                     ZStack(alignment: .topLeading) {
                         if text.isEmpty && !isFocused {
                             Text("例）投稿することができない")
@@ -61,14 +60,17 @@ struct HelpModalView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 10)
                             .scrollContentBackground(.hidden)
-                            .foregroundColor(colorScheme == .dark ? .black : .black)
+                            .foregroundColor(AppColors.textPrimary)
                     }
-                    .background(colorScheme == .dark ? Color(.white) : Color.white)
+                    .background(AppColors.surfaceSecondary)
                     .frame(height: 120)
-                    .cornerRadius(12)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(.systemGray4), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(
+                                isFocused ? AppColors.primary.opacity(0.5) : AppColors.borderLight,
+                                lineWidth: 1
+                            )
                     )
 
                 }
@@ -93,9 +95,17 @@ struct HelpModalView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .foregroundColor(.white)
-                        .background(text.isEmpty ? Color.gray.opacity(0.5) : Color.blue)
-                        .cornerRadius(15)
-                        .shadow(color: text.isEmpty ? .clear : Color.blue.opacity(0.3), radius: 5, y: 2)
+                        .background(
+                            Group {
+                                if text.isEmpty {
+                                    Color.gray.opacity(0.5)
+                                } else {
+                                    AppColors.primaryGradientH
+                                }
+                            }
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .shadow(color: text.isEmpty ? .clear : AppColors.primary.opacity(0.3), radius: 5, y: 2)
                 }
                 .disabled(text.isEmpty)
                 .padding(.vertical, 10)
@@ -103,9 +113,9 @@ struct HelpModalView: View {
                 // トグルスイッチ - より整理されたデザイン
                 HStack {
                     Toggle("今後は表示しない", isOn: $toggle)
-                        .toggleStyle(SwitchToggleStyle(tint: .blue))
+                        .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
                         .font(.subheadline)
-                        .foregroundStyle(.black)
+                        .foregroundColor(AppColors.textSecondary)
                     Spacer()
                 }
                 .padding(.vertical, 5)
@@ -113,8 +123,8 @@ struct HelpModalView: View {
             .padding(25)
             .background(
                 // モーダル背景 - より美しいグラデーション
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.white)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AppColors.surface)
                     .shadow(color: Color.black.opacity(0.15), radius: 15, x: 0, y: 5)
             )
             .frame(width: isSmallDevice() ? 320 : 350)
@@ -132,7 +142,7 @@ struct HelpModalView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.secondary)
                         .padding(8)
-                        .background(Color(.systemGray6))
+                        .background(AppColors.surfaceSecondary)
                         .clipShape(Circle())
                 }
                 .padding(16),

@@ -13,13 +13,14 @@ struct ChatListView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
-    @State private var helpFlag: Bool = false
-    @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
     @ObservedObject var adViewModel: AdViewModel
     
     @State private var isLoading = true
     @State private var searchText = ""
+    @State private var isEditingChats = false
+    @State private var chatRoomPendingDeletion: ChatRoom?
+    @State private var showingDeleteChatAlert = false
     
     var sortedChatRooms: [ChatRoom] {
         let rooms = viewModel.chatRooms.sorted { room1, room2 in
@@ -55,13 +56,6 @@ struct ChatListView: View {
                     chatListContent
                 }
 
-                if helpFlag {
-                    HelpModalView(isPresented: $helpFlag)
-                }
-                
-                if customerFlag {
-                    ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
-                }
             }
             .navigationTitle("メッセージ")
             .navigationBarTitleDisplayMode(.inline)
@@ -78,8 +72,24 @@ struct ChatListView: View {
                         }
                     }
                 }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        guard !sortedChatRooms.isEmpty else { return }
+                        generateHapticFeedback()
+                        isEditingChats.toggle()
+                    } label: {
+                        Text(isEditingChats ? "完了" : "編集")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44, alignment: .trailing)
+                    }
+                    .foregroundColor(AppColors.textPrimary)
+                    .opacity(sortedChatRooms.isEmpty ? 0 : 1)
+                    .disabled(sortedChatRooms.isEmpty)
+                    .accessibilityHidden(sortedChatRooms.isEmpty)
+                    .animation(nil, value: isEditingChats)
+                }
             }
-            .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "検索")
             .task {
                 await loadChatRooms()
@@ -87,19 +97,16 @@ struct ChatListView: View {
             .refreshable {
                 await loadChatRooms()
             }
-            .onAppear{
-                dbManager.fetchUserFlag { userFlag, error in
-                    if let error = error {
-                        print(error.localizedDescription)
-                    } else if let userFlag = userFlag {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                            if userFlag == 0 {
-                                executeProcessEveryfifTimes()
-                                executeProcessEveryThreeTimes()
-                            }
-                        }
+            .alert("DMを削除しますか?", isPresented: $showingDeleteChatAlert) {
+                Button("キャンセル", role: .cancel) { }
+                Button("削除", role: .destructive) {
+                    if let chatRoomPendingDeletion {
+                        viewModel.deleteChatRoom(chatRoomPendingDeletion)
                     }
+                    chatRoomPendingDeletion = nil
                 }
+            } message: {
+                Text("この会話履歴は端末とサーバーから削除されます。")
             }
         }
     }
@@ -107,24 +114,7 @@ struct ChatListView: View {
     // MARK: - Background
     
     private var chatListBackground: some View {
-        AppColors.backgroundPrimary
-            .ignoresSafeArea()
-    }
-    
-    func executeProcessEveryfifTimes() {
-        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
-        UserDefaults.standard.set(count, forKey: "launchHelpCount")
-        if count % 15 == 0 {
-            helpFlag = true
-        }
-    }
-
-    func executeProcessEveryThreeTimes() {
-        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
-        UserDefaults.standard.set(count, forKey: "launchCount")
-        if count % 10 == 0 {
-            customerFlag = true
-        }
+        AuroraBackground()
     }
     
     // MARK: - Empty State
@@ -179,22 +169,37 @@ struct ChatListView: View {
     
     private var chatListContent: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: DesignTokens.Spacing.sm) {
                 ForEach(sortedChatRooms) { room in
                     if let oshi = viewModel.oshiList.first(where: { $0.id == room.oshiId }) {
-                        NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel, adViewModel: adViewModel)) {
-                            ChatRoomRow(oshi: oshi, room: room)
+                        HStack(spacing: DesignTokens.Spacing.xs) {
+                            NavigationLink(destination: ChatDetailView(oshi: oshi, viewModel: viewModel, adViewModel: adViewModel)) {
+                                ChatRoomRow(oshi: oshi, room: room)
+                                    .floatingCardStyle()
+                            }
+                            .buttonStyle(ChatRowButtonStyle())
+
+                            if isEditingChats {
+                                Button(role: .destructive) {
+                                    chatRoomPendingDeletion = room
+                                    showingDeleteChatAlert = true
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 17, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(Circle().fill(AppColors.error))
+                                }
+                                .buttonStyle(.plain)
+                                .transition(.scale.combined(with: .opacity))
+                            }
                         }
-                        .buttonStyle(ChatRowButtonStyle())
-                        
-                        if room.id != sortedChatRooms.last?.id {
-                            Divider()
-                                .padding(.leading, 88)
-                        }
+                        .padding(.horizontal, DesignTokens.Spacing.sm)
+                        .animation(DesignTokens.Animation.spring, value: isEditingChats)
                     }
                 }
             }
-            .padding(.top, 8)
+            .padding(.vertical, DesignTokens.Spacing.sm)
         }
     }
     
@@ -221,7 +226,8 @@ struct ChatListView: View {
 struct ChatRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(configuration.isPressed ? AppColors.backgroundSecondary : Color.clear)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
@@ -277,13 +283,7 @@ struct ChatRoomRow: View {
                 if room.unreadCount > 0 {
                     ZStack {
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(hex: "FF6B9D"), Color(hex: "C44569")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .fill(AppColors.pinkGradient)
                             .frame(width: 22, height: 22)
                         
                         Text(room.unreadCount > 99 ? "99+" : "\(room.unreadCount)")
@@ -319,7 +319,7 @@ struct ChatRoomRow: View {
                             // 送信済みチェックマーク
                             Image(systemName: lastMessage.isRead ? "checkmark.circle.fill" : "checkmark.circle")
                                 .font(.system(size: 12))
-                                .foregroundColor(lastMessage.isRead ? Color.blue : AppColors.textTertiary)
+                                .foregroundColor(lastMessage.isRead ? AppColors.primary : AppColors.textTertiary)
                         }
                         
                         Text(lastMessage.content)
@@ -458,7 +458,7 @@ struct ChatDetailView: View {
             }
             
             // ✅ 右上にカウントダウン表示
-            if AppConfig.adGateEnabled {
+            if viewModel.shouldShowAds {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     messageCounterBadge
                 }
@@ -479,10 +479,11 @@ struct ChatDetailView: View {
             viewModel.markChatAsRead(oshiId: oshi.id)
         }
         .task {
+            await viewModel.loadChatRoomDetailsIfNeeded(oshiId: oshi.id)
             if let urlString = oshi.avatarImageURL {
                 avatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: urlString)
             }
-            if AppConfig.adGateEnabled {
+            if viewModel.shouldShowAds {
                 await adViewModel.loadRewardedAd()
             }
         }
@@ -492,7 +493,7 @@ struct ChatDetailView: View {
     
     private var chatBackground: some View {
         ZStack {
-            AppColors.backgroundSecondary
+            AuroraBackground()
             
             // 微妙なパターン（オプション）
             GeometryReader { geo in
@@ -567,19 +568,19 @@ struct ChatDetailView: View {
         Button(action: {
             if viewModel.isMessageLimitReached {
                 generateHapticFeedback()
-                showingRewardModal = true
+                viewModel.requestPlusPaywall(.messageLimitReached, force: true)
             }
         }) {
             HStack(spacing: 6) {
                 // メッセージアイコン
                 Image(systemName: remainingMessages <= 3 ? "bubble.left.fill" : "bubble.left")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(remainingMessages <= 3 ? .white : Color(hex: "FF6B9D"))
-                
+                    .foregroundColor(remainingMessages <= 3 ? .white : AppColors.primary)
+
                 // 残り回数
                 Text("\(remainingMessages)")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(remainingMessages <= 3 ? .white : Color(hex: "FF6B9D"))
+                    .foregroundColor(remainingMessages <= 3 ? .white : AppColors.primary)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -590,12 +591,12 @@ struct ChatDetailView: View {
                         ? LinearGradient(
                             colors: remainingMessages == 0
                             ? [Color.orange, Color(hex: "E85D04")]
-                            : [Color(hex: "FF6B9D"), Color(hex: "C44569")],
+                            : [Color(hex: "EC4899"), Color(hex: "DB2777")],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                         : LinearGradient(
-                            colors: [Color(hex: "FFF0F5"), Color(hex: "FFE5EE")],
+                            colors: [AppColors.brandWash, AppColors.brandWash],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -606,13 +607,13 @@ struct ChatDetailView: View {
                     .stroke(
                         remainingMessages <= 3
                         ? Color.clear
-                        : Color(hex: "FF6B9D").opacity(0.3),
+                        : AppColors.primary.opacity(0.3),
                         lineWidth: 1
                     )
             )
             .shadow(
                 color: remainingMessages <= 3
-                ? Color(hex: "FF6B9D").opacity(0.3)
+                ? AppColors.pink.opacity(0.3)
                 : Color.clear,
                 radius: 4, x: 0, y: 2
             )
@@ -625,8 +626,6 @@ struct ChatDetailView: View {
     
     private var chatInputBar: some View {
         VStack(spacing: 0) {
-            Divider()
-            
             HStack(alignment: .bottom, spacing: 10) {
                 // メッセージ入力欄
                 HStack(alignment: .bottom, spacing: 8) {
@@ -636,24 +635,27 @@ struct ChatDetailView: View {
                         .lineLimit(1...6)
                         .padding(.vertical, 10)
                         .padding(.horizontal, 14)
-                        .disabled(viewModel.isMessageLimitReached && AppConfig.adGateEnabled)
+                        .disabled(viewModel.isMessageLimitReached && viewModel.shouldShowAds)
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 22)
-                        .fill(viewModel.isMessageLimitReached && AppConfig.adGateEnabled
-                              ? AppColors.backgroundTertiary.opacity(0.5)
-                              : AppColors.backgroundSecondary)
+                        .fill(viewModel.isMessageLimitReached && viewModel.shouldShowAds
+                              ? AppColors.surfaceSecondary.opacity(0.5)
+                              : AppColors.surfaceSecondary)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 22)
-                        .stroke(isTextFieldFocused ? Color.pink.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                        .stroke(isTextFieldFocused ? AppColors.primary.opacity(0.5) : Color.clear, lineWidth: 1.5)
                 )
                 
                 // 送信ボタン
                 Button(action: {
                     generateHapticFeedback()
-                    if viewModel.isMessageLimitReached && AppConfig.adGateEnabled {
+                    if viewModel.isMessageLimitReached && viewModel.shouldShowAds {
                         showingRewardModal = true
+                        Task {
+                            await adViewModel.loadRewardedAd()
+                        }
                     } else {
                         sendMessageWithRealisticFlow()
                     }
@@ -661,7 +663,7 @@ struct ChatDetailView: View {
                     ZStack {
                         Circle()
                             .fill(
-                                viewModel.isMessageLimitReached && AppConfig.adGateEnabled
+                                viewModel.isMessageLimitReached && viewModel.shouldShowAds
                                 ? LinearGradient(
                                     colors: [Color.orange, Color(hex: "E85D04")],
                                     startPoint: .topLeading,
@@ -669,15 +671,11 @@ struct ChatDetailView: View {
                                 )
                                 : messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 ? LinearGradient(colors: [Color.gray.opacity(0.3)], startPoint: .top, endPoint: .bottom)
-                                : LinearGradient(
-                                    colors: [Color(hex: "FF6B9D"), Color(hex: "C44569")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
+                                : AppColors.primaryGradient
                             )
                             .frame(width: 40, height: 40)
                         
-                        Image(systemName: viewModel.isMessageLimitReached && AppConfig.adGateEnabled
+                        Image(systemName: viewModel.isMessageLimitReached && viewModel.shouldShowAds
                               ? "play.rectangle.fill"
                               : "arrow.up")
                             .font(.system(size: viewModel.isMessageLimitReached ? 16 : 18, weight: .semibold))
@@ -700,10 +698,10 @@ struct ChatDetailView: View {
             .padding(.vertical, 10)
             .padding(.bottom, 4)
         }
-        .background(
-            AppColors.backgroundPrimary
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: -4)
-        )
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            AppDivider(color: AppColors.borderLight.opacity(0.5))
+        }
     }
     
     // MARK: - ✅ リアルなメッセージフロー
@@ -757,12 +755,18 @@ struct ChatDetailView: View {
                 let replyDelayNanos = UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Chat.replyDelayRange))
                 try await Task.sleep(nanoseconds: replyDelayNanos)
                 
-                let reply = try await AIService.shared.generateChatReply(
-                    for: text,
-                    by: oshi,
-                    conversationHistory: viewModel.chatRooms.first(where: { $0.oshiId == oshi.id })?.messages ?? [],
-                    userName: viewModel.userProfileName
-                )
+                let reply: String
+                do {
+                    reply = try await AIService.shared.generateChatReply(
+                        for: text,
+                        by: oshi,
+                        conversationHistory: viewModel.chatRooms.first(where: { $0.oshiId == oshi.id })?.messages ?? [],
+                        userName: viewModel.userProfileName
+                    )
+                } catch {
+                    print("⚠️ メッセージ生成フォールバック: \(error)")
+                    reply = AIService.shared.fallbackReply(seed: text)
+                }
                 
                 // タイピング終了 & メッセージ追加
                 await MainActor.run {
@@ -779,10 +783,16 @@ struct ChatDetailView: View {
                                 viewModel.chatRooms[roomIndex].addMessage(aiMessage)
                             }
                         }
+                        viewModel.notifyDeliveredChatReply(from: oshi, message: aiMessage)
                         
                         // Firebaseに保存
                         Task {
-                            try? await FirebaseDatabaseManager.shared.addMessage(to: oshi.id, message: aiMessage)
+                            do {
+                                try await FirebaseDatabaseManager.shared.addMessage(to: oshi.id, message: aiMessage)
+                                ReviewRequestManager.shared.recordMeaningfulCompletion()
+                            } catch {
+                                print("❌ AIメッセージ保存エラー: \(error.localizedDescription)")
+                            }
                         }
                         
                         // 親密度更新
@@ -808,7 +818,7 @@ struct ChatDetailView: View {
             try? await FirebaseDatabaseManager.shared.addMessage(to: oshi.id, message: userMessage)
         }
         
-        viewModel.messageCount += 1
+        viewModel.recordMessageSentForPlusPaywall()
     }
 }
 
@@ -822,6 +832,7 @@ struct RewardAdModal: View {
     var onRewardEarned: () -> Void
     
     @State private var isWatchingAd = false
+    @State private var adNotice: String?
     @State private var showSuccess = false
     @State private var pulseAnimation = false
     @State private var floatAnimation = false
@@ -844,15 +855,7 @@ struct RewardAdModal: View {
                 // ヘッダー部分（グラデーション背景）
                 ZStack {
                     // グラデーション背景
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "FF6B9D"),
-                            Color(hex: "C44569"),
-                            Color(hex: "8B3A62")
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    AppColors.primaryGradient
 //                    .frame(height: 180)
                     
                     // 装飾的な円（背景）
@@ -902,7 +905,7 @@ struct RewardAdModal: View {
                                 
                                 Image(systemName: "bubble.left.fill")
                                     .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(Color(hex: "FF6B9D"))
+                                    .foregroundColor(AppColors.primary)
                             }
                             .offset(x: 30, y: 30)
                             .offset(y: floatAnimation ? -3 : 3)
@@ -927,7 +930,7 @@ struct RewardAdModal: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(AppColors.textPrimary)
                         
-                        Text("短い動画を見ると、\n追加で10回メッセージを送れるようになります")
+                        Text("短い動画を見ると追加で10回話せます。\n無料回数は毎日リセットされます")
                             .font(.system(size: 14))
                             .foregroundColor(AppColors.textSecondary)
                             .multilineTextAlignment(.center)
@@ -940,18 +943,12 @@ struct RewardAdModal: View {
                         // 動画アイコン
                         ZStack {
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(hex: "FFE5EE"), Color(hex: "FFF0F5")],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                                .fill(AppColors.brandWash)
                                 .frame(width: 50, height: 50)
-                            
+
                             Image(systemName: "play.rectangle.fill")
                                 .font(.system(size: 22))
-                                .foregroundColor(Color(hex: "FF6B9D"))
+                                .foregroundColor(AppColors.primary)
                         }
                         
                         Image(systemName: "arrow.right")
@@ -985,6 +982,15 @@ struct RewardAdModal: View {
                     
                     // ボタン群
                     VStack(spacing: 12) {
+                        if let adNotice {
+                            Text(adNotice)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(AppColors.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .transition(.opacity)
+                        }
+
                         // 広告視聴ボタン
                         Button(action: {
                             generateHapticFeedback(style: .success)
@@ -1007,16 +1013,12 @@ struct RewardAdModal: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
                             .background(
-                                LinearGradient(
-                                    colors: isWatchingAd
-                                    ? [Color.gray]
-                                    : [Color(hex: "FF6B9D"), Color(hex: "C44569")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
+                                isWatchingAd
+                                ? LinearGradient(colors: [Color.gray], startPoint: .top, endPoint: .bottom)
+                                : AppColors.primaryGradientH
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .shadow(color: Color(hex: "FF6B9D").opacity(0.4), radius: 8, x: 0, y: 4)
+                            .shadow(color: AppColors.primary.opacity(0.4), radius: 8, x: 0, y: 4)
                         }
                         .disabled(isWatchingAd)
                         
@@ -1057,26 +1059,30 @@ struct RewardAdModal: View {
     }
     
     private func watchAd() {
+        guard !isWatchingAd else { return }
         isWatchingAd = true
-        
-        adViewModel.showRewardedAd {
-            // 報酬獲得成功
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                isWatchingAd = false
+        withAnimation { adNotice = nil }
+
+        Task { @MainActor in
+            let outcome = await adViewModel.presentRewardedAd()
+            isWatchingAd = false
+
+            switch outcome {
+            case .rewarded:
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    onRewardEarned()
+                    isPresented = false
+                }
+            case .dismissedEarly:
+                withAnimation { adNotice = "動画を最後まで見ると、メッセージを続けられます。" }
+            case .unavailable:
+                // 広告の在庫切れ・通信エラーはユーザーのせいではないため、行き止まりにせず続けてもらう
+                withAnimation { adNotice = "今は動画を用意できなかったので、このまま続けられます。" }
                 onRewardEarned()
-                isPresented = false
-            }
-            
-            // 次の広告を読み込み
-            Task {
-                await adViewModel.loadRewardedAd()
-            }
-        }
-        
-        // タイムアウト処理（広告読み込み失敗時）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            if isWatchingAd {
-                isWatchingAd = false
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    isPresented = false
+                }
             }
         }
     }
@@ -1120,7 +1126,8 @@ struct TypingIndicator: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(AppColors.backgroundTertiary)
+                    .fill(AppColors.surface)
+                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
             )
             
             Spacer()
@@ -1178,22 +1185,16 @@ struct MessageBubble: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "FF6B9D"), Color(hex: "C44569")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .background(AppColors.primaryGradient)
                 .clipShape(ChatBubbleShape(isFromUser: true))
-                .shadow(color: Color(hex: "FF6B9D").opacity(0.3), radius: 4, x: 0, y: 2)
+                .shadow(color: AppColors.primary.opacity(0.3), radius: 4, x: 0, y: 2)
             
             // 時刻 & 既読表示
             HStack(spacing: 4) {
                 if message.isRead || showReadReceipt {
                     Text("既読")
                         .font(.system(size: 11))
-                        .foregroundColor(Color.blue)
+                        .foregroundColor(AppColors.primary)
                         .transition(.scale.combined(with: .opacity))
                 }
                 
@@ -1225,9 +1226,9 @@ struct MessageBubble: View {
                     .foregroundColor(AppColors.textPrimary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(AppColors.backgroundTertiary)
+                    .background(AppColors.surface)
                     .clipShape(ChatBubbleShape(isFromUser: false))
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
                 
                 // 時刻
                 Text(timeString)
@@ -1350,4 +1351,3 @@ struct RoundedCorner: Shape {
         onRewardEarned: {}
     )
 }
-

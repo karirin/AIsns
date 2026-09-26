@@ -17,6 +17,7 @@ struct PostDetailView: View {
     @State private var commentText = ""
     @FocusState private var isFocused: Bool
     @State private var isSubmitting = false
+    @State private var replyTarget: Comment?
 
     var postDetails: PostDetails? {
         viewModel.postDetails[post.id]
@@ -28,18 +29,18 @@ struct PostDetailView: View {
                 VStack(spacing: 0) {
                     // 投稿本文
                     PostCardView(post: post, viewModel: viewModel, isNavigable: false)
-                    
-                    AppDivider()
-                    
+                        .padding(.horizontal, DesignTokens.Spacing.sm)
+                        .padding(.top, DesignTokens.Spacing.sm)
+
                     // コメントセクション
                     commentsSection
                 }
             }
-            
+
             // コメント入力バー
             commentInputBar
         }
-        .background(AppColors.backgroundPrimary)
+        .background(AuroraBackground())
         .onTapGesture {
             UIApplication.shared.endEditing()
         }
@@ -229,7 +230,11 @@ struct PostDetailView: View {
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(details.comments) { comment in
-                            CommentRowView(comment: comment, viewModel: viewModel)
+                            CommentRowView(
+                                comment: comment,
+                                viewModel: viewModel,
+                                onReply: beginReply
+                            )
                             
                             if comment.id != details.comments.last?.id {
                                 AppDivider(leadingPadding: 60)
@@ -265,6 +270,10 @@ struct PostDetailView: View {
                 .padding(.horizontal, DesignTokens.Spacing.md)
             }
         }
+        .padding(.bottom, DesignTokens.Spacing.md)
+        .floatingCardStyle()
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .padding(.top, DesignTokens.Spacing.sm)
         .padding(.bottom, DesignTokens.Spacing.xl)
     }
     
@@ -305,12 +314,41 @@ struct PostDetailView: View {
     
     private var commentInputBar: some View {
         VStack(spacing: 0) {
-            AppDivider()
-            
+            if let replyTarget {
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    Image(systemName: "arrowshape.turn.up.left.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AppColors.primary)
+
+                    Text("@\(replyTarget.oshiName) に返信")
+                        .font(AppTypography.captionMedium)
+                        .foregroundColor(AppColors.textSecondary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Button {
+                        self.replyTarget = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppColors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("返信をキャンセル")
+                }
+                .padding(.horizontal, DesignTokens.Spacing.md)
+                .padding(.top, DesignTokens.Spacing.sm)
+            }
+
             HStack(spacing: DesignTokens.Spacing.sm) {
                 // 入力フィールド
                 HStack(spacing: DesignTokens.Spacing.xs) {
-                    TextField("コメントを追加...", text: $commentText, axis: .vertical)
+                    TextField(
+                        replyTarget.map { "@\($0.oshiName) に返信..." } ?? "コメントを追加...",
+                        text: $commentText,
+                        axis: .vertical
+                    )
                         .font(AppTypography.body)
                         .focused($isFocused)
                         .lineLimit(1...4)
@@ -326,7 +364,7 @@ struct PostDetailView: View {
                 }
                 .padding(.horizontal, DesignTokens.Spacing.sm)
                 .padding(.vertical, DesignTokens.Spacing.xs + 2)
-                .background(AppColors.backgroundSecondary)
+                .background(AppColors.surfaceSecondary)
                 .cornerRadius(DesignTokens.Radius.xl)
                 
                 // 送信ボタン
@@ -356,7 +394,10 @@ struct PostDetailView: View {
             }
             .padding(.horizontal, DesignTokens.Spacing.md)
             .padding(.vertical, DesignTokens.Spacing.sm)
-            .background(AppColors.backgroundPrimary)
+        }
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            AppDivider(color: AppColors.borderLight.opacity(0.5))
         }
     }
     
@@ -371,12 +412,26 @@ struct PostDetailView: View {
         isSubmitting = true
         generateHapticFeedback()
         
-        viewModel.addUserComment(to: post, content: text)
+        let submittedReplyTarget = replyTarget
+        viewModel.addUserComment(
+            to: post,
+            content: text,
+            replyingTo: submittedReplyTarget
+        )
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             commentText = ""
+            replyTarget = nil
             isFocused = false
             isSubmitting = false
+        }
+    }
+
+    private func beginReply(to comment: Comment) {
+        generateHapticFeedback()
+        replyTarget = comment
+        DispatchQueue.main.async {
+            isFocused = true
         }
     }
 }
@@ -407,11 +462,12 @@ struct ReactionUserChip: View {
 struct CommentRowView: View {
     let comment: Comment
     @ObservedObject var viewModel: OshiViewModel
+    let onReply: (Comment) -> Void
     @State private var avatarImage: UIImage?
     @State private var isLiked = false
     
     var isUser: Bool {
-        comment.oshiId == UUID(uuidString: "00000000-0000-0000-0000-000000000001")
+        comment.oshiId == OshiViewModel.currentUserCommentID
     }
     
     var oshi: OshiCharacter? {
@@ -437,6 +493,12 @@ struct CommentRowView: View {
                     RelativeTimeText(date: comment.timestamp)
                         .font(AppTypography.caption)
                         .foregroundColor(AppColors.textTertiary)
+                }
+
+                if let replyToName = comment.replyToName {
+                    Text("返信先: @\(replyToName)")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.primary)
                 }
                 
                 // コメント本文
@@ -468,14 +530,17 @@ struct CommentRowView: View {
                     }
                     .buttonStyle(.plain)
                     
-                    Button {
-                        // 返信
-                    } label: {
-                        Text("返信")
-                            .font(AppTypography.caption)
-                            .foregroundColor(AppColors.textTertiary)
+                    if !isUser {
+                        Button {
+                            onReply(comment)
+                        } label: {
+                            Text("返信")
+                                .font(AppTypography.caption)
+                                .foregroundColor(AppColors.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(comment.oshiName)に返信")
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.top, DesignTokens.Spacing.xxs)
             }

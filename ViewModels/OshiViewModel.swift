@@ -7,6 +7,21 @@ import SwiftUI
 
 @MainActor
 class OshiViewModel: ObservableObject {
+    enum PlusPaywallTrigger: String {
+        case messageLimitReached
+        case engagementMoment
+        case premiumFeature
+        case launchMoment
+        case postMilestone
+    }
+
+    struct PlusPaywallPresentation: Identifiable {
+        let id = UUID()
+        let trigger: PlusPaywallTrigger
+    }
+
+    static let currentUserCommentID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
     @Published var oshiList: [OshiCharacter] = []
     @Published var followingOshis: [OshiCharacter] = []
     @Published var isLoadingList = false
@@ -14,9 +29,11 @@ class OshiViewModel: ObservableObject {
     @Published var chatRooms: [ChatRoom] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// 直近の loadData が失敗したか（空のタイムラインで「まだ投稿がない」と誤表示しないため）
+    @Published var didFailLastLoad = false
     @Published var recommendedOshis: [OshiCharacter] = []
     @Published var notifications: [AppNotification] = []
-    @Published var userProfileName: String = "あなた"
+    @Published var userProfileName: String = "ユーザー"
     @Published var userProfileAvatarURL: String? = nil
     @Published var bookmarkedPostIDs: Set<UUID> = []
     @Published var bookmarkedPosts: [Post] = []
@@ -26,10 +43,19 @@ class OshiViewModel: ObservableObject {
     @Published var followingRemoteOshiIDs: Set<UUID> = []
     @Published var blockedUserIDs: Set<String> = []
     @Published var messageCount: Int = 0
+    @Published var isPlusActive: Bool = false
+    @Published var plusPaywallPresentation: PlusPaywallPresentation?
+    @Published var shouldPromptForNotificationPermission = false
     private let maxMessageLimit = 10
     @Published var displayedPostsCount = 30
     @Published var isLoadingMore = false
     private let postsPerPage = 30
+    private let plusLaunchCountKey = "plus_paywall_launch_count_v1"
+    private let plusPostCountKey = "plus_paywall_user_post_count_v1"
+    private let plusEngagementCountKey = "plus_paywall_engagement_count_v1"
+    private let plusShownPrefix = "plus_paywall_shown_v1_"
+    private let dailyMessageCountKey = "daily_chat_message_count_v1"
+    private let dailyMessageDateKey = "daily_chat_message_date_v1"
     
     // ✅ 投稿の詳細情報(必要な時だけ取得)
     @Published var postDetails: [UUID: PostDetails] = [:]
@@ -39,7 +65,31 @@ class OshiViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var autoPostTimer: Timer?
     private var autoFollowTimer: Timer?
+    private var autoPostingEnabled = true
+    private var isAutoPostInFlight = false
+    private var isWidgetGenerationInFlight = false
+    private var isProactiveMessageInFlight = false
     private let notificationsStorageKey = "local_notifications_v1"
+    private var recentCommenterIDs: [UUID] = []
+    private var recentAutoPostOshiIDs: [UUID] = []
+    private let pendingAIRepliesStorageKey = "pending_ai_comment_replies_v1"
+    private var pendingAIReplies: [PendingAIReply] = []
+    private var activePendingAIReplyIDs: Set<UUID> = []
+
+    private var nextAutoPostStorageKey: String {
+        "next_auto_post_date_v2_\(dbManager.currentUserId)"
+    }
+
+    private struct PendingAIReply: Codable {
+        let id: UUID
+        let post: Post
+        let userComment: String
+        let oshi: OshiCharacter
+        let userName: String
+        let deliverAfter: Date
+        let previousAIComment: String?
+        var replyText: String?
+    }
     
     var displayedTimelinePosts: [Post] {
         let filtered = timelinePosts
@@ -75,7 +125,11 @@ class OshiViewModel: ObservableObject {
     }
     
     var isMessageLimitReached: Bool {
-        AppConfig.adGateEnabled && messageCount >= maxMessageLimit
+        shouldShowAds && messageCount >= maxMessageLimit
+    }
+
+    var shouldShowAds: Bool {
+        AppConfig.adGateEnabled && !isPlusActive
     }
 
     var unreadNotificationCount: Int {
@@ -93,6 +147,12 @@ class OshiViewModel: ObservableObject {
     var mutualFollowCount: Int {
         oshiList.filter { $0.isMutualFollow }.count
     }
+
+    func isUserCreatedOshi(_ oshi: OshiCharacter) -> Bool {
+        if oshi.isCreatedByUser { return true }
+        let appearsInRecommendations = recommendedOshis.contains { $0.id == oshi.id }
+        return oshi.creatorId == dbManager.currentUserId && !appearsInRecommendations
+    }
     
     var followingOshiIds: Set<UUID> {
         Set(oshiList.filter { $0.isFollowedByUser }.map { $0.id })
@@ -105,14 +165,38 @@ class OshiViewModel: ObservableObject {
     // ✅ 修正: 公開タイムラインの投稿をそのまま返すように変更
     // これにより、他のユーザーが作成した共有(公開)推しの投稿が表示されるようになります
     var recommendedPosts: [Post] {
-        return publicTimelinePosts
+        let followedIDs = followingOshiIds.union(followingRemoteOshiIDs)
+        return Self.prioritizedRecommendedPosts(
+            publicTimelinePosts,
+            followedOshiIDs: followedIDs
+        )
+    }
+
+    static func prioritizedRecommendedPosts(
+        _ posts: [Post],
+        followedOshiIDs: Set<UUID>
+    ) -> [Post] {
+        posts.sorted { lhs, rhs in
+            let lhsIsFollowed = lhs.authorId.map(followedOshiIDs.contains) ?? false
+            let rhsIsFollowed = rhs.authorId.map(followedOshiIDs.contains) ?? false
+
+            if lhsIsFollowed != rhsIsFollowed {
+                return lhsIsFollowed
+            }
+
+            return lhs.timestamp > rhs.timestamp
+        }
     }
     
     init() {
+        restoreDailyMessageCount()
+        restorePendingAIReplies()
         Task {
             await loadData()
+            resumePendingAIReplies()
+            guard autoPostingEnabled else { return }
+            startAutoPosting()
         }
-        startAutoPosting()
         startAutoFollowing()
     }
     
@@ -147,6 +231,120 @@ class OshiViewModel: ObservableObject {
     
     func resetMessageLimit() {
         messageCount = 0
+        UserDefaults.standard.set(0, forKey: dailyMessageCountKey)
+        UserDefaults.standard.set(Calendar.current.startOfDay(for: Date()), forKey: dailyMessageDateKey)
+    }
+
+    func setPlusActive(_ active: Bool) {
+        guard isPlusActive != active else { return }
+        isPlusActive = active
+        if active {
+            resetMessageLimit()
+            plusPaywallPresentation = nil
+        }
+        scheduleNextAutoPost()
+    }
+
+    func requestPlusPaywall(_ trigger: PlusPaywallTrigger, force: Bool = false) {
+        guard !isPlusActive else { return }
+        guard plusPaywallPresentation == nil else { return }
+
+        if !force {
+            let key = plusShownPrefix + trigger.rawValue
+            guard !UserDefaults.standard.bool(forKey: key) else { return }
+            UserDefaults.standard.set(true, forKey: key)
+        }
+
+        plusPaywallPresentation = PlusPaywallPresentation(trigger: trigger)
+    }
+
+    func recordAppLaunchForPlusPaywall() {
+        guard !isPlusActive else { return }
+        let count = UserDefaults.standard.integer(forKey: plusLaunchCountKey) + 1
+        UserDefaults.standard.set(count, forKey: plusLaunchCountKey)
+        if count == 3 {
+            requestPlusPaywall(.launchMoment)
+        }
+    }
+
+    func recordUserPostForPlusPaywall() {
+        guard !isPlusActive else { return }
+        let count = UserDefaults.standard.integer(forKey: plusPostCountKey) + 1
+        UserDefaults.standard.set(count, forKey: plusPostCountKey)
+        if count == 3 {
+            requestPlusPaywall(.postMilestone)
+        }
+    }
+
+    func recordEngagementForPlusPaywall() {
+        guard !isPlusActive else { return }
+        let count = UserDefaults.standard.integer(forKey: plusEngagementCountKey) + 1
+        UserDefaults.standard.set(count, forKey: plusEngagementCountKey)
+        if count == 3 {
+            requestPlusPaywall(.engagementMoment)
+        }
+    }
+
+    func recordMessageSentForPlusPaywall() {
+        AppAnalytics.logOnce(.firstChat)
+        guard shouldShowAds else { return }
+        refreshDailyMessageCountIfNeeded()
+        messageCount += 1
+        UserDefaults.standard.set(messageCount, forKey: dailyMessageCountKey)
+        if messageCount >= maxMessageLimit {
+            AppAnalytics.log(.chatLimitHit, parameters: ["daily_limit": maxMessageLimit])
+            requestPlusPaywall(.messageLimitReached, force: true)
+        }
+    }
+
+    private func restoreDailyMessageCount() {
+        refreshDailyMessageCountIfNeeded()
+        messageCount = UserDefaults.standard.integer(forKey: dailyMessageCountKey)
+    }
+
+    private func refreshDailyMessageCountIfNeeded(now: Date = Date()) {
+        let defaults = UserDefaults.standard
+        let today = Calendar.current.startOfDay(for: now)
+        let storedDay = defaults.object(forKey: dailyMessageDateKey) as? Date
+        guard storedDay.map({ !Calendar.current.isDate($0, inSameDayAs: today) }) ?? true else { return }
+        messageCount = 0
+        defaults.set(0, forKey: dailyMessageCountKey)
+        defaults.set(today, forKey: dailyMessageDateKey)
+    }
+
+    func resetForAccountDeletion() {
+        autoPostingEnabled = false
+        autoPostTimer?.invalidate()
+        autoPostTimer = nil
+        autoFollowTimer?.invalidate()
+        autoFollowTimer = nil
+        cancellables.removeAll()
+
+        oshiList = []
+        followingOshis = []
+        posts = []
+        chatRooms = []
+        recommendedOshis = []
+        notifications = []
+        userProfileName = "ユーザー"
+        userProfileAvatarURL = nil
+        bookmarkedPostIDs = []
+        bookmarkedPosts = []
+        repostedPostIDs = []
+        likedPostIDs = []
+        publicTimelinePosts = []
+        followingRemoteOshiIDs = []
+        blockedUserIDs = []
+        postDetails = [:]
+        pendingAIReplies = []
+        activePendingAIReplyIDs = []
+        messageCount = 0
+        displayedPostsCount = postsPerPage
+        UserDefaults.standard.removeObject(forKey: notificationsStorageKey)
+        UserDefaults.standard.removeObject(forKey: pendingAIRepliesStorageKey)
+        UserDefaults.standard.removeObject(forKey: nextAutoPostStorageKey)
+        UserDefaults.standard.removeObject(forKey: dailyMessageCountKey)
+        UserDefaults.standard.removeObject(forKey: dailyMessageDateKey)
     }
     
     func blockUser(creatorId: String?, authorId: UUID?) {
@@ -340,7 +538,10 @@ class OshiViewModel: ObservableObject {
                         try await dbManager.deleteReaction(removedReaction, from: post.id)
                     } else {
                         // 追加処理
-                        let reaction = Reaction(oshiId: userId, oshiName: "あなた")
+                        let reaction = Reaction(
+                            oshiId: userId,
+                            oshiName: normalizedProfileName(userProfileName)
+                        )
                         details.reactions.append(reaction)
                         postDetails[post.id] = details
                         
@@ -365,13 +566,14 @@ class OshiViewModel: ObservableObject {
     }
     
     /// ユーザーコメントの追加 (修正版)
-    func addUserComment(to post: Post, content: String) {
-        let userId = UUID(uuidString: "00000000-0000-0000-0000-000000000001") ?? UUID()
+    func addUserComment(to post: Post, content: String, replyingTo replyTarget: Comment? = nil) {
+        let userDisplayName = normalizedProfileName(userProfileName)
         
         let comment = Comment(
-            oshiId: userId,
-            oshiName: userProfileName,
-            content: content
+            oshiId: Self.currentUserCommentID,
+            oshiName: userDisplayName,
+            content: content,
+            replyToName: replyTarget?.oshiName
         )
         
         Task {
@@ -394,12 +596,16 @@ class OshiViewModel: ObservableObject {
                 }
                 print("✅ コメント投稿成功")
                 
-                // ✅ 追加: AIの投稿に対するコメントなら、50%の確率で返信する
-                if !post.isUserPost, let authorId = post.authorId {
-                    // 投稿者の推し情報を検索 (ローカルリストから)
-                    if let oshi = self.oshiList.first(where: { $0.id == authorId }) {
-                        await attemptAiReplyToComment(post: post, userComment: content, oshi: oshi)
-                    }
+                if Self.shouldEnqueueAIReply(for: post, replyingTo: replyTarget) {
+                    let profileName = await currentProfileName()
+                    let oshi = await replyAuthor(for: post, replyingTo: replyTarget)
+                    enqueueAIReply(
+                        post: post,
+                        userComment: content,
+                        oshi: oshi,
+                        userName: profileName,
+                        previousAIComment: replyTarget?.content
+                    )
                 }
                 
             } catch {
@@ -411,54 +617,212 @@ class OshiViewModel: ObservableObject {
         }
     }
     
-    private func attemptAiReplyToComment(post: Post, userComment: String, oshi: OshiCharacter) async {
-        guard Double.random(in: 0...1) < 0.5 else {
-            print("🎲 AI返信スキップ (確率)")
-            return
+    private func currentProfileName() async -> String {
+        let localName = normalizedProfileName(userProfileName)
+        if localName != "ユーザー" { return localName }
+
+        if let profile = try? await dbManager.loadUserProfile() {
+            let loadedName = normalizedProfileName(profile.userName)
+            userProfileName = loadedName
+            return loadedName
         }
-        
-        print("🤖 AI返信プロセス開始: \(oshi.name)")
-        
-        do {
-            try await Task.sleep(nanoseconds: UInt64.random(in: 3_000_000_000...8_000_000_000))
-            
-            let replyText = try await aiService.generateReplyToUserComment(
-                comment: userComment,
-                on: post,
-                by: oshi,
-                userName: userProfileName
+        return localName
+    }
+
+    private func normalizedProfileName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "あなた" ? "ユーザー" : trimmed
+    }
+
+    static func shouldEnqueueAIReply(for post: Post, replyingTo replyTarget: Comment?) -> Bool {
+        if let replyTarget {
+            return replyTarget.oshiId != currentUserCommentID
+        }
+        return !post.isUserPost
+    }
+
+    /// 投稿者データを取得できない古い投稿でも、投稿に保存済みの名前を使って必ず返信できるようにする。
+    private func replyAuthor(for post: Post, replyingTo replyTarget: Comment?) async -> OshiCharacter {
+        let targetId = replyTarget?.oshiId ?? post.authorId
+
+        if let targetId {
+            if let localOshi = oshiList.first(where: { $0.id == targetId }) {
+                return localOshi
+            }
+            if let fetchedOshi = await fetchOshi(oshiId: targetId) {
+                return fetchedOshi
+            }
+        }
+
+        if let replyTarget {
+            return OshiCharacter(
+                id: replyTarget.oshiId,
+                name: replyTarget.oshiName,
+                isPublic: true
             )
-            
-            // ✅ 修正: replyToName にユーザー名を設定
-            let replyComment = Comment(
-                oshiId: oshi.id,
-                oshiName: oshi.name,
-                content: replyText,
-                replyToName: userProfileName // ← ここで指定
-            )
-            
-            try await dbManager.addComment(replyComment, to: post.id)
-            
-            await MainActor.run {
-                if var details = postDetails[post.id] {
-                    details.comments.append(replyComment)
-                    postDetails[post.id] = details
+        }
+
+        return OshiCharacter(
+            id: post.authorId ?? post.id,
+            name: post.authorName,
+            avatarImageURL: post.authorAvatarURL,
+            isPublic: true,
+            creatorId: post.creatorId
+        )
+    }
+
+    private func enqueueAIReply(
+        post: Post,
+        userComment: String,
+        oshi: OshiCharacter,
+        userName: String,
+        previousAIComment: String? = nil
+    ) {
+        let delayRange = isPlusActive
+            ? TimingConfig.Reaction.plusReplyToUserCommentDelayRange
+            : TimingConfig.Reaction.replyToUserCommentDelayRange
+        let delay = TimeInterval(UInt64.random(in: TimingConfig.seconds(delayRange)))
+        let pendingReply = PendingAIReply(
+            id: UUID(),
+            post: post,
+            userComment: userComment,
+            oshi: oshi,
+            userName: normalizedProfileName(userName),
+            deliverAfter: Date().addingTimeInterval(delay),
+            previousAIComment: previousAIComment,
+            replyText: nil
+        )
+
+        pendingAIReplies.append(pendingReply)
+        persistPendingAIReplies()
+        startPendingAIReply(id: pendingReply.id)
+    }
+
+    private func resumePendingAIReplies() {
+        for pendingReply in pendingAIReplies {
+            startPendingAIReply(id: pendingReply.id)
+        }
+    }
+
+    private func startPendingAIReply(id: UUID) {
+        guard activePendingAIReplyIDs.insert(id).inserted else { return }
+        Task { await deliverPendingAIReply(id: id) }
+    }
+
+    private func deliverPendingAIReply(id: UUID) async {
+        defer { activePendingAIReplyIDs.remove(id) }
+        guard var pendingReply = pendingAIReplies.first(where: { $0.id == id }) else { return }
+
+        let remainingDelay = pendingReply.deliverAfter.timeIntervalSinceNow
+        if remainingDelay > 0 {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(remainingDelay * 1_000_000_000))
+            } catch {
+                return // キャンセル時もキューを残し、次回起動時に再開する
+            }
+        }
+
+        let latestProfileName = await currentProfileName()
+        let replyTargetName = latestProfileName == "ユーザー" ? pendingReply.userName : latestProfileName
+
+        if pendingReply.replyText == nil {
+            do {
+                pendingReply.replyText = try await aiService.generateReplyToUserComment(
+                    comment: pendingReply.userComment,
+                    on: pendingReply.post,
+                    by: pendingReply.oshi,
+                    userName: replyTargetName,
+                    replyingToAIComment: pendingReply.previousAIComment
+                )
+            } catch {
+                print("⚠️ AI返信生成フォールバック: \(error)")
+                pendingReply.replyText = aiService.fallbackReply(seed: pendingReply.userComment)
+            }
+            updatePendingAIReply(pendingReply)
+        }
+
+        guard let replyText = pendingReply.replyText else { return }
+        let replyComment = Comment(
+            id: pendingReply.id,
+            oshiId: pendingReply.oshi.id,
+            oshiName: pendingReply.oshi.name,
+            content: replyText,
+            replyToName: replyTargetName
+        )
+
+        var replyWasCreated = false
+        var replyIsSaved = false
+        for attempt in 0..<4 {
+            do {
+                if try await dbManager.commentExists(replyComment.id, on: pendingReply.post.id) {
+                    replyIsSaved = true
+                } else {
+                    try await dbManager.addComment(replyComment, to: pendingReply.post.id)
+                    replyWasCreated = true
+                    replyIsSaved = true
                 }
-                
-                updatePostInAllLists(postId: post.id) { post in
-                    post.commentCount += 1
-                }
-                
-                if let index = oshiList.firstIndex(where: { $0.id == oshi.id }) {
-                    oshiList[index].increaseIntimacy(by: 1)
-                    let oshiToSave = oshiList[index]
-                    Task { try? await dbManager.saveOshi(oshiToSave) }
+                break
+            } catch {
+                print("⚠️ AI返信保存を再試行 (\(attempt + 1)/4): \(error)")
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: UInt64(1 << attempt) * 1_000_000_000)
                 }
             }
-            print("✅ AI返信成功: \(replyText)")
-            
-        } catch {
-            print("❌ AI返信エラー: \(error)")
+        }
+
+        guard replyIsSaved else {
+            print("❌ AI返信を保留しました。次回起動時に再試行します: \(pendingReply.id)")
+            return
+        }
+
+        if var details = postDetails[pendingReply.post.id],
+           !details.comments.contains(where: { $0.id == replyComment.id }) {
+            details.comments.append(replyComment)
+            postDetails[pendingReply.post.id] = details
+        }
+
+        if replyWasCreated {
+            updatePostInAllLists(postId: pendingReply.post.id) { post in
+                post.commentCount += 1
+            }
+
+            if let index = oshiList.firstIndex(where: { $0.id == pendingReply.oshi.id }) {
+                oshiList[index].increaseIntimacy(by: 1)
+                let oshiToSave = oshiList[index]
+                Task { try? await dbManager.saveOshi(oshiToSave) }
+            }
+            recordEngagementForPlusPaywall()
+            createCommentNotification(
+                oshi: pendingReply.oshi,
+                post: pendingReply.post,
+                commentContent: replyText
+            )
+        }
+
+        pendingAIReplies.removeAll { $0.id == id }
+        persistPendingAIReplies()
+        print("✅ AI返信成功: \(replyText)")
+    }
+
+    private func updatePendingAIReply(_ pendingReply: PendingAIReply) {
+        guard let index = pendingAIReplies.firstIndex(where: { $0.id == pendingReply.id }) else { return }
+        pendingAIReplies[index] = pendingReply
+        persistPendingAIReplies()
+    }
+
+    private func restorePendingAIReplies() {
+        guard let data = UserDefaults.standard.data(forKey: pendingAIRepliesStorageKey),
+              let replies = try? JSONDecoder().decode([PendingAIReply].self, from: data) else {
+            return
+        }
+        pendingAIReplies = replies
+    }
+
+    private func persistPendingAIReplies() {
+        if pendingAIReplies.isEmpty {
+            UserDefaults.standard.removeObject(forKey: pendingAIRepliesStorageKey)
+        } else if let data = try? JSONEncoder().encode(pendingAIReplies) {
+            UserDefaults.standard.set(data, forKey: pendingAIRepliesStorageKey)
         }
     }
 
@@ -655,6 +1019,7 @@ class OshiViewModel: ObservableObject {
         // フォロー処理（推しがユーザーをフォロー）
         var newOshi = selectedPreset
         newOshi.isFollowingUser = true
+        newOshi.isCreatedByUser = false
         
         try? await dbManager.saveOshi(newOshi)
     
@@ -679,6 +1044,7 @@ class OshiViewModel: ObservableObject {
     private convenience init(skipLoadAndTimers: Bool) {
         self.init()
         if skipLoadAndTimers {
+            autoPostingEnabled = false
             autoPostTimer?.invalidate()
             autoPostTimer = nil
             cancellables.removeAll()
@@ -742,8 +1108,7 @@ class OshiViewModel: ObservableObject {
         var followedOshi = preset
         followedOshi.isFollowingUser = true
         followedOshi.isFollowedByUser = true
-        // 必要に応じて作成者IDなども設定
-        followedOshi.creatorId = dbManager.currentUserId
+        followedOshi.isCreatedByUser = false
 
         // 1. 【重要】通信を待たず、先にローカルのリストを更新して見た目を即座に変える
         withAnimation {
@@ -819,71 +1184,84 @@ class OshiViewModel: ObservableObject {
             }
         } catch {
             print("❌ updatePresetOshi failed: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
+            errorMessage = "おすすめの更新に失敗しました"
         }
     }
     
     func loadData() async {
         print("🔍 [Debug] loadData: 開始")
+        guard !isLoading else {
+            print("⏭️ [Debug] loadData: すでに読み込み中のためスキップ")
+            return
+        }
         isLoading = true
         errorMessage = nil
+        didFailLastLoad = false
 
         do {
-            // 1. 各種リストの並列ロード (★ blockedTask を追加)
+            // 初期表示に必要なデータだけを先に取得して、ホームを早く表示する
             async let oshiListTask = dbManager.loadOshiList()
-            async let chatRoomsTask = dbManager.loadChatRooms()
             async let userProfileTask = dbManager.loadUserProfile()
             async let followingTask = dbManager.loadFollowingIds()
-            async let presetsTask = dbManager.fetchPresetOshis()
-            async let blockedTask = dbManager.fetchBlockedUsers() // ✅ 追加
-            
             async let myPostsTask = dbManager.loadMyPosts(limit: 50)
-            async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
 
-            // 結果の取り出し (★ loadedBlocked を追加)
-            let (loadedOshi, loadedMyPosts, loadedPublicPosts, loadedRooms, profile, loadedFollowingIDs, loadedPresets, loadedBlocked) =
-                try await (oshiListTask, myPostsTask, publicPostsTask, chatRoomsTask, userProfileTask, followingTask, presetsTask, blockedTask)
+            let (loadedOshi, loadedMyPosts, profile, loadedFollowingIDs) =
+                try await (oshiListTask, myPostsTask, userProfileTask, followingTask)
 
-            // 3. データ反映
             oshiList = loadedOshi
             followingRemoteOshiIDs = Set(loadedFollowingIDs)
-            chatRooms = loadedRooms
-            userProfileName = profile.userName
+            userProfileName = normalizedProfileName(profile.userName)
             userProfileAvatarURL = profile.avatarImageURL
-            
-            // ✅ ブロックリストの設定
-            blockedUserIDs = Set(loadedBlocked)
-            
-            // ✅ フィルタリングしながら代入
-            recommendedOshis = loadedPresets.filter { !self.blockedUserIDs.contains($0.creatorId ?? "") && !self.blockedUserIDs.contains($0.id.uuidString) }
-            
-            publicTimelinePosts = loadedPublicPosts.filter { !self.isBlocked(post: $0) }
+            resumePendingAIReplies()
 
-            // 4. フォロー中タイムラインの構築
-            let localOshiIds = oshiList.map { $0.id }
-            let remoteOshiIds = Array(followingRemoteOshiIDs)
-            let allFollowingIds = Set(localOshiIds + remoteOshiIds)
-            
-            let followingPosts = try await dbManager.loadFollowingPosts(followingIds: Array(allFollowingIds))
-            
-            let mergedPosts = (loadedMyPosts + followingPosts)
-                .reduce(into: [Post]()) { res, post in
-                    if !res.contains(where: { $0.id == post.id }) { res.append(post) }
-                }
+            posts = loadedMyPosts
+                .filter { !self.isBlocked(post: $0) }
                 .sorted { $0.timestamp > $1.timestamp }
-            
-            // ✅ 自分のタイムラインもフィルタリング
-            self.posts = mergedPosts.filter { !self.isBlocked(post: $0) }
-            
+
+            isLoading = false
+
+            do {
+                let localOshiIds = oshiList.map { $0.id }
+                let remoteOshiIds = Array(followingRemoteOshiIDs)
+                let allFollowingIds = Set(localOshiIds + remoteOshiIds)
+
+                async let chatRoomsTask = dbManager.loadChatRoomSummaries()
+                async let blockedTask = dbManager.fetchBlockedUsers()
+                async let presetsTask = dbManager.fetchPresetOshis()
+                async let publicPostsTask = dbManager.loadPublicPosts(limit: 50)
+                async let followingPostsTask = dbManager.loadFollowingPosts(followingIds: Array(allFollowingIds))
+
+                let (loadedRooms, loadedBlocked, loadedPresets, loadedPublicPosts, followingPosts) =
+                    try await (chatRoomsTask, blockedTask, presetsTask, publicPostsTask, followingPostsTask)
+
+                chatRooms = loadedRooms
+                blockedUserIDs = Set(loadedBlocked)
+                recommendedOshis = loadedPresets.filter { !self.blockedUserIDs.contains($0.creatorId ?? "") && !self.blockedUserIDs.contains($0.id.uuidString) }
+                publicTimelinePosts = loadedPublicPosts.filter { !self.isBlocked(post: $0) }
+
+                let mergedPosts = (loadedMyPosts + followingPosts)
+                    .reduce(into: [Post]()) { res, post in
+                        if !res.contains(where: { $0.id == post.id }) { res.append(post) }
+                    }
+                    .sorted { $0.timestamp > $1.timestamp }
+
+                self.posts = mergedPosts.filter { !self.isBlocked(post: $0) }
+                checkProactiveMessages()
+                await refreshProactiveNotifications()
+            } catch {
+                print("⚠️ [Debug] loadData: 追加データの読み込みに失敗 - \(error)")
+            }
+
             Task {
                 try? await dbManager.deleteOldNotifications(olderThan: Date().addingTimeInterval(-60*60*24*30))
             }
 
         } catch {
             print("❌ [Debug] loadData: エラー発生 - \(error)")
-            errorMessage = "データの読み込みに失敗しました: \(error.localizedDescription)"
+            errorMessage = "データを読み込めませんでした。通信環境を確認して、下に引っぱって再読み込みしてください。"
+            didFailLastLoad = true
+            isLoading = false
         }
-        isLoading = false
         print("🏁 [Debug] loadData: 完了")
     }
     
@@ -898,6 +1276,23 @@ class OshiViewModel: ObservableObject {
         } catch {
             print("Error loading following list: \(error)")
             await MainActor.run { isLoadingList = false }
+        }
+    }
+
+    func loadChatRoomDetailsIfNeeded(oshiId: UUID) async {
+        if let room = chatRooms.first(where: { $0.oshiId == oshiId }), room.messages.count > 1 {
+            return
+        }
+
+        do {
+            guard let loadedRoom = try await dbManager.loadChatRoom(oshiId: oshiId) else { return }
+            if let index = chatRooms.firstIndex(where: { $0.oshiId == oshiId }) {
+                chatRooms[index] = loadedRoom
+            } else {
+                chatRooms.append(loadedRoom)
+            }
+        } catch {
+            print("❌ チャット詳細読み込みエラー: \(error)")
         }
     }
 
@@ -1018,12 +1413,14 @@ class OshiViewModel: ObservableObject {
                 newOshi.isPublic = isPublic
                 newOshi.isFollowedByUser = true
                 newOshi.isFollowingUser = true
+                newOshi.isCreatedByUser = true
                 // 追加: 作成者IDを設定
                 newOshi.creatorId = dbManager.currentUserId
                 
                 // 1. ローカルリストに追加
                 oshiList.append(newOshi)
                 try await dbManager.saveOshi(newOshi)
+                AppAnalytics.log(.oshiCreated, parameters: ["is_public": isPublic ? 1 : 0])
                 
                 // 2. チャットルーム作成
                 let chatRoom = ChatRoom(oshiId: newOshi.id)
@@ -1050,7 +1447,8 @@ class OshiViewModel: ObservableObject {
                     print("✅ 推し更新成功: \(oshi.name)")
                 }
             } catch {
-                errorMessage = "推しの更新に失敗しました: \(error.localizedDescription)"
+                print("❌ 推しの更新エラー: \(error)")
+                errorMessage = "推しの更新に失敗しました"
                 print("❌ 推し更新エラー: \(error)")
             }
         }
@@ -1062,14 +1460,33 @@ class OshiViewModel: ObservableObject {
                 oshiList.removeAll { $0.id == oshi.id }
                 chatRooms.removeAll { $0.oshiId == oshi.id }
                 posts.removeAll { $0.authorId == oshi.id }
+                postDetails = postDetails.filter { _, details in
+                    details.post.authorId != oshi.id
+                }
+                recentCommenterIDs.removeAll { $0 == oshi.id }
+                recentAutoPostOshiIDs.removeAll { $0 == oshi.id }
                 
                 try await dbManager.deleteOshi(oshi.id)
                 
                 print("✅ 推し削除成功: \(oshi.name)")
                 
             } catch {
-                errorMessage = "推しの削除に失敗しました: \(error.localizedDescription)"
+                print("❌ 推しの削除エラー: \(error)")
+                errorMessage = "推しの削除に失敗しました"
                 print("❌ 推し削除エラー: \(error)")
+            }
+        }
+    }
+
+    func deleteChatRoom(_ room: ChatRoom) {
+        Task {
+            do {
+                chatRooms.removeAll { $0.oshiId == room.oshiId }
+                try await dbManager.deleteChatRoom(oshiId: room.oshiId)
+                print("✅ DM削除成功: \(room.oshiId)")
+            } catch {
+                errorMessage = "DMの削除に失敗しました"
+                print("❌ DM削除エラー: \(error)")
             }
         }
     }
@@ -1077,8 +1494,9 @@ class OshiViewModel: ObservableObject {
     // MARK: - タイムライン(最適化版)
     
     func createUserPost(content: String, imageURLs: [String] = []) {
+        DailyEngagementStore.shared.recordActivity()
         let post = Post(
-            authorName: "あなた",
+            authorName: normalizedProfileName(userProfileName),
             content: content,
             isUserPost: true,
             imageURLs: imageURLs
@@ -1091,28 +1509,39 @@ class OshiViewModel: ObservableObject {
         Task {
             do {
                 try await dbManager.savePost(post)
+                AppAnalytics.logOnce(.firstPost, parameters: ["has_image": imageURLs.isEmpty ? 0 : 1])
+                ReviewRequestManager.shared.recordMeaningfulCompletion()
                 await generateReactionsForPost(post)
             } catch {
-                errorMessage = "保存失敗: \(error.localizedDescription)"
+                print("❌ 投稿保存エラー: \(error)")
+                // 保存されていない投稿を残すと、再読み込みで突然消えてしまうため取り除く
+                posts.removeAll { $0.id == post.id }
+                postDetails[post.id] = nil
+                errorMessage = "投稿を保存できませんでした。通信環境を確認して、もう一度お試しください。"
             }
         }
     }
     
     // ✅ 最適化版: リアクション・コメントを個別に保存し、即座にUIに反映
     private func generateReactionsForPost(_ post: Post) async {
-        guard let postIndex = posts.firstIndex(where: { $0.id == post.id }) else { return }
+        guard posts.contains(where: { $0.id == post.id }) else { return }
         let mood = aiService.analyzeMood(from: post.content)
-        let commentersCount = min(Int.random(in: 2...3), oshiList.count)
-        let selectedCommenters = selectCommentersWithIntimacy(count: commentersCount)
+        let commentTargets = reactionTargets(for: post)
+        let upperCommentCount = min(isPlusActive ? 8 : 5, commentTargets.count)
+        let lowerCommentCount = min(isPlusActive ? 4 : 2, upperCommentCount)
+        let commentersCount = upperCommentCount == 0 ? 0 : Int.random(in: lowerCommentCount...upperCommentCount)
+        let selectedCommenters = selectBalancedCommenters(from: commentTargets, count: commentersCount)
         
         for oshi in oshiList {
             // キャラクターごとに非同期タスクを生成（並列化）
             Task {
                 // --- いいね処理のタスク ---
-                let shouldLike = Double.random(in: 0...1) < Double.random(in: 0.6...0.9)
+                let likeRange: ClosedRange<Double> = isPlusActive ? 0.82...0.98 : 0.6...0.9
+                let shouldLike = Double.random(in: 0...1) < Double.random(in: likeRange)
                 if shouldLike {
                     // いいねの待機を独立して行う
-                    try? await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.likeDelayRange)))
+                    let delayRange = isPlusActive ? TimingConfig.Reaction.plusLikeDelayRange : TimingConfig.Reaction.likeDelayRange
+                    try? await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(delayRange)))
                     
                     let reaction = Reaction(oshiId: oshi.id, oshiName: oshi.name)
                     let targetAuthorId = post.authorId?.uuidString ?? dbManager.currentUserId
@@ -1136,9 +1565,16 @@ class OshiViewModel: ObservableObject {
                 if selectedCommenters.contains(where: { $0.id == oshi.id }) {
                     do {
                         // コメントの待機を独立して行う（いいねの待機に邪魔されない）
-                        try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Reaction.commentDelayRange)))
+                        let delayRange = isPlusActive ? TimingConfig.Reaction.plusCommentDelayRange : TimingConfig.Reaction.commentDelayRange
+                        try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(delayRange)))
                         
-                        let commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood, userName: userProfileName)
+                        let commentText: String
+                        do {
+                            commentText = try await aiService.generateComment(for: post, by: oshi, userMood: mood, userName: userProfileName)
+                        } catch {
+                            print("⚠️ コメント生成フォールバック: \(error)")
+                            commentText = aiService.fallbackComment(seed: post.content)
+                        }
                         let comment = Comment(oshiId: oshi.id, oshiName: oshi.name, content: commentText)
                         
                         try await dbManager.addComment(comment, to: post.id)
@@ -1154,6 +1590,8 @@ class OshiViewModel: ObservableObject {
                                 oshiList[oshiIdx].increaseIntimacy(by: 2)
                                 Task { try? await dbManager.saveOshi(oshiList[oshiIdx]) }
                             }
+                            rememberRecentCommenter(oshi.id)
+                            recordEngagementForPlusPaywall()
                         }
                     } catch {
                         print("❌ コメント生成エラー: \(error)")
@@ -1161,6 +1599,57 @@ class OshiViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    private func reactionTargets(for post: Post) -> [OshiCharacter] {
+        if post.isUserPost {
+            let followers = oshiList.filter { $0.isFollowingUser || $0.isMutualFollow }
+            return followers.isEmpty ? oshiList : followers
+        }
+
+        return oshiList.filter { $0.id != post.authorId }
+    }
+
+    private func selectBalancedCommenters(from targetList: [OshiCharacter], count: Int) -> [OshiCharacter] {
+        guard !targetList.isEmpty else { return [] }
+        guard count > 0 else { return [] }
+        
+        let weighedOshis: [(oshi: OshiCharacter, weight: Double)] = targetList.map { oshi in
+            let intimacyWeight = max(1.0, Double(oshi.totalInteractions) / 10.0)
+            let randomBoost = Double.random(in: isPlusActive ? 0.8...1.8 : 0.5...1.5)
+            let recentPenalty = recentCommenterIDs.contains(oshi.id) ? (isPlusActive ? 0.18 : 0.35) : 1.0
+            let finalWeight = intimacyWeight * randomBoost * recentPenalty
+            return (oshi, finalWeight)
+        }
+        
+        let sortedOshis = weighedOshis.sorted { $0.weight > $1.weight }
+        var selected: [OshiCharacter] = []
+        
+        for (index, item) in sortedOshis.enumerated() {
+            if selected.count >= count { break }
+            let selectionProbability: Double
+            if isPlusActive {
+                selectionProbability = index == 0 ? 0.98 : index == 1 ? 0.92 : index == 2 ? 0.78 : 0.52
+            } else {
+                selectionProbability = index == 0 ? 0.9 : index == 1 ? 0.8 : index == 2 ? 0.6 : 0.3
+            }
+            
+            if Double.random(in: 0...1) < selectionProbability {
+                selected.append(item.oshi)
+            }
+        }
+        
+        if selected.isEmpty {
+            selected = Array(sortedOshis.prefix(min(1, sortedOshis.count)).map { $0.oshi })
+        }
+        
+        return selected
+    }
+
+    private func rememberRecentCommenter(_ id: UUID) {
+        recentCommenterIDs.removeAll { $0 == id }
+        recentCommenterIDs.insert(id, at: 0)
+        recentCommenterIDs = Array(recentCommenterIDs.prefix(8))
     }
     
     func deleteRecommendedOshi(_ oshi: OshiCharacter) async {
@@ -1230,43 +1719,43 @@ class OshiViewModel: ObservableObject {
         return selected
     }
     
-    func createOshiPost(by oshi: OshiCharacter) {
-        Task {
-            do {
-                let content = try await aiService.generateOshiPost(by: oshi)
+    @discardableResult
+    private func createOshiPost(by oshi: OshiCharacter) async -> Bool {
+        let content: String
+        do {
+            content = try await aiService.generateOshiPost(by: oshi)
+        } catch {
+            content = aiService.fallbackOshiPost()
+            print("⚠️ 推し投稿を代替文で作成: \(oshi.name) - \(error.localizedDescription)")
+        }
                 
-                // 修正: Post作成時にcreatorIdを渡す
-                let post = Post(
-                    authorId: oshi.id,
-                    authorName: oshi.name,
-                    content: content,
-                    isUserPost: false,
-                    authorAvatarURL: oshi.avatarImageURL,
-                    creatorId: oshi.creatorId // 👈 ここを追加！
-                )
+        let post = Post(
+            authorId: oshi.id,
+            authorName: oshi.name,
+            content: content,
+            isUserPost: false,
+            authorAvatarURL: oshi.avatarImageURL,
+            creatorId: oshi.creatorId
+        )
                 
-                // UIへの即時反映
-                posts.insert(post, at: 0)
+        posts.insert(post, at: 0)
                 
-                // ✅ 追加: 公開推しの場合は、公開タイムライン(おすすめ)にも即時反映
-                if oshi.isPublic {
-                    publicTimelinePosts.insert(post, at: 0)
-                }
+        if oshi.isPublic {
+            publicTimelinePosts.insert(post, at: 0)
+        }
                 
-                // 保存: ここで isPublic フラグを使用
+        do {
                 try await dbManager.savePost(post, isPublic: oshi.isPublic)
                 
-                // ✅ 修正: 相互フォローの場合のみ通知を作成
-                if oshi.isMutualFollow {
-                    createOshiPostNotification(oshi: oshi, post: post)
-                }
-                
-                print("✅ 推しの投稿作成成功: \(oshi.name)")
-                
-            } catch {
-                errorMessage = "推しの投稿作成に失敗しました: \(error.localizedDescription)"
-                print("❌ 推しの投稿作成エラー: \(error)")
+            if oshi.isMutualFollow {
+                createOshiPostNotification(oshi: oshi, post: post)
             }
+                
+            print("✅ 推しの投稿作成成功: \(oshi.name)")
+            return true
+        } catch {
+            print("❌ 推しの投稿保存エラー: \(error)")
+            return false
         }
     }
     
@@ -1303,6 +1792,13 @@ class OshiViewModel: ObservableObject {
     
     // MARK: - 投稿詳細の取得
     
+    private func cachedPost(for postId: UUID) -> Post? {
+        if let post = posts.first(where: { $0.id == postId }) { return post }
+        if let post = publicTimelinePosts.first(where: { $0.id == postId }) { return post }
+        if let post = bookmarkedPosts.first(where: { $0.id == postId }) { return post }
+        return nil
+    }
+    
     /// 投稿の詳細(リアクション・コメント)を取得
     func loadPostDetails(for postId: UUID) async {
         // すでに読み込み済みならスキップ
@@ -1316,7 +1812,7 @@ class OshiViewModel: ObservableObject {
             
             let (reactions, comments) = try await (reactionsTask, commentsTask)
             
-            if let post = posts.first(where: { $0.id == postId }) {
+            if let post = cachedPost(for: postId) {
                 let hasMore = comments.count >= 10
                 postDetails[postId] = PostDetails(
                     post: post,
@@ -1329,7 +1825,7 @@ class OshiViewModel: ObservableObject {
         } catch {
             print("⚠️ 投稿詳細の読み込みスキップ: \(error.localizedDescription)")
             // エラー時は空のPostDetailsを作成
-            if let post = posts.first(where: { $0.id == postId }) {
+            if let post = cachedPost(for: postId) {
                 postDetails[postId] = PostDetails(
                     post: post,
                     reactions: [],
@@ -1380,19 +1876,27 @@ class OshiViewModel: ObservableObject {
                     try await dbManager.saveOshi(oshiList[oshiIndex])
                 }
                 
-                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(TimingConfig.Chat.replyDelayRange)))
+                let delayRange = isPlusActive ? TimingConfig.Chat.plusReplyDelayRange : TimingConfig.Chat.replyDelayRange
+                try await Task.sleep(nanoseconds: UInt64.random(in: TimingConfig.nanoseconds(delayRange)))
                 
                 // ✅ 修正: userNameを渡す
-                let reply = try await aiService.generateChatReply(
-                    for: content,
-                    by: oshi,
-                    conversationHistory: chatRooms[roomIndex].messages,
-                    userName: userProfileName
-                )
+                let reply: String
+                do {
+                    reply = try await aiService.generateChatReply(
+                        for: content,
+                        by: oshi,
+                        conversationHistory: chatRooms[roomIndex].messages,
+                        userName: userProfileName
+                    )
+                } catch {
+                    print("⚠️ チャット返信生成フォールバック: \(error)")
+                    reply = aiService.fallbackReply(seed: content)
+                }
                 
                 let aiMessage = Message(content: reply, isFromUser: false, oshiId: oshiId)
                 chatRooms[roomIndex].addMessage(aiMessage)
                 try await dbManager.addMessage(to: oshiId, message: aiMessage)
+                ReviewRequestManager.shared.recordMeaningfulCompletion()
                 createChatNotification(oshi: oshi, message: aiMessage)
                 
             } catch {
@@ -1400,7 +1904,25 @@ class OshiViewModel: ObservableObject {
             }
         }
         
-        messageCount += 1
+        recordMessageSentForPlusPaywall()
+    }
+
+    func generateOshiConversation(first: OshiCharacter, second: OshiCharacter, theme: String) async -> String {
+        guard isPlusActive else {
+            return "AImate Plusで使える機能です。"
+        }
+
+        do {
+            return try await aiService.generateOshiConversation(
+                first: first,
+                second: second,
+                theme: theme,
+                userName: userProfileName
+            )
+        } catch {
+            print("❌ AI同士の会話生成エラー: \(error)")
+            return "\(first.name): \(theme)、ちょっと気になるね。\n\(second.name): うん、またあとでゆっくり話したい。"
+        }
     }
     
     func markChatAsRead(oshiId: UUID) {
@@ -1439,21 +1961,109 @@ class OshiViewModel: ObservableObject {
     // MARK: - 自動投稿
     
     private func startAutoPosting() {
-        autoPostTimer = Timer.scheduledTimer(withTimeInterval: TimingConfig.AutoEvent.postInterval, repeats: true) { [weak self] _ in
+        scheduleNextAutoPost(preservingExistingDate: true)
+    }
+
+    private func scheduleNextAutoPost(preservingExistingDate: Bool = false) {
+        guard autoPostingEnabled else { return }
+        autoPostTimer?.invalidate()
+        let intervalRange = isPlusActive
+            ? TimingConfig.AutoEvent.plusPostIntervalRange
+            : TimingConfig.AutoEvent.postIntervalRange
+
+        let now = Date()
+        let savedDate = UserDefaults.standard.object(forKey: nextAutoPostStorageKey) as? Date
+        let nextDate: Date
+        if preservingExistingDate {
+            if let savedDate {
+                nextDate = savedDate
+            } else {
+                let initialDelayRange = isPlusActive
+                    ? TimingConfig.AutoEvent.plusInitialPostDelayRange
+                    : TimingConfig.AutoEvent.initialPostDelayRange
+                nextDate = now.addingTimeInterval(Double.random(in: initialDelayRange))
+                UserDefaults.standard.set(nextDate, forKey: nextAutoPostStorageKey)
+            }
+        } else {
+            nextDate = now.addingTimeInterval(Double.random(in: intervalRange))
+            UserDefaults.standard.set(nextDate, forKey: nextAutoPostStorageKey)
+        }
+
+        let delay = max(1, nextDate.timeIntervalSince(now))
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                await self?.randomOshiPost()
+                guard let self else { return }
+                await self.randomOshiPost()
+                self.scheduleNextAutoPost(preservingExistingDate: false)
             }
         }
+        autoPostTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func handleAppBecameActive() {
+        refreshDailyMessageCountIfNeeded()
+        DailyEngagementStore.shared.recordActivity()
+        AppAnalytics.recordLaunch()
+        checkProactiveMessages()
+        Task { await refreshProactiveNotifications() }
+        guard autoPostingEnabled else { return }
+        scheduleNextAutoPost(preservingExistingDate: true)
     }
     
     private func randomOshiPost() async {
-        let mutualFollows = oshiList.filter { $0.isMutualFollow }
+        guard !isAutoPostInFlight else { return }
+
+        // ユーザーがフォローしている推しを優先しつつ、AI側からフォローしている推しにも投稿機会を残す。
+        let mutualFollows = Self.autoPostSelectionPool(
+            from: oshiList,
+            preferenceRoll: Double.random(in: 0..<1)
+        )
         
         guard !mutualFollows.isEmpty else { return }
 
-        if let randomOshi = mutualFollows.randomElement() {
-            createOshiPost(by: randomOshi)
+        let sortedCandidates = mutualFollows.sorted { lhs, rhs in
+            let lhsRecent = recentAutoPostOshiIDs.firstIndex(of: lhs.id) ?? Int.max
+            let rhsRecent = recentAutoPostOshiIDs.firstIndex(of: rhs.id) ?? Int.max
+            if lhsRecent != rhsRecent { return lhsRecent > rhsRecent }
+            return lhs.totalInteractions < rhs.totalInteractions
         }
+
+        let poolSize = min(max(isPlusActive ? 3 : 2, sortedCandidates.count / (isPlusActive ? 1 : 2)), sortedCandidates.count)
+        guard let selectedOshi = Array(sortedCandidates.prefix(poolSize)).randomElement() else { return }
+        isAutoPostInFlight = true
+        defer { isAutoPostInFlight = false }
+
+        if await createOshiPost(by: selectedOshi) {
+            rememberRecentAutoPost(selectedOshi.id)
+        }
+    }
+
+    static func autoPostCandidates(from oshiList: [OshiCharacter]) -> [OshiCharacter] {
+        let followedCandidates = oshiList.filter {
+            $0.isFollowedByUser || $0.isFollowingUser || $0.isMutualFollow
+        }
+        return followedCandidates.isEmpty ? oshiList : followedCandidates
+    }
+
+    static func autoPostSelectionPool(
+        from oshiList: [OshiCharacter],
+        preferenceRoll: Double
+    ) -> [OshiCharacter] {
+        let candidates = autoPostCandidates(from: oshiList)
+        let followedByUser = candidates.filter(\.isFollowedByUser)
+        let otherCandidates = candidates.filter { !$0.isFollowedByUser }
+
+        guard !followedByUser.isEmpty else { return otherCandidates }
+        guard !otherCandidates.isEmpty else { return followedByUser }
+
+        return preferenceRoll < 0.8 ? followedByUser : otherCandidates
+    }
+
+    private func rememberRecentAutoPost(_ id: UUID) {
+        recentAutoPostOshiIDs.removeAll { $0 == id }
+        recentAutoPostOshiIDs.insert(id, at: 0)
+        recentAutoPostOshiIDs = Array(recentAutoPostOshiIDs.prefix(10))
     }
     
     private func addNotification(_ notification: AppNotification) {
@@ -1556,6 +2166,21 @@ class OshiViewModel: ObservableObject {
             relatedPostId: post.id
         )
         addNotification(notification)
+        Task {
+            await LocalNotificationManager.shared.notifyComment(
+                from: oshi.name,
+                content: commentContent,
+                postID: post.id
+            )
+        }
+        if !LocalNotificationManager.shared.hasShownContextPrompt {
+            Task {
+                let isAuthorized = await LocalNotificationManager.shared.isAuthorized()
+                guard !isAuthorized else { return }
+                LocalNotificationManager.shared.markContextPromptShown()
+                shouldPromptForNotificationPermission = true
+            }
+        }
     }
 
     /// 推しの投稿通知を作成 -> 廃止
@@ -1563,50 +2188,98 @@ class OshiViewModel: ObservableObject {
         // 何もしない (通知を作成しない)
     }
 
-    /// チャットメッセージ通知を作成 -> 廃止
     private func createChatNotification(oshi: OshiCharacter, message: Message) {
-        // 何もしない (通知を作成しない)
+        Task {
+            await LocalNotificationManager.shared.notifyChat(
+                from: oshi.name,
+                content: message.content,
+                oshiID: oshi.id
+            )
+        }
+    }
+
+    func notifyDeliveredChatReply(from oshi: OshiCharacter, message: Message) {
+        createChatNotification(oshi: oshi, message: message)
+    }
+
+    /// 通知・ウィジェット・自発メッセージで話しかける推し（フォロー関係のうち最も交流が多い推し）
+    private var primaryOshi: OshiCharacter? {
+        oshiList
+            .filter { $0.isFollowedByUser || $0.isFollowingUser }
+            .max { $0.totalInteractions < $1.totalInteractions }
+            ?? oshiList.first
+    }
+
+    private func refreshProactiveNotifications() async {
+        let selected = primaryOshi
+        DailyEngagementStore.shared.updateWidget(oshiName: selected?.name)
+        if let selected {
+            Task { await refreshDailyWidgetMessage(for: selected) }
+        }
+        await LocalNotificationManager.shared.refreshProactiveNotifications(oshi: selected)
+    }
+
+    private func refreshDailyWidgetMessage(for oshi: OshiCharacter) async {
+        guard !isWidgetGenerationInFlight else { return }
+        let defaults = UserDefaults(suiteName: DailyEngagementStore.appGroupID) ?? .standard
+        let dateKey = "widget_daily_generated_date"
+        if let generatedDate = defaults.object(forKey: dateKey) as? Date,
+           Calendar.current.isDateInToday(generatedDate) {
+            return
+        }
+        isWidgetGenerationInFlight = true
+        defer { isWidgetGenerationInFlight = false }
+
+        let message: String
+        do {
+            message = try await aiService.generateOshiPost(by: oshi)
+        } catch {
+            message = aiService.fallbackOshiPost()
+        }
+        defaults.set(Date(), forKey: dateKey)
+        DailyEngagementStore.shared.updateWidget(oshiName: oshi.name, message: message)
     }
     
     // MARK: - 高親密度での自発的メッセージ
     
+    /// 朝(7-9時)・夜(22-23時)に、いちばん親しい推し1人だけがチャットで話しかける。
+    /// 全員に送るとAI呼び出しと通知が推しの数だけ発生するため、通知・ウィジェットと同じ推しに絞る。
     func checkProactiveMessages() {
         let hour = Calendar.current.component(.hour, from: Date())
-        
+        let greetingType: GreetingType
+        switch hour {
+        case 7..<9: greetingType = .morning
+        case 22..<23: greetingType = .night
+        default: return
+        }
+        guard !isProactiveMessageInFlight,
+              let oshi = primaryOshi,
+              chatRooms.contains(where: { $0.oshiId == oshi.id }) else { return }
+
+        let key = "proactive_\(greetingType == .morning ? "morning" : "night")_\(oshi.id.uuidString)"
+        if let last = UserDefaults.standard.object(forKey: key) as? Date,
+           Calendar.current.isDateInToday(last) {
+            return
+        }
+
+        isProactiveMessageInFlight = true
         Task {
-            for oshi in oshiList {
-                guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { continue }
-                
-                if hour >= 7 && hour < 9 {
-                    let lastMessage = chatRooms[roomIndex].messages.last
-                    let isToday = Calendar.current.isDateInToday(lastMessage?.timestamp ?? Date.distantPast)
-                    
-                    if !isToday {
-                        do {
-                            // ✅ 修正: userNameを渡す
-                            let greeting = try await aiService.generateGreeting(
-                                type: .morning,
-                                by: oshi,
-                                userName: userProfileName
-                            )
-                            let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
-                            chatRooms[roomIndex].addMessage(message)
-                            try await dbManager.addMessage(to: oshi.id, message: message)
-                        } catch { print("挨拶エラー") }
-                    }
-                }
-                
-                if hour >= 22 && hour < 23 {
-                    // 夜のロジックも同様に修正できるが、頻度制限など必要なら追加
-                    do {
-                         let nightMessage = try await aiService.generateGreeting(
-                            type: .night,
-                            by: oshi,
-                            userName: userProfileName
-                        )
-                         // 保存処理...
-                    } catch {}
-                }
+            defer { isProactiveMessageInFlight = false }
+            do {
+                let greeting = try await aiService.generateGreeting(
+                    type: greetingType,
+                    by: oshi,
+                    userName: userProfileName
+                )
+                // await中にchatRoomsが並び替わる可能性があるため、添字は生成後に引き直す
+                guard let roomIndex = chatRooms.firstIndex(where: { $0.oshiId == oshi.id }) else { return }
+                let message = Message(content: greeting, isFromUser: false, oshiId: oshi.id)
+                chatRooms[roomIndex].addMessage(message)
+                UserDefaults.standard.set(Date(), forKey: key)
+                try await dbManager.addMessage(to: oshi.id, message: message)
+                createChatNotification(oshi: oshi, message: message)
+            } catch {
+                print("❌ 自発メッセージ生成エラー: \(error)")
             }
         }
     }
@@ -1615,6 +2288,6 @@ class OshiViewModel: ObservableObject {
 import Foundation
 
 enum AppConfig {
-    /// 審査通過まで false（無制限送信）
-    static let adGateEnabled = false
+    /// 無料ユーザー向けの広告・回数ゲート。Plusでは `OshiViewModel.shouldShowAds` が false になる。
+    static let adGateEnabled = true
 }

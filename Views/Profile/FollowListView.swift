@@ -21,50 +21,47 @@ struct FollowListView: View {
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-        List {
+        Group {
             if isLoading {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .listRowSeparator(.hidden)
+                LoadingView(message: "読み込み中...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if users.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.slash")
-                        .font(.largeTitle)
-                        .foregroundColor(.secondary)
-                    Text(typeLabel)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .listRowSeparator(.hidden)
-                .padding(.top, 40)
+                EmptyStateView(
+                    icon: "person.slash",
+                    title: typeLabel,
+                    subtitle: ""
+                )
             } else {
-                ForEach(users) { user in
-                    HStack(spacing: 12) {
-                        AsyncAvatarView(
-                            imageURL: user.avatarImageURL,
-                            name: user.name,
-                            size: 44,
-                            placeholderGradient: AppColors.primaryGradient
-                        )
-                        
-                        Text(user.name)
-                            .font(.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
+                ScrollView {
+                    LazyVStack(spacing: DesignTokens.Spacing.sm) {
+                        ForEach(users) { user in
+                            HStack(spacing: 12) {
+                                AsyncAvatarView(
+                                    imageURL: user.avatarImageURL,
+                                    name: user.name,
+                                    size: 44,
+                                    placeholderGradient: AppColors.primaryGradient
+                                )
+
+                                Text(user.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+
+                                Spacer()
+                            }
+                            .padding(DesignTokens.Spacing.md)
+                            .floatingCardStyle()
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
+                        }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, DesignTokens.Spacing.sm)
                 }
             }
         }
-        .listStyle(.plain)
+        .background(AuroraBackground())
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {

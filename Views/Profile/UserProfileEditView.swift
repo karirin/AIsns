@@ -40,9 +40,8 @@ struct UserProfileEditView: View {
     var body: some View {
         ZStack {
             // 背景
-            Color(.systemGroupedBackground)
-                .ignoresSafeArea()
-            
+            AuroraBackground()
+
             ScrollView {
                 VStack(spacing: 0) {
                     // アバター（ヘッダーに重ねて配置）
@@ -110,7 +109,7 @@ struct UserProfileEditView: View {
             ZStack {
                 // 白い背景リング
                 Circle()
-                    .fill(Color(.systemGroupedBackground))
+                    .fill(AppColors.canvas)
                     .frame(width: avatarSize + 10, height: avatarSize + 10)
                 
                 // アバター
@@ -144,8 +143,8 @@ struct UserProfileEditView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.5, green: 0.7, blue: 1.0),
-                                Color(red: 0.7, green: 0.5, blue: 0.9)
+                                Color(hex: "0EA5E9"),
+                                Color(hex: "8B5CF6")
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -214,12 +213,12 @@ struct UserProfileEditView: View {
                 }
             }
             .padding()
-            .background(Color(.systemBackground))
+            .background(AppColors.surface)
             .cornerRadius(14)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(
-                        focusedField == .name ? Color.accentColor : Color.clear,
+                        focusedField == .name ? AppColors.primary : Color.clear,
                         lineWidth: 2
                     )
             )
@@ -253,12 +252,12 @@ struct UserProfileEditView: View {
                 .lineLimit(4...8)
                 .focused($focusedField, equals: .bio)
                 .padding()
-                .background(Color(.systemBackground))
+                .background(AppColors.surface)
                 .cornerRadius(14)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(
-                            focusedField == .bio ? Color.accentColor : Color.clear,
+                            focusedField == .bio ? AppColors.primary : Color.clear,
                             lineWidth: 2
                         )
                 )
@@ -414,7 +413,7 @@ struct BioEditView: View {
             
             Spacer()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AuroraBackground())
         .navigationTitle("自己紹介")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

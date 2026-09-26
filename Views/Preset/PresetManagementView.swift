@@ -93,6 +93,8 @@ struct PresetEditView: View {
     // 入力フォーム用State
     @State private var name: String = ""
     @State private var gender: Gender? = nil
+    @State private var appearanceDescription: String = ""
+    @State private var backgroundStory: String = ""
     @State private var personalityText: String = ""
     @State private var speechCharacteristics: String = ""
     @State private var userCallingName: String = ""
@@ -114,6 +116,8 @@ struct PresetEditView: View {
         if let oshi = originalOshi {
             _name = State(initialValue: oshi.name)
             _gender = State(initialValue: oshi.gender)
+            _appearanceDescription = State(initialValue: oshi.appearanceDescription)
+            _backgroundStory = State(initialValue: oshi.backgroundStory)
             _personalityText = State(initialValue: oshi.personalityText)
             _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
             _userCallingName = State(initialValue: oshi.userCallingName)
@@ -170,6 +174,10 @@ struct PresetEditView: View {
                 TextField("話し方の特徴（例: 元気いっぱい）", text: $speechCharacteristics)
                 TextField("ユーザーの呼び方（例: あなた、きみ）", text: $userCallingName)
                 TextField("口調（例: 丁寧語、タメ口）", text: $speechStyleText)
+                TextField("外見（例: 黒髪のショート、青い瞳）", text: $appearanceDescription, axis: .vertical)
+                    .lineLimit(2...4)
+                TextField("背景設定（例: 写真部に所属する大学生）", text: $backgroundStory, axis: .vertical)
+                    .lineLimit(3...6)
             }
         }
         .navigationTitle(originalOshi == nil ? "プリセット作成" : "プリセット編集")
@@ -207,10 +215,16 @@ struct PresetEditView: View {
                 id: id,
                 name: name,
                 gender: gender,
+                appearanceDescription: String(appearanceDescription.prefix(200)),
+                backgroundStory: String(backgroundStory.prefix(500)),
                 personalityText: personalityText,
                 speechCharacteristics: speechCharacteristics,
                 userCallingName: userCallingName,
                 speechStyleText: speechStyleText,
+                relationshipStyle: originalOshi?.relationshipStyle,
+                replyLengthPreference: originalOshi?.replyLengthPreference,
+                memoryMemo: originalOshi?.memoryMemo,
+                replyFrequencyPreference: originalOshi?.replyFrequencyPreference,
                 avatarImageURL: newImageURL,
                 totalInteractions: originalOshi?.totalInteractions ?? 0,
                 isFollowingUser: originalOshi?.isFollowingUser ?? false,

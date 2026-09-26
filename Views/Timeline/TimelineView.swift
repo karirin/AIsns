@@ -35,14 +35,15 @@ struct TimelineScreenView: View {
     @State private var navigationPath = NavigationPath()
     @State private var userAvatarImage: UIImage?
     @State private var isLoadingUserAvatar = false
-    @State private var userName: String = "あなた"
+    @State private var userName: String = "ユーザー"
     @State private var selectedTab: TimelineTab = .forYou
+    @State private var composerPrompt = ""
     @State private var showingSearch = false
     @Namespace private var tabNamespace
     @State private var helpFlag: Bool = false
-    @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
     @ObservedObject var adViewModel: AdViewModel
+    @ObservedObject private var dailyEngagement = DailyEngagementStore.shared
     
     // スポットライトチュートリアル用
     @StateObject private var spotlightManager = HomeSpotlightManager()
@@ -90,9 +91,6 @@ struct TimelineScreenView: View {
                 if helpFlag {
                     HelpModalView(isPresented: $helpFlag)
                 }
-                if customerFlag {
-                    ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
-                }
                 
                 // チュートリアル
                 if spotlightManager.isShowing && !spotlightManager.steps.isEmpty {
@@ -122,7 +120,11 @@ struct TimelineScreenView: View {
             }
             .task { await loadInitialData() }
             .sheet(isPresented: $showingPostSheet) {
-                PostComposerView(viewModel: viewModel, isPresented: $showingPostSheet)
+                PostComposerView(
+                    viewModel: viewModel,
+                    isPresented: $showingPostSheet,
+                    initialText: composerPrompt
+                )
             }
             .onAppear {
                 dbManager.fetchUserFlag { userFlag, _ in
@@ -130,7 +132,6 @@ struct TimelineScreenView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                             if userFlag == 0 && spotlightManager.hasSeenTutorial {
                                 executeProcessEveryfifTimes()
-                                executeProcessEveryThreeTimes()
                             }
                         }
                     }
@@ -183,27 +184,26 @@ struct TimelineScreenView: View {
     // timelineScrollView を更新
     private var timelineScrollView: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: DesignTokens.Spacing.sm) {
                 ForEach(Array(filteredPosts.enumerated()), id: \.element.id) { index, post in
-                    VStack(spacing: 0) {
-                        PostCardView(
-                            post: post,
-                            viewModel: viewModel,
-                            onAvatarTap: { handleAvatarTap(for: post) }
-                        )
-                        AppDivider(leadingPadding: 68)
-                    }
-                    if AppConfig.adGateEnabled {
+                    PostCardView(
+                        post: post,
+                        viewModel: viewModel,
+                        onAvatarTap: { handleAvatarTap(for: post) }
+                    )
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
+                    .fadingScrollTransition()
+                    if viewModel.shouldShowAds {
                         // ✅ ここに移動（ForEach の中）
-                        if (index + 1) % 5 == 0 {
-                            if let nativeAd = adViewModel.nativeAd {
-                                NativeAdView(nativeAd: nativeAd)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 320)
-                                    .background(AppColors.backgroundPrimary)
-                                AppDivider()
-                            }
-                        }
+//                        if (index + 1) % 5 == 0 {
+//                            if let nativeAd = adViewModel.nativeAd {
+//                                NativeAdView(nativeAd: nativeAd)
+//                                    .frame(maxWidth: .infinity)
+//                                    .frame(height: 320)
+//                                    .background(AppColors.backgroundPrimary)
+//                                AppDivider()
+//                            }
+//                        }
                     }
                 }
                 
@@ -213,12 +213,15 @@ struct TimelineScreenView: View {
                         .padding(.vertical, DesignTokens.Spacing.lg)
                 }
             }
+            .padding(.top, DesignTokens.Spacing.sm)
             .padding(.bottom, 100)
         }
         .refreshable {
             viewModel.resetDisplayedPostsCount()
             await viewModel.loadData()
-            adViewModel.loadNativeAd()
+            if viewModel.shouldShowAds {
+                adViewModel.loadNativeAd()
+            }
         }
     }
 
@@ -261,6 +264,10 @@ struct TimelineScreenView: View {
             VStack(spacing: 0) {
                 headerView(geometry: geometry)
                 tabBarView(geometry: geometry)
+
+                if selectedTab == .forYou {
+                    todayTopicCard
+                }
                 
                 Group {
                     if viewModel.isLoading && viewModel.posts.isEmpty {
@@ -274,10 +281,11 @@ struct TimelineScreenView: View {
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-            .background(AppColors.backgroundPrimary)
+            .background(AuroraBackground())
             .overlay(alignment: .bottomTrailing) {
-                FloatingActionButton(icon: "plus") {
+                FloatingActionButton(icon: "square.and.pencil") {
                     generateHapticFeedback()
+                    composerPrompt = ""
                     showingPostSheet = true
                 }
                 .spotlightAnchor("fab_button")
@@ -285,6 +293,46 @@ struct TimelineScreenView: View {
                 .padding(.bottom, DesignTokens.Spacing.xl)
             }
         }
+    }
+
+    private var todayTopicCard: some View {
+        Button {
+            composerPrompt = dailyEngagement.todayTopic
+            showingPostSheet = true
+        } label: {
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.primary.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(AppColors.primaryGradient)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("今日のお題")
+                        .font(AppTypography.captionMedium)
+                        .foregroundColor(AppColors.primary)
+                    Text(dailyEngagement.todayTopic)
+                        .font(AppTypography.subheadlineMedium)
+                        .foregroundColor(AppColors.textPrimary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Label("\(dailyEngagement.streak)日", systemImage: "flame.fill")
+                    .font(AppTypography.captionMedium)
+                    .foregroundColor(.orange)
+            }
+            .padding(DesignTokens.Spacing.sm)
+            .background(AppColors.surfaceSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.bottom, DesignTokens.Spacing.xs)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("お題を使って新しい投稿を作成します")
     }
 
     private func headerView(geometry: GeometryProxy) -> some View {
@@ -310,7 +358,6 @@ struct TimelineScreenView: View {
         }
         .padding(.horizontal, DesignTokens.Spacing.md)
         .padding(.vertical, DesignTokens.Spacing.sm)
-        .background(AppColors.backgroundPrimary.shadow(color: Color.black.opacity(0.03), radius: 1, y: 1))
     }
 
     private var profileButton: some View {
@@ -324,43 +371,27 @@ struct TimelineScreenView: View {
     }
 
     private func tabBarView(geometry: GeometryProxy) -> some View {
-        HStack(spacing: 0) {
-            ForEach(TimelineTab.allCases, id: \.self) { tab in
-                Button {
-                    generateHapticFeedback()
-                    withAnimation(DesignTokens.Animation.spring) {
-                        selectedTab = tab
-                        viewModel.resetDisplayedPostsCount()
-                    }
-                } label: {
-                    VStack(spacing: DesignTokens.Spacing.xs) {
-                        Text(tab.rawValue)
-                            .font(selectedTab == tab ? AppTypography.bodyMedium : AppTypography.body)
-                            .foregroundColor(selectedTab == tab ? AppColors.textPrimary : AppColors.textSecondary)
-                        ZStack {
-                            Rectangle().fill(Color.clear).frame(height: 3)
-                            if selectedTab == tab {
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(AppColors.primaryGradientH)
-                                    .frame(width: 48, height: 3)
-                                    .matchedGeometryEffect(id: "tabIndicator", in: tabNamespace)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
+        PillSegmentedControl(
+            items: TimelineTab.allCases.map { (value: $0, label: $0.rawValue) },
+            selection: $selectedTab,
+            onChange: { _ in
+                generateHapticFeedback()
+                viewModel.resetDisplayedPostsCount()
             }
-        }
-        .padding(.top, DesignTokens.Spacing.xxs)
-        .background(AppColors.backgroundPrimary)
+        )
+        .padding(.horizontal, DesignTokens.Spacing.md)
+        .padding(.bottom, DesignTokens.Spacing.xs)
         .spotlightAnchor("tab_bar")
-        .overlay(AppDivider(), alignment: .bottom)
     }
 
     private var timelineEmptyView: some View {
         ScrollView {
-            if selectedTab == .following {
+            if viewModel.didFailLastLoad {
+                EmptyStateView(icon: "wifi.exclamationmark", title: "読み込みに失敗しました", subtitle: "通信環境を確認して\nもう一度お試しください", actionTitle: "再読み込み", action: {
+                    generateHapticFeedback()
+                    Task { await viewModel.loadData() }
+                })
+            } else if selectedTab == .following {
                 EmptyStateView(icon: "sparkles", title: "おすすめの投稿はまだありません", subtitle: "公式アカウントからの最新情報を\nお待ちください", actionTitle: nil, action: nil)
             } else {
                 EmptyStateView(icon: "bubble.left.and.bubble.right", title: "タイムラインがまだ空です", subtitle: "新しい投稿を作成するか\nアカウントをフォローしてみましょう", actionTitle: "アカウントを探す", action: {
@@ -389,17 +420,36 @@ struct TimelineScreenView: View {
     }
 
     private func loadInitialData() async {
+        userName = viewModel.userProfileName
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+
         do {
-            let profile = try await dbManager.loadUserProfile()
-            userName = profile.userName
-            if let url = profile.avatarImageURL {
-                isLoadingUserAvatar = true
-                userAvatarImage = try? await FirebaseStorageManager.shared.downloadImage(from: url)
-                isLoadingUserAvatar = false
+            let avatarURL: String?
+            if let existingAvatarURL = viewModel.userProfileAvatarURL {
+                avatarURL = existingAvatarURL
+            } else {
+                let profile = try await dbManager.loadUserProfile()
+                userName = profile.userName
+                avatarURL = profile.avatarImageURL
             }
-            await viewModel.loadUserReposts()
-            await viewModel.loadUserLikes()
-            await viewModel.loadUserBookmarks()
+
+            async let repostsTask: Void = viewModel.loadUserReposts()
+            async let likesTask: Void = viewModel.loadUserLikes()
+            async let bookmarksTask: Void = viewModel.loadUserBookmarks()
+
+            if let url = avatarURL {
+                isLoadingUserAvatar = true
+                Task {
+                    let image = try? await FirebaseStorageManager.shared.downloadImage(from: url)
+                    await MainActor.run {
+                        userAvatarImage = image
+                        isLoadingUserAvatar = false
+                    }
+                }
+            }
+
+            _ = await (repostsTask, likesTask, bookmarksTask)
         } catch {
             print("❌ Timeline load error:", error.localizedDescription)
             isLoadingUserAvatar = false
@@ -412,17 +462,17 @@ struct TimelineScreenView: View {
         withAnimation(DesignTokens.Animation.spring) { showingSidebar = false }
     }
 
+    /// タブ切り替えや画面の戻りでも onAppear は呼ばれるため、1プロセス（=1起動）につき1回だけ数える。
+    private static var didCountHelpLaunchThisSession = false
+
     func executeProcessEveryfifTimes() {
+        guard !Self.didCountHelpLaunchThisSession else { return }
+        Self.didCountHelpLaunchThisSession = true
         let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
         UserDefaults.standard.set(count, forKey: "launchHelpCount")
         if count % 15 == 0 { helpFlag = true }
     }
 
-    func executeProcessEveryThreeTimes() {
-        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
-        UserDefaults.standard.set(count, forKey: "launchCount")
-        if count % 10 == 0 { customerFlag = true }
-    }
 }
 
 // MARK: - Sidebar Menu View
@@ -475,13 +525,6 @@ struct SidebarMenuView: View {
                     SidebarMenuItem(icon: "bookmark", title: "ブックマーク") {
                         onNavigate(.bookmarks)
                     }
-                    
-                    AppDivider()
-                        .padding(.vertical, DesignTokens.Spacing.sm)
-                    
-                    SidebarMenuItem(icon: "gearshape", title: "設定") {
-                        onNavigate(.settings)
-                    }
                 }
                 .padding(.vertical, DesignTokens.Spacing.sm)
             }
@@ -489,21 +532,25 @@ struct SidebarMenuView: View {
             Spacer()
             
             // フッター
-            HStack {
-                Button {
-                    // ダークモード切り替え
-                } label: {
-                    Image(systemName: "moon")
-                        .font(.system(size: 20))
-                        .foregroundColor(AppColors.textSecondary)
-                }
-                
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppColors.primaryGradient)
+                Text("AImate")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.primaryGradient)
                 Spacer()
             }
             .padding(DesignTokens.Spacing.lg)
         }
         .frame(width: 280)
-        .background(AppColors.backgroundPrimary)
+        .background(
+            AppColors.surface
+                .clipShape(
+                    RoundedCorner(radius: DesignTokens.Radius.xxl, corners: [.topRight, .bottomRight])
+                )
+                .shadow(color: Color.black.opacity(0.12), radius: 20, x: 8, y: 0)
+        )
         .ignoresSafeArea()
     }
     
@@ -577,23 +624,24 @@ struct SidebarMenuItem: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: DesignTokens.Spacing.md) {
-                Image(systemName: icon)
-                    .font(.system(size: 22))
-                    .foregroundColor(AppColors.textPrimary)
-                    .frame(width: 28)
-                
+                IconBubble(icon: icon, tint: AppColors.primary, size: 34)
+
                 Text(title)
                     .font(AppTypography.calloutMedium)
                     .foregroundColor(AppColors.textPrimary)
-                
+
                 Spacer()
-                
+
                 if let badge = badge, badge > 0 {
                     BadgeView(count: badge, size: 18, gradient: AppColors.primaryGradientH)
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppColors.textTertiary)
             }
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .padding(.vertical, DesignTokens.Spacing.sm)
+            .padding(.horizontal, DesignTokens.Spacing.md)
+            .padding(.vertical, DesignTokens.Spacing.xs + 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -718,14 +766,13 @@ struct PostCardView: View {
                         .padding(.top, DesignTokens.Spacing.sm)
                 }
             }
-            .padding(.horizontal, DesignTokens.Spacing.md)
-            .padding(.vertical, DesignTokens.Spacing.sm)
+            .padding(DesignTokens.Spacing.md)
         }
-        .background(AppColors.backgroundPrimary)
+        .floatingCardStyle()
     }
-    
+
     // MARK: - Repost Header
-    
+
     private var repostHeader: some View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.2.squarepath")
@@ -734,9 +781,9 @@ struct PostCardView: View {
                 .font(AppTypography.footnote)
         }
         .foregroundColor(AppColors.textSecondary)
-        .padding(.leading, 56)
-        .padding(.top, DesignTokens.Spacing.xs)
-        .padding(.bottom, 2)
+        .padding(.leading, DesignTokens.Spacing.md + 52)
+        .padding(.top, DesignTokens.Spacing.sm)
+        .padding(.bottom, -DesignTokens.Spacing.xs)
     }
     
     // MARK: - Avatar View
@@ -880,6 +927,8 @@ struct PostCardView: View {
             }
             
             Spacer()
+
+            ShareCardButton(post: post, viewModel: viewModel)
         }
     }
 }
@@ -889,11 +938,18 @@ struct PostCardView: View {
 struct PostComposerView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Binding var isPresented: Bool
-    @State private var postText = ""
+    @State private var postText: String
     @State private var selectedImages: [UIImage] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isUploading = false
+    @State private var showingImageUploadError = false
     @FocusState private var isTextFieldFocused: Bool
+
+    init(viewModel: OshiViewModel, isPresented: Binding<Bool>, initialText: String = "") {
+        self.viewModel = viewModel
+        self._isPresented = isPresented
+        self._postText = State(initialValue: initialText)
+    }
     
     var canPost: Bool {
         (!postText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedImages.isEmpty)
@@ -914,35 +970,45 @@ struct PostComposerView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
                         // テキストエディタ
-                        ZStack(alignment: .topLeading) {
-                            if postText.isEmpty {
-                                Text("いまどうしてる？")
+                        HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
+                            AsyncAvatarView(
+                                imageURL: viewModel.userProfileAvatarURL,
+                                name: viewModel.userProfileName,
+                                size: DesignTokens.AvatarSize.md,
+                                placeholderGradient: AppColors.primaryGradient
+                            )
+
+                            ZStack(alignment: .topLeading) {
+                                if postText.isEmpty {
+                                    Text("いまどうしてる？")
+                                        .font(AppTypography.callout)
+                                        .foregroundColor(AppColors.textTertiary)
+                                        .padding(.top, 8)
+                                        .padding(.leading, 4)
+                                }
+
+                                TextEditor(text: $postText)
+                                    .focused($isTextFieldFocused)
                                     .font(AppTypography.callout)
-                                    .foregroundColor(AppColors.textTertiary)
-                                    .padding(.top, 8)
-                                    .padding(.leading, 4)
+                                    .scrollContentBackground(.hidden)
+                                    .frame(minHeight: 120)
                             }
-                            
-                            TextEditor(text: $postText)
-                                .focused($isTextFieldFocused)
-                                .font(AppTypography.callout)
-                                .scrollContentBackground(.hidden)
-                                .frame(minHeight: 120)
                         }
                         .padding(.horizontal, DesignTokens.Spacing.md)
-                        
+
                         // 選択された画像
                         if !selectedImages.isEmpty {
                             imagePreviewGrid
                                 .padding(.horizontal, DesignTokens.Spacing.md)
                         }
                     }
-                    .padding(.top, DesignTokens.Spacing.sm)
+                    .padding(.top, DesignTokens.Spacing.md)
                 }
-                
+
                 // ツールバー
                 toolbarView
             }
+            .background(AppColors.backgroundPrimary)
             .navigationTitle("新規投稿")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -964,6 +1030,11 @@ struct PostComposerView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isTextFieldFocused = true
                 }
+            }
+            .alert("画像をアップロードできませんでした", isPresented: $showingImageUploadError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("通信環境を確認して、もう一度投稿してください。入力した内容はそのまま残っています。")
             }
         }
         .navigationViewStyle(.stack)
@@ -1134,6 +1205,15 @@ struct PostComposerView: View {
                     print("❌ 画像アップロードエラー: \(error)")
                 }
             }
+
+            // 一部でも失敗したら、画像が黙って欠けた投稿にせず、画面を開いたまま再投稿してもらう
+            if imageURLs.count < selectedImages.count {
+                await MainActor.run {
+                    isUploading = false
+                    showingImageUploadError = true
+                }
+                return
+            }
         }
         
         await MainActor.run {
@@ -1145,6 +1225,9 @@ struct PostComposerView: View {
             
             isUploading = false
             isPresented = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                viewModel.recordUserPostForPlusPaywall()
+            }
         }
     }
 }

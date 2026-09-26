@@ -223,16 +223,16 @@ struct NotificationView: View {
                 .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: DesignTokens.Spacing.sm) {
                         ForEach(groupedNotifications) { group in
                             GroupedNotificationRow(
                                 group: group,
                                 viewModel: viewModel
                             )
-                            
-                            AppDivider(leadingPadding: 68)
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
                         }
                     }
+                    .padding(.top, DesignTokens.Spacing.sm)
                     .padding(.bottom, DesignTokens.Spacing.lg)
                 }
             }
@@ -283,59 +283,21 @@ struct NotificationView: View {
                 }
             }
         }
-        .background(AppColors.backgroundPrimary)
+        .background(AuroraBackground())
     }
-    
+
     private var notificationTabBarView: some View {
-        HStack(spacing: 0) {
-            notificationTabItem(
-                title: "あなたへの通知",
-                category: .me
-            )
-            
-            notificationTabItem(
-                title: "作成したAI",
-                category: .createdOshi
-            )
-        }
-        .padding(.top, DesignTokens.Spacing.xxs)
-        .background(AppColors.backgroundPrimary)
-        .overlay(
-            AppDivider(),
-            alignment: .bottom
+        PillSegmentedControl(
+            items: [
+                (value: NotificationCategory.me, label: "あなたへの通知"),
+                (value: NotificationCategory.createdOshi, label: "作成したAI")
+            ],
+            selection: $selectedCategory,
+            onChange: { _ in generateHapticFeedback() }
         )
+        .padding(.horizontal, DesignTokens.Spacing.md)
+        .padding(.vertical, DesignTokens.Spacing.xs)
     }
-
-    private func notificationTabItem(title: String, category: NotificationCategory) -> some View {
-        Button {
-            generateHapticFeedback()
-            withAnimation(DesignTokens.Animation.spring) {
-                selectedCategory = category
-            }
-        } label: {
-            VStack(spacing: DesignTokens.Spacing.xs) {
-                Text(title)
-                    .font(selectedCategory == category ? AppTypography.bodyMedium : AppTypography.body)
-                    .foregroundColor(selectedCategory == category ? AppColors.textPrimary : AppColors.textSecondary)
-                
-                ZStack {
-                    Rectangle()
-                        .fill(Color.clear)
-                        .frame(height: 3)
-                    
-                    if selectedCategory == category {
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(AppColors.primaryGradientH)
-                            .frame(width: 48, height: 3)
-                            .matchedGeometryEffect(id: "notificationTabIndicator", in: tabNamespace)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-    }
-
 }
 
 // MARK: - Grouped Notification Row
@@ -502,17 +464,22 @@ struct GroupedNotificationRow: View {
                 Circle().fill(AppColors.primary).frame(width: 8, height: 8)
             }
         }
-        .padding(.horizontal, DesignTokens.Spacing.md)
-        .padding(.vertical, DesignTokens.Spacing.sm)
-        .background(group.isRead ? AppColors.backgroundPrimary : AppColors.primary.opacity(0.03))
+        .padding(DesignTokens.Spacing.md)
+        .background(group.isRead ? AppColors.surface : AppColors.brandWash.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.xl, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.xl, style: .continuous)
+                .strokeBorder(
+                    group.isRead ? AppColors.borderLight.opacity(0.6) : AppColors.primary.opacity(0.25),
+                    lineWidth: 0.5
+                )
+        )
+        .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
         .task { await loadAvatars() }
     }
 
     private var notificationTypeIcon: some View {
-        Image(systemName: notificationIconInfo.icon)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(notificationIconInfo.color)
-            .frame(width: 24)
+        IconBubble(icon: notificationIconInfo.icon, tint: notificationIconInfo.color, size: 32)
     }
 
     private func markAsRead() {

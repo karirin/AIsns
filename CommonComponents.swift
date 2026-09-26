@@ -219,12 +219,19 @@ struct EmptyStateView: View {
     let subtitle: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
-    
+
+    @State private var isFloating = false
+
     var body: some View {
         VStack(spacing: DesignTokens.Spacing.xl) {
             Spacer()
-            
+
             ZStack {
+                // 外周のごく淡いリング
+                Circle()
+                    .stroke(AppColors.primary.opacity(0.08), lineWidth: 1)
+                    .frame(width: 150, height: 150)
+
                 Circle()
                     .fill(
                         LinearGradient(
@@ -237,10 +244,16 @@ struct EmptyStateView: View {
                         )
                     )
                     .frame(width: 120, height: 120)
-                
+
                 Image(systemName: icon)
                     .font(.system(size: 44, weight: .light))
                     .foregroundStyle(AppColors.primaryGradient)
+            }
+            .offset(y: isFloating ? -6 : 6)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                    isFloating = true
+                }
             }
             
             VStack(spacing: DesignTokens.Spacing.sm) {
@@ -386,13 +399,25 @@ struct FloatingActionButton: View {
                 Circle()
                     .fill(AppColors.primaryGradient)
                     .frame(width: size, height: size)
+                    .overlay(
+                        // 上端ハイライトで立体感を出す
+                        Circle()
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.4), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
+                    )
                     .shadow(
                         color: AppColors.primary.opacity(0.4),
                         radius: 12,
                         x: 0,
                         y: 6
                     )
-                
+
                 Image(systemName: icon)
                     .font(.system(size: size * 0.4, weight: .medium))
                     .foregroundColor(.white)
@@ -424,6 +449,105 @@ struct NavBarButton: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Pill Segmented Control
+
+/// カプセル型のスライドインジケーター付きセグメントコントロール
+struct PillSegmentedControl<T: Hashable>: View {
+    let items: [(value: T, label: String)]
+    @Binding var selection: T
+    var onChange: ((T) -> Void)? = nil
+
+    @Namespace private var pillNamespace
+
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.xxs) {
+            ForEach(items, id: \.value) { item in
+                Button {
+                    guard selection != item.value else { return }
+                    withAnimation(DesignTokens.Animation.spring) {
+                        selection = item.value
+                    }
+                    onChange?(item.value)
+                } label: {
+                    Text(item.label)
+                        .font(selection == item.value ? AppTypography.subheadlineMedium : AppTypography.subheadline)
+                        .foregroundColor(selection == item.value ? .white : AppColors.textSecondary)
+                        .padding(.vertical, DesignTokens.Spacing.xs)
+                        .frame(maxWidth: .infinity)
+                        .background {
+                            if selection == item.value {
+                                Capsule()
+                                    .fill(AppColors.primaryGradientH)
+                                    .shadow(
+                                        color: AppColors.primary.opacity(0.3),
+                                        radius: 6, x: 0, y: 3
+                                    )
+                                    .matchedGeometryEffect(id: "pill", in: pillNamespace)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(DesignTokens.Spacing.xxs)
+        .background(AppColors.surfaceSecondary)
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - Icon Bubble
+
+/// 角丸スクエアのアイコンコンテナ（通知・メニューなどで使用）
+struct IconBubble: View {
+    let icon: String
+    var tint: Color = AppColors.primary
+    var size: CGFloat = 36
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)
+                .fill(tint.opacity(0.12))
+                .frame(width: size, height: size)
+
+            Image(systemName: icon)
+                .font(.system(size: size * 0.44, weight: .semibold))
+                .foregroundColor(tint)
+        }
+    }
+}
+
+// MARK: - Follow Capsule Button
+
+/// フォロー/フォロー中の切り替えボタン
+struct FollowCapsuleButton: View {
+    let isFollowing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(isFollowing ? "フォロー中" : "フォロー")
+                .font(AppTypography.footnoteMedium)
+                .foregroundColor(isFollowing ? AppColors.textSecondary : .white)
+                .padding(.horizontal, DesignTokens.Spacing.md)
+                .padding(.vertical, 7)
+                .background {
+                    if isFollowing {
+                        Capsule().fill(AppColors.surfaceSecondary)
+                    } else {
+                        Capsule().fill(AppColors.primaryGradientH)
+                    }
+                }
+                .overlay(
+                    Capsule().strokeBorder(
+                        isFollowing ? AppColors.borderLight : Color.clear,
+                        lineWidth: 1
+                    )
+                )
+        }
+        .pressableStyle()
     }
 }
 
@@ -485,7 +609,8 @@ struct ToastView: View {
         .padding(.horizontal, DesignTokens.Spacing.lg)
         .padding(.vertical, DesignTokens.Spacing.md)
         .background(
-            Capsule()
+            // 複数行のメッセージでも崩れないよう、Capsule ではなく角丸矩形にする
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(style.gradient)
                 .shadow(color: Color.black.opacity(0.15), radius: 12, y: 6)
         )

@@ -11,11 +11,10 @@ struct OshiListView: View {
     @ObservedObject var viewModel: OshiViewModel
     
     @State private var selectedTab: Int = 0
+    @State private var showCreatedOnly = false
     @Namespace private var animation
     @Binding var isPresented: Bool
     @Environment(\.dismiss) var dismiss
-    @State private var helpFlag: Bool = false
-    @State private var customerFlag: Bool = false
     private let dbManager = FirebaseDatabaseManager.shared
     @ObservedObject var adViewModel: AdViewModel
     
@@ -24,15 +23,18 @@ struct OshiListView: View {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
                     // カスタムタブバー
-                    HStack(spacing: 0) {
-                        TabButton(title: "フォロワー", tag: 0, selectedTab: $selectedTab, namespace: animation)
-                        TabButton(title: "フォロー中", tag: 1, selectedTab: $selectedTab, namespace: animation)
-                    }
-                    .padding(.top, DesignTokens.Spacing.xs)
-                    .background(AppColors.backgroundPrimary)
+                    PillSegmentedControl(
+                        items: [(value: 0, label: "フォロワー"), (value: 1, label: "フォロー中")],
+                        selection: $selectedTab,
+                        onChange: { _ in generateHapticFeedback() }
+                    )
+                    .padding(.horizontal, DesignTokens.Spacing.md)
+                    .padding(.vertical, DesignTokens.Spacing.xs)
                     .zIndex(1)
+
+                    createdOnlyFilter
                     
-                    if AppConfig.adGateEnabled {
+                    if viewModel.shouldShowAds {
                         BannerAdView()
                             .frame(width: 320, height: 50)
                             .frame(maxWidth: .infinity) // 横幅いっぱいの領域の中で中央寄せ
@@ -42,7 +44,7 @@ struct OshiListView: View {
                     // コンテンツエリア
                     TabView(selection: $selectedTab) {
                         OshiListPage(
-                            oshis: viewModel.oshiList.filter { $0.isFollowingUser },
+                            oshis: filteredOshis(viewModel.oshiList.filter { $0.isFollowingUser }),
                             emptyTitle: "フォロワーはいません",
                             emptySubtitle: "投稿してフォローしてもらいましょう",
                             iconName: "person.2.slash",
@@ -51,7 +53,7 @@ struct OshiListView: View {
                         .tag(0)
                         
                         OshiListPage(
-                            oshis: viewModel.oshiList.filter { $0.isFollowedByUser },
+                            oshis: filteredOshis(viewModel.oshiList.filter { $0.isFollowedByUser }),
                             emptyTitle: "フォロー中のアカウントはいません",
                             emptySubtitle: "気になるアカウントを見つけてフォローしましょう",
                             iconName: "person.slash",
@@ -62,6 +64,7 @@ struct OshiListView: View {
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(DesignTokens.Animation.spring, value: selectedTab)
                 }
+                .background(AuroraBackground())
                 
                 // アカウント追加ボタン
                 NavigationLink(destination: OshiCreationView(viewModel: viewModel, adViewModel: adViewModel)) {
@@ -78,14 +81,7 @@ struct OshiListView: View {
                 }
                 .padding(.trailing, DesignTokens.Spacing.lg)
                 .padding(.bottom, DesignTokens.Spacing.lg)
-                
-                if helpFlag {
-                    HelpModalView(isPresented: $helpFlag)
-                }
-                
-                if customerFlag {
-                    ReviewView(isPresented: $customerFlag, helpFlag: $helpFlag)
-                }
+
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -121,46 +117,47 @@ struct OshiListView: View {
                     }
                 }
         )
-        .onAppear{
-            dbManager.fetchUserFlag { userFlag, error in
-                if let error = error {
-                    print(error.localizedDescription)
-                } else if let userFlag = userFlag {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        if userFlag == 0 {
-                            executeProcessEveryfifTimes()
-                            executeProcessEveryThreeTimes()
-                        }
-                    }
+    }
+
+    private var createdOnlyFilter: some View {
+        HStack {
+            Button {
+                generateHapticFeedback()
+                guard viewModel.isPlusActive else {
+                    viewModel.requestPlusPaywall(.premiumFeature, force: true)
+                    return
                 }
+                withAnimation(DesignTokens.Animation.spring) {
+                    showCreatedOnly.toggle()
+                }
+            } label: {
+                Label(
+                    showCreatedOnly ? "自作だけ" : "すべて表示",
+                    systemImage: viewModel.isPlusActive
+                        ? (showCreatedOnly ? "checkmark.circle.fill" : "line.3.horizontal.decrease.circle")
+                        : "lock.fill"
+                )
+                    .font(AppTypography.footnoteMedium)
+                    .foregroundColor(showCreatedOnly ? .white : AppColors.textPrimary)
+                    .padding(.horizontal, DesignTokens.Spacing.md)
+                    .padding(.vertical, 8)
+                    .background {
+                        Capsule().fill(showCreatedOnly ? AppColors.primary : AppColors.surfaceSecondary)
+                    }
             }
-        }
-    }
-    
-    func executeProcessEveryfifTimes() {
-        // UserDefaultsからカウンターを取得
-        let count = UserDefaults.standard.integer(forKey: "launchHelpCount") + 1
-        
-        // カウンターを更新
-        UserDefaults.standard.set(count, forKey: "launchHelpCount")
+            .buttonStyle(.plain)
 
-        if count % 15 == 0 {
-            helpFlag = true
+            Spacer()
         }
+        .padding(.horizontal, DesignTokens.Spacing.md)
+        .padding(.bottom, DesignTokens.Spacing.xs)
     }
 
-    func executeProcessEveryThreeTimes() {
-        // UserDefaultsからカウンターを取得
-        let count = UserDefaults.standard.integer(forKey: "launchCount") + 1
-        
-        // カウンターを更新
-        UserDefaults.standard.set(count, forKey: "launchCount")
-        
-        // 3回に1回の割合で処理を実行
-        if count % 10 == 0 {
-            customerFlag = true
-        }
+    private func filteredOshis(_ oshis: [OshiCharacter]) -> [OshiCharacter] {
+        guard showCreatedOnly else { return oshis }
+        return oshis.filter { viewModel.isUserCreatedOshi($0) }
     }
+
 }
 
 // MARK: - Oshi List Page
@@ -181,18 +178,18 @@ struct OshiListPage: View {
             )
         } else {
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: DesignTokens.Spacing.sm) {
                     ForEach(oshis) { oshi in
                         NavigationLink(destination: OshiProfileDetailView(oshi: oshi, viewModel: viewModel, isPreset: false)) {
                             OshiListRowWithButton(oshi: oshi, viewModel: viewModel)
+                                .floatingCardStyle()
                         }
                         .buttonStyle(.plain)
-                        
-                        if oshi.id != oshis.last?.id {
-                            AppDivider(leadingPadding: 78)
-                        }
+                        .padding(.horizontal, DesignTokens.Spacing.sm)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.sm)
+                .padding(.bottom, 90)
             }
         }
     }
@@ -204,6 +201,7 @@ struct OshiListRowWithButton: View {
     let oshi: OshiCharacter
     @ObservedObject var viewModel: OshiViewModel
     @State private var showingUnfollowAlert = false
+    @State private var showingDeleteAlert = false
     @State private var avatarImage: UIImage?
     
     var body: some View {
@@ -244,9 +242,26 @@ struct OshiListRowWithButton: View {
                     .font(AppTypography.caption)
                     .foregroundColor(AppColors.textSecondary)
                     .lineLimit(1)
+
+                IntimacyProgressView(oshi: oshi, compact: true)
             }
             
             Spacer()
+
+            Menu {
+                Button(role: .destructive) {
+                    showingDeleteAlert = true
+                } label: {
+                    Label("削除", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
             
             // フォローボタン
             Button {
@@ -260,21 +275,17 @@ struct OshiListRowWithButton: View {
                 }
             } label: {
                 Text(oshi.isFollowedByUser ? "フォロー中" : "フォロー")
-                    .font(AppTypography.captionMedium)
-                    .foregroundColor(oshi.isFollowedByUser ? AppColors.textPrimary : .white)
-                    .padding(.horizontal, DesignTokens.Spacing.sm)
-                    .padding(.vertical, DesignTokens.Spacing.xs)
-                    .background(
-                        Group {
-                            if oshi.isFollowedByUser {
-                                RoundedRectangle(cornerRadius: DesignTokens.Radius.full)
-                                    .stroke(AppColors.border, lineWidth: 1)
-                            } else {
-                                Capsule()
-                                    .fill(AppColors.primaryGradientH)
-                            }
+                    .font(AppTypography.footnoteMedium)
+                    .foregroundColor(oshi.isFollowedByUser ? AppColors.textSecondary : .white)
+                    .padding(.horizontal, DesignTokens.Spacing.md)
+                    .padding(.vertical, 7)
+                    .background {
+                        if oshi.isFollowedByUser {
+                            Capsule().fill(AppColors.surfaceSecondary)
+                        } else {
+                            Capsule().fill(AppColors.primaryGradientH)
                         }
-                    )
+                    }
             }
             .buttonStyle(PlainButtonStyle())
             .alert("フォロー解除", isPresented: $showingUnfollowAlert) {
@@ -287,10 +298,16 @@ struct OshiListRowWithButton: View {
             } message: {
                 Text("\(oshi.name)のフォローを解除しますか?")
             }
+            .alert("アカウントを削除しますか?", isPresented: $showingDeleteAlert) {
+                Button("キャンセル", role: .cancel) { }
+                Button("削除", role: .destructive) {
+                    viewModel.deleteOshi(oshi)
+                }
+            } message: {
+                Text("\(oshi.name)の投稿とDM履歴も削除されます。")
+            }
         }
-        .padding(.horizontal, DesignTokens.Spacing.md)
-        .padding(.vertical, DesignTokens.Spacing.sm)
-        .background(AppColors.backgroundPrimary)
+        .padding(DesignTokens.Spacing.md)
     }
 }
 

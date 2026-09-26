@@ -21,8 +21,8 @@ struct OnboardingFlowView: View {
     
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimary.ignoresSafeArea()
-            
+            AuroraBackground()
+
             switch currentStep {
             case .intro:
                 IntroSlideView {
@@ -94,8 +94,15 @@ struct IntroSlideView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, DesignTokens.Spacing.md)
                         .background(AppColors.primaryGradientH)
-                        .cornerRadius(DesignTokens.Radius.md)
+                        .clipShape(Capsule())
+                        .shadow(
+                            color: DesignTokens.Shadow.brand.color,
+                            radius: DesignTokens.Shadow.brand.radius,
+                            x: 0,
+                            y: DesignTokens.Shadow.brand.y
+                        )
                 }
+                .pressableStyle()
                 
                 if currentPage < slides.count - 1 {
                     Button(action: {
@@ -484,7 +491,7 @@ struct OnboardingOshiSetupView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("フォロワーの名前")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "6B7280"))
+                        .foregroundColor(AppColors.textSecondary)
                     
                     TextField("例: レン", text: $name)
                         .font(.system(size: 16, weight: .medium))
@@ -492,7 +499,7 @@ struct OnboardingOshiSetupView: View {
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(hex: "F3F4F6"))
+                                .fill(AppColors.surfaceSecondary)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .strokeBorder(
@@ -505,9 +512,9 @@ struct OnboardingOshiSetupView: View {
             }
             .padding(16)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white)
-                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppColors.surface)
+                    .shadow(color: Color.black.opacity(0.05), radius: 10, y: 4)
             )
             .padding(.horizontal, DesignTokens.Spacing.xl)
             
@@ -589,7 +596,7 @@ struct OnboardingOshiSetupView: View {
                 
                 Text(label)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color(hex: "374151"))
+                    .foregroundColor(AppColors.textPrimary)
                 
                 Spacer()
                 
@@ -620,15 +627,15 @@ struct OnboardingOshiSetupView: View {
             // テキスト入力
             TextField(placeholder, text: text)
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "374151"))
+                .foregroundColor(AppColors.textPrimary)
                 .padding(12)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(hex: "F9FAFB"))
+                        .fill(AppColors.surfaceSecondary)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .strokeBorder(
-                                    text.wrappedValue.isEmpty ? Color(hex: "E5E7EB") : iconColor.opacity(0.3),
+                                    text.wrappedValue.isEmpty ? AppColors.borderLight : iconColor.opacity(0.3),
                                     lineWidth: 1
                                 )
                         )
@@ -652,9 +659,9 @@ struct OnboardingOshiSetupView: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppColors.surface)
+                .shadow(color: Color.black.opacity(0.05), radius: 10, y: 4)
         )
     }
     

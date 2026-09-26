@@ -59,8 +59,10 @@ struct LaunchScreenView: View {
             isAnimating = true
         }
         
+        let launchDelay = hasSeenTutorial ? 0.85 : 1.2
+
         // 画面遷移
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + launchDelay) {
             withAnimation(.easeOut(duration: 0.5)) {
                 if hasSeenTutorial {
                     navigationState = .main
@@ -72,6 +74,7 @@ struct LaunchScreenView: View {
     }
     
     private func finishOnboarding() {
+        AppAnalytics.logOnce(.onboardingComplete)
         withAnimation(.easeOut(duration: 0.5)) {
             hasSeenTutorial = true
             navigationState = .main

@@ -14,30 +14,20 @@ struct BookmarkListView: View {
     var body: some View {
         Group {
             if viewModel.bookmarkedPosts.isEmpty {
-                VStack(spacing: 20) {
-                    Image(systemName: "bookmark.slash")
-                        .font(.system(size: 60))
-                        .foregroundColor(.gray.opacity(0.5))
-                    
-                    Text("ブックマークした投稿はありません")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
-                    Text("気に入った投稿を保存して、\nここであとから見返せます。")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
+                EmptyStateView(
+                    icon: "bookmark",
+                    title: "ブックマークした投稿はありません",
+                    subtitle: "気に入った投稿を保存して、\nここであとから見返せます。"
+                )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: DesignTokens.Spacing.sm) {
                         ForEach(viewModel.bookmarkedPosts) { post in
                             PostCardView(post: post, viewModel: viewModel)
-                            Divider()
-                                .padding(.leading, 64)
+                                .padding(.horizontal, DesignTokens.Spacing.sm)
                         }
                     }
+                    .padding(.top, DesignTokens.Spacing.sm)
                     .padding(.bottom, 20)
                 }
                 .refreshable {
@@ -45,6 +35,7 @@ struct BookmarkListView: View {
                 }
             }
         }
+        .background(AuroraBackground())
         .navigationTitle("ブックマーク")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

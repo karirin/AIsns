@@ -32,6 +32,10 @@ struct OshiProfileDetailView: View {
         }
         return false
     }
+
+    private var displayedOshi: OshiCharacter {
+        viewModel.oshiList.first(where: { $0.id == oshi.id }) ?? oshi
+    }
     
     init(oshi: OshiCharacter, viewModel: OshiViewModel, isPreset: Bool = false) {
         self.oshi = oshi
@@ -47,6 +51,15 @@ struct OshiProfileDetailView: View {
                 
                 // プロフィール情報
                 profileInfoSection
+
+                IntimacyProgressView(oshi: displayedOshi)
+                    .padding(DesignTokens.Spacing.md)
+                    .floatingCardStyle()
+                    .padding(.horizontal, DesignTokens.Spacing.xl)
+
+                if !oshi.appearanceDescription.isEmpty || !oshi.backgroundStory.isEmpty {
+                    characterDetailsSection
+                }
                 
                 // フォローボタン
                 followButtonSection
@@ -59,7 +72,7 @@ struct OshiProfileDetailView: View {
             }
             .padding(.bottom, DesignTokens.Spacing.xxl)
         }
-        .background(AppColors.backgroundPrimary)
+        .background(AuroraBackground())
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .gesture(
@@ -103,7 +116,7 @@ struct OshiProfileDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingEditSheet) {
+        .fullScreenCover(isPresented: $showingEditSheet) {
             NavigationStack {
                 OshiProfileEditView(
                     oshi: oshi,
@@ -267,6 +280,65 @@ struct OshiProfileDetailView: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
     }
+
+    private var characterDetailsSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+            SectionHeader(
+                title: "キャラクター設定",
+                icon: "sparkles",
+                iconColor: AppColors.primary
+            )
+
+            VStack(spacing: 0) {
+                if !oshi.appearanceDescription.isEmpty {
+                    characterDetailRow(
+                        title: "外見",
+                        icon: "person.crop.rectangle",
+                        text: oshi.appearanceDescription
+                    )
+                }
+
+                if !oshi.appearanceDescription.isEmpty && !oshi.backgroundStory.isEmpty {
+                    Divider()
+                        .padding(.leading, 48)
+                }
+
+                if !oshi.backgroundStory.isEmpty {
+                    characterDetailRow(
+                        title: "背景設定",
+                        icon: "book.closed.fill",
+                        text: oshi.backgroundStory
+                    )
+                }
+            }
+            .floatingCardStyle()
+        }
+        .padding(.horizontal, DesignTokens.Spacing.xl)
+    }
+
+    private func characterDetailRow(title: String, icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AppColors.primary)
+                .frame(width: 28, height: 28)
+                .background(AppColors.brandWash, in: Circle())
+
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                Text(title)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
+
+                Text(text)
+                    .font(AppTypography.body)
+                    .foregroundColor(AppColors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(DesignTokens.Spacing.md)
+    }
     
     // MARK: - Follow Button Section
     
@@ -378,16 +450,12 @@ struct OshiProfileDetailView: View {
                 )
                 .frame(height: 250)
             } else {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: DesignTokens.Spacing.sm) {
                     ForEach(oshiPosts) { post in
                         PostCardView(post: post, viewModel: viewModel)
-                        
-                        if post.id != oshiPosts.last?.id {
-                            AppDivider(leadingPadding: 68)
-                        }
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
                     }
                 }
-                .background(AppColors.backgroundPrimary)
             }
         }
     }
@@ -410,6 +478,8 @@ struct TagView: View {
             oshi: OshiCharacter(
                 name: "さくら",
                 gender: .female,
+                appearanceDescription: "黒髪のショート、青い瞳、白いパーカー",
+                backgroundStory: "写真部に所属する大学生。海辺の町で育った。",
                 personalityText: "優しくて明るい",
                 speechCharacteristics: "アプリの個人開発してます 🌸 いつも応援ありがとう!",
                 userCallingName: "あなた",

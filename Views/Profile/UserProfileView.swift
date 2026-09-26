@@ -12,13 +12,14 @@ struct UserProfileView: View {
     @ObservedObject var viewModel: OshiViewModel
     @Environment(\.dismiss) var dismiss
     
-    @State private var userName: String = "あなた"
+    @State private var userName: String = "ユーザー"
     @State private var userBio: String = ""
     @State private var avatarImage: UIImage?
     @State private var showingEditSheet = false
     @State private var isLoadingImage = false
     @State private var avatarImageURL: String? = nil
     @State private var selectedTab: ProfileTab = .posts
+    @State private var showingSettings = false
     
     private let dbManager = FirebaseDatabaseManager.shared
     private let avatarSize: CGFloat = 86
@@ -32,19 +33,43 @@ struct UserProfileView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
-                avatarView
-                
+                // バナー + アバター
+                ZStack(alignment: .bottom) {
+                    AppColors.primaryGradient
+                        .frame(height: headerHeight)
+                        .overlay(
+                            // 装飾的な円
+                            GeometryReader { geo in
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.12))
+                                        .frame(width: 160, height: 160)
+                                        .offset(x: geo.size.width - 80, y: -60)
+                                    Circle()
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(width: 120, height: 120)
+                                        .offset(x: -30, y: 60)
+                                }
+                            }
+                            .clipped()
+                        )
+
+                    avatarView
+                        .offset(y: avatarSize / 2)
+                }
+                .padding(.bottom, avatarSize / 2)
+
                 // プロフィール情報
                 profileSection
                     .padding(.top, 10)
-                
+
                 // タブセクション
                 tabSection
                     .padding(.top, 20)
-                
+
                 // コンテンツ
                 contentSection
-                
+
                 // 管理者メニュー
                 if FirebaseConfig.shared.userId == "43F74A75-89A5-48EE-9372-5B350504CD35" {
                     adminSection
@@ -53,7 +78,7 @@ struct UserProfileView: View {
             }
             .padding(.bottom, 32)
         }
-//        .background(Color(.systemGroupedBackground))
+        .background(AuroraBackground())
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .gesture(
@@ -81,18 +106,14 @@ struct UserProfileView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        showingEditSheet = true
-                    } label: {
-                        Label("プロフィールを編集", systemImage: "pencil")
-                    }
+                Button {
+                    showingSettings = true
                 } label: {
                     Circle()
                         .fill(.ultraThinMaterial)
                         .frame(width: 32, height: 32)
                         .overlay(
-                            Image(systemName: "ellipsis")
+                            Image(systemName: "gearshape")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.primary)
                         )
@@ -108,19 +129,35 @@ struct UserProfileView: View {
                 )
             }
         }
+        .fullScreenCover(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView(
+                    viewModel: viewModel,
+                    userName: $userName,
+                    userBio: $userBio,
+                    avatarImage: $avatarImage
+                )
+            }
+        }
         .task {
             await loadProfile()
             await viewModel.loadUserLikes()
+        }
+        .onChange(of: userName) { newName in
+            let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedName.isEmpty {
+                viewModel.userProfileName = trimmedName == "あなた" ? "ユーザー" : trimmedName
+            }
         }
     }
     
     private var avatarView: some View {
         ZStack {
-            // 背景の白い円
+            // 背景のリング
             Circle()
-                .fill(Color(.systemBackground))
-                .frame(width: avatarSize + 8, height: avatarSize + 8)
-            
+                .fill(AppColors.canvas)
+                .frame(width: avatarSize + 10, height: avatarSize + 10)
+
             Group {
                 if isLoadingImage {
                     Circle()
@@ -138,16 +175,7 @@ struct UserProfileView: View {
                         .clipShape(Circle())
                 } else {
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.5, green: 0.7, blue: 1.0),
-                                    Color(red: 0.7, green: 0.5, blue: 0.9)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(AppColors.primaryGradient)
                         .frame(width: avatarSize, height: avatarSize)
                         .overlay(
                             Image(systemName: "person.fill")
@@ -156,6 +184,7 @@ struct UserProfileView: View {
                         )
                 }
             }
+            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
         }
     }
     
@@ -216,16 +245,12 @@ struct UserProfileView: View {
                     Text("編集")
                         .font(.subheadline)
                         .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .foregroundColor(AppColors.primary)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
                         .background(
                             Capsule()
-                                .fill(Color(.systemBackground))
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(Color(.separator), lineWidth: 1)
+                                .fill(AppColors.primary.opacity(0.12))
                         )
                 }
             }
@@ -238,33 +263,11 @@ struct UserProfileView: View {
     // MARK: - Tab Section
     
     private var tabSection: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(ProfileTab.allCases, id: \.self) { tab in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedTab = tab
-                        }
-                    } label: {
-                        VStack(spacing: 10) {
-                            Text(tab.rawValue)
-                                .font(.subheadline)
-                                .fontWeight(selectedTab == tab ? .semibold : .regular)
-                                .foregroundColor(selectedTab == tab ? .primary : .secondary)
-                            
-                            Rectangle()
-                                .fill(selectedTab == tab ? Color.primary : Color.clear)
-                                .frame(height: 2)
-                                .animation(.easeInOut(duration: 0.2), value: selectedTab)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            
-            Divider()
-        }
-//        .background(Color(.systemBackground))
+        PillSegmentedControl(
+            items: ProfileTab.allCases.map { (value: $0, label: $0.rawValue) },
+            selection: $selectedTab
+        )
+        .padding(.horizontal, DesignTokens.Spacing.md)
     }
     
     // MARK: - Content Section
@@ -291,15 +294,13 @@ struct UserProfileView: View {
                     subtitle: "あなたの投稿がここに表示されます"
                 )
             } else {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: DesignTokens.Spacing.sm) {
                     ForEach(userPosts) { post in
                         PostCardView(post: post, viewModel: viewModel)
-                        
-                        Divider()
-                            .padding(.leading, 68)
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
                     }
                 }
-                .background(Color(.systemBackground))
+                .padding(.top, DesignTokens.Spacing.md)
             }
         }
     }
@@ -315,15 +316,13 @@ struct UserProfileView: View {
                     subtitle: "いいねした投稿がここに表示されます"
                 )
             } else {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: DesignTokens.Spacing.sm) {
                     ForEach(likedPosts) { post in
                         PostCardView(post: post, viewModel: viewModel)
-                        
-                        Divider()
-                            .padding(.leading, 68)
+                            .padding(.horizontal, DesignTokens.Spacing.sm)
                     }
                 }
-                .background(Color(.systemBackground))
+                .padding(.top, DesignTokens.Spacing.md)
             }
         }
     }
@@ -332,21 +331,36 @@ struct UserProfileView: View {
         VStack(spacing: 16) {
             Spacer()
                 .frame(height: 60)
-            
-            Image(systemName: icon)
-                .font(.system(size: 44))
-                .foregroundColor(.secondary.opacity(0.6))
-            
+
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppColors.primary.opacity(0.08),
+                                AppColors.pink.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 96, height: 96)
+
+                Image(systemName: icon)
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(AppColors.primaryGradient)
+            }
+
             VStack(spacing: 6) {
                 Text(title)
                     .font(.headline)
                     .foregroundColor(.primary)
-                
+
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
                 .frame(height: 80)
         }
@@ -384,7 +398,8 @@ struct UserProfileView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .background(Color(.systemBackground))
+                .floatingCardStyle()
+                .padding(.horizontal, DesignTokens.Spacing.sm)
             }
         }
     }
@@ -396,6 +411,7 @@ struct UserProfileView: View {
             let profile = try await dbManager.loadUserProfile()
             await MainActor.run {
                 userName = profile.userName
+                viewModel.userProfileName = profile.userName
                 userBio = profile.userBio
                 avatarImageURL = profile.avatarImageURL
             }

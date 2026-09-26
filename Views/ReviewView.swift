@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import StoreKit
 
 struct ReviewView: View {
     private let dbManager = FirebaseDatabaseManager.shared
@@ -17,7 +16,6 @@ struct ReviewView: View {
     @State private var showAlert = false
     @State private var activeAlert: ActiveAlert?
     @State private var animateIn = false
-    @Environment(\.requestReview) var requestReview
     
     enum ActiveAlert: Identifiable {
         case satisfied, dissatisfied
@@ -42,11 +40,7 @@ struct ReviewView: View {
                     // アイコン
                     ZStack {
                         Circle()
-                            .fill(LinearGradient(
-                                gradient: Gradient(colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.8)]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
+                            .fill(AppColors.primaryGradient)
                             .frame(width: 70, height: 70)
                         
                         Image(systemName: "heart.fill")
@@ -113,9 +107,14 @@ struct ReviewView: View {
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                         .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemBackground))
-                                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppColors.surface)
+                                .shadow(
+                                    color: DesignTokens.Shadow.sm.color,
+                                    radius: DesignTokens.Shadow.sm.radius,
+                                    x: 0,
+                                    y: DesignTokens.Shadow.sm.y
+                                )
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -159,9 +158,14 @@ struct ReviewView: View {
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
                         .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemBackground))
-                                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppColors.surface)
+                                .shadow(
+                                    color: DesignTokens.Shadow.sm.color,
+                                    radius: DesignTokens.Shadow.sm.radius,
+                                    x: 0,
+                                    y: DesignTokens.Shadow.sm.y
+                                )
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -189,7 +193,7 @@ struct ReviewView: View {
                         Spacer()
                         
                         Toggle("", isOn: $toggle)
-                            .toggleStyle(SwitchToggleStyle(tint: .blue))
+                            .toggleStyle(SwitchToggleStyle(tint: AppColors.primary))
                             .scaleEffect(0.9)
                     }
                     .padding(.horizontal, 20)
@@ -201,8 +205,8 @@ struct ReviewView: View {
             }
             .frame(width: isSmallDevice() ? 340 : 380)
             .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(.systemGray6))
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(AppColors.canvas)
                     .shadow(color: .black.opacity(0.1), radius: 20, x: 0, y: 10)
             )
             .scaleEffect(animateIn ? 1.0 : 0.9)
@@ -234,9 +238,8 @@ struct ReviewView: View {
             case .satisfied:
                 return Alert(
                     title: Text("回答ありがとうございます！"),
-                    message: Text("サービス向上の励みになりますので、よろしければレビューお願いします🙇‍♂️"),
+                    message: Text("今後のサービス改善に活用します。"),
                     dismissButton: .default(Text("OK")) {
-                        requestReview()
                         dbManager.updateUserCsFlag(userId: dbManager.currentUserId, userCsFlag: 1) { _ in }
                         isPresented = false
                     }

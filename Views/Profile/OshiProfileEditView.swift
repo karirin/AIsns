@@ -14,10 +14,16 @@ struct OshiProfileEditView: View {
     
     @State private var name: String
     @State private var gender: Gender?
+    @State private var appearanceDescription: String
+    @State private var backgroundStory: String
     @State private var personalityText: String
     @State private var speechCharacteristics: String
     @State private var userCallingName: String
     @State private var speechStyleText: String
+    @State private var relationshipStyle: String
+    @State private var replyLengthPreference: String
+    @State private var memoryMemo: String
+    @State private var replyFrequencyPreference: String
     @State private var avatarImage: UIImage?
     @State private var isPublic: Bool
     @State private var showingSaveConfirmation = false
@@ -37,6 +43,9 @@ struct OshiProfileEditView: View {
     private let personalityOptions = ["優しい", "明るい", "クール", "天然", "しっかり者", "甘えん坊", "ツンデレ", "元気"]
     private let speechCharacteristicsOptions = ["柔らかい口調", "元気いっぱい", "落ち着いている", "おっとり", "ハキハキ", "ゆっくり", "早口", "囁くような"]
     private let speechStyleOptions = ["丁寧語", "タメ口", "関西弁", "方言", "クール", "フレンドリー", "敬語", "ギャル語"]
+    private let relationshipOptions = ["友達", "親友", "恋人風", "先輩後輩", "推しとファン"]
+    private let replyLengthOptions = ["短め", "普通", "長め"]
+    private let replyFrequencyOptions = ["控えめ", "普通", "多め"]
     
     // プリセットフラグ
     let isPreset: Bool
@@ -55,10 +64,16 @@ struct OshiProfileEditView: View {
         
         _name = State(initialValue: oshi.name)
         _gender = State(initialValue: oshi.gender)
+        _appearanceDescription = State(initialValue: oshi.appearanceDescription)
+        _backgroundStory = State(initialValue: oshi.backgroundStory)
         _personalityText = State(initialValue: oshi.personalityText)
         _speechCharacteristics = State(initialValue: oshi.speechCharacteristics)
         _userCallingName = State(initialValue: oshi.userCallingName)
         _speechStyleText = State(initialValue: oshi.speechStyleText)
+        _relationshipStyle = State(initialValue: oshi.relationshipStyle ?? "")
+        _replyLengthPreference = State(initialValue: oshi.replyLengthPreference ?? "")
+        _memoryMemo = State(initialValue: oshi.memoryMemo ?? "")
+        _replyFrequencyPreference = State(initialValue: oshi.replyFrequencyPreference ?? "")
         _avatarImage = State(initialValue: nil)
         _isPublic = State(initialValue: oshi.isPublic)
     }
@@ -66,9 +81,8 @@ struct OshiProfileEditView: View {
     var body: some View {
         ZStack {
             // 背景
-            Color(hex: "F8FAFC")
-                .ignoresSafeArea()
-            
+            AuroraBackground()
+
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     // ヘッダー（アバター＋名前＋性別）
@@ -78,6 +92,10 @@ struct OshiProfileEditView: View {
                     
                     // キャラクター設定セクション
                     characterSettingsSection
+                        .opacity(appearAnimation ? 1 : 0)
+                        .offset(y: appearAnimation ? 0 : 20)
+
+                    plusAdvancedSettingsSection
                         .opacity(appearAnimation ? 1 : 0)
                         .offset(y: appearAnimation ? 0 : 20)
                     
@@ -92,22 +110,33 @@ struct OshiProfileEditView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 40)
             }
+            .scrollDismissesKeyboard(.interactively)
             
             // 成功トースト
             if showingSaveConfirmation {
                 successToast
             }
         }
-        .onTapGesture {
+        .simultaneousGesture(TapGesture().onEnded {
             UIApplication.shared.endEditing()
-        }
+        })
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("プロフィール編集")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Color(hex: "1F2937"))
+                    .foregroundColor(AppColors.textPrimary)
+            }
+
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(AppColors.textPrimary)
+                }
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -148,32 +177,15 @@ struct OshiProfileEditView: View {
     // MARK: - ヘッダーカード（アバター＋名前＋性別）
     private var headerCard: some View {
         VStack(spacing: 16) {
-            // アバター + 名前（横並び）
-            HStack(spacing: 16) {
-                // アバター
-                avatarButton
-                
-                // 名前入力
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("フォロワーの名前")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "6B7280"))
-                    
-                    TextField("名前を入力", text: $name)
-                        .font(.system(size: 17, weight: .medium))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(hex: "F3F4F6"))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(
-                                            name.isEmpty ? Color.clear : Color(hex: "6366F1").opacity(0.4),
-                                            lineWidth: 1.5
-                                        )
-                                )
-                        )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    avatarButton
+                    nameInputField
+                }
+
+                VStack(alignment: .center, spacing: 12) {
+                    avatarButton
+                    nameInputField
                 }
             }
             
@@ -181,7 +193,7 @@ struct OshiProfileEditView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("性別")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: "6B7280"))
+                    .foregroundColor(AppColors.textSecondary)
                 
                 HStack(spacing: 10) {
                     ForEach(Gender.allCases, id: \.self) { g in
@@ -193,6 +205,35 @@ struct OshiProfileEditView: View {
         .padding(16)
         .background(cardBackground)
     }
+
+    private var nameInputField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("フォロワーの名前")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppColors.textSecondary)
+
+            TextField("名前を入力", text: $name)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(AppColors.textPrimary)
+                .tint(AppColors.primary)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppColors.surfaceSecondary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(
+                                    name.isEmpty ? AppColors.borderLight : Color(hex: "6366F1").opacity(0.4),
+                                    lineWidth: 1.5
+                                )
+                        )
+                )
+        }
+        .frame(maxWidth: .infinity)
+    }
     
     // MARK: - アバターボタン
     private var avatarButton: some View {
@@ -203,7 +244,7 @@ struct OshiProfileEditView: View {
             ZStack {
                 if isLoadingImage {
                     Circle()
-                        .fill(Color(hex: "F3F4F6"))
+                        .fill(AppColors.surfaceSecondary)
                         .frame(width: 80, height: 80)
                     ProgressView()
                 } else if let avatarImage = avatarImage {
@@ -236,7 +277,7 @@ struct OshiProfileEditView: View {
                         Spacer()
                         ZStack {
                             Circle()
-                                .fill(Color.white)
+                                .fill(AppColors.surface)
                                 .frame(width: 26, height: 26)
                                 .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
                             
@@ -270,12 +311,12 @@ struct OshiProfileEditView: View {
                 Text(g.rawValue)
                     .font(.system(size: 14, weight: .medium))
             }
-            .foregroundColor(gender == g ? .white : Color(hex: "6B7280"))
+            .foregroundColor(gender == g ? .white : AppColors.textSecondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(
                 Capsule()
-                    .fill(gender == g ? genderColor(g) : Color(hex: "F3F4F6"))
+                    .fill(gender == g ? genderColor(g) : AppColors.surfaceSecondary)
             )
         }
         .buttonStyle(ScaleButtonStyle())
@@ -335,8 +376,92 @@ struct OshiProfileEditView: View {
                     options: speechStyleOptions,
                     isExpanded: $showSpeechStyleOptions
                 )
+
+                detailInputCard(
+                    icon: "person.crop.rectangle",
+                    iconColor: Color(hex: "EC4899"),
+                    label: "外見",
+                    placeholder: "例: 黒髪のショート、青い瞳、白いパーカー",
+                    text: $appearanceDescription,
+                    characterLimit: 200
+                )
+
+                detailInputCard(
+                    icon: "book.closed.fill",
+                    iconColor: Color(hex: "F59E0B"),
+                    label: "背景設定",
+                    placeholder: "例: 写真部に所属する大学生。海辺の町で育った",
+                    text: $backgroundStory,
+                    characterLimit: 500
+                )
             }
         }
+    }
+
+    private func detailInputCard(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        characterLimit: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(iconColor.opacity(0.12)))
+
+                Text(label)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppColors.textPrimary)
+
+                Spacer()
+
+                Text("\(text.wrappedValue.count)/\(characterLimit)")
+                    .font(.system(size: 11))
+                    .foregroundColor(AppColors.textTertiary)
+            }
+
+            ZStack(alignment: .topLeading) {
+                if text.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 14))
+                        .foregroundColor(AppColors.textTertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 8)
+                }
+
+                TextEditor(text: text)
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.textPrimary)
+                    .tint(AppColors.primary)
+                    .frame(minHeight: 70, maxHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .onChange(of: text.wrappedValue) { newValue in
+                        if newValue.count > characterLimit {
+                            text.wrappedValue = String(newValue.prefix(characterLimit))
+                        }
+                    }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppColors.surfaceSecondary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(
+                                text.wrappedValue.isEmpty ? AppColors.borderLight : iconColor.opacity(0.3),
+                                lineWidth: 1
+                            )
+                    )
+            )
+        }
+        .padding(14)
+        .background(cardBackground)
     }
     
     // MARK: - コンパクト入力カード
@@ -360,7 +485,7 @@ struct OshiProfileEditView: View {
                 
                 Text(label)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color(hex: "374151"))
+                    .foregroundColor(AppColors.textPrimary)
                 
                 Spacer()
                 
@@ -393,14 +518,15 @@ struct OshiProfileEditView: View {
                 if text.wrappedValue.isEmpty {
                     Text(placeholder)
                         .font(.system(size: 14))
-                        .foregroundColor(Color(hex: "9CA3AF"))
+                        .foregroundColor(AppColors.textTertiary)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 8)
                 }
                 
                 TextEditor(text: text)
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "374151"))
+                    .foregroundColor(AppColors.textPrimary)
+                    .tint(AppColors.primary)
                     .frame(minHeight: 50, maxHeight: 80)
                     .scrollContentBackground(.hidden)
                     .background(Color.clear)
@@ -408,11 +534,11 @@ struct OshiProfileEditView: View {
             .padding(10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(hex: "F9FAFB"))
+                    .fill(AppColors.surfaceSecondary)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(
-                                text.wrappedValue.isEmpty ? Color(hex: "E5E7EB") : iconColor.opacity(0.3),
+                                text.wrappedValue.isEmpty ? AppColors.borderLight : iconColor.opacity(0.3),
                                 lineWidth: 1
                             )
                     )
@@ -437,6 +563,131 @@ struct OshiProfileEditView: View {
         .padding(14)
         .background(cardBackground)
     }
+
+    private var plusAdvancedSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: "Plus詳細調整", icon: "sparkles", color: AppColors.primary)
+
+            if viewModel.isPlusActive {
+                VStack(spacing: 14) {
+                    choiceRow(
+                        title: "距離感",
+                        icon: "person.2.fill",
+                        options: relationshipOptions,
+                        selection: $relationshipStyle
+                    )
+
+                    Divider()
+
+                    choiceRow(
+                        title: "返信の長さ",
+                        icon: "text.alignleft",
+                        options: replyLengthOptions,
+                        selection: $replyLengthPreference
+                    )
+
+                    Divider()
+
+                    choiceRow(
+                        title: "リプ頻度",
+                        icon: "message.badge.fill",
+                        options: replyFrequencyOptions,
+                        selection: $replyFrequencyPreference
+                    )
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("記憶メモ", systemImage: "brain.head.profile")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppColors.textPrimary)
+
+                        ZStack(alignment: .topLeading) {
+                            if memoryMemo.isEmpty {
+                                Text("好きなもの、関係性、覚えてほしいこと")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(AppColors.textTertiary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 8)
+                            }
+
+                            TextEditor(text: $memoryMemo)
+                                .font(.system(size: 14))
+                                .foregroundColor(AppColors.textPrimary)
+                                .tint(AppColors.primary)
+                                .frame(minHeight: 70, maxHeight: 110)
+                                .scrollContentBackground(.hidden)
+                        }
+                        .padding(10)
+                        .background(AppColors.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(14)
+                .background(cardBackground)
+            } else {
+                Button {
+                    generateHapticFeedback()
+                    viewModel.requestPlusPaywall(.premiumFeature, force: true)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(AppColors.primary, in: RoundedRectangle(cornerRadius: 9))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Plusで距離感・記憶メモを調整")
+                                .font(AppTypography.bodyMedium)
+                                .foregroundColor(AppColors.textPrimary)
+                            Text("通常の性格・口調設定はこのまま使えます")
+                                .font(AppTypography.caption)
+                                .foregroundColor(AppColors.textSecondary)
+                        }
+
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(14)
+                .background(cardBackground)
+            }
+        }
+    }
+
+    private func choiceRow(
+        title: String,
+        icon: String,
+        options: [String],
+        selection: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppColors.textPrimary)
+
+            FlowLayout(spacing: 6) {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        generateHapticFeedback()
+                        selection.wrappedValue = selection.wrappedValue == option ? "" : option
+                    } label: {
+                        Text(option)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(selection.wrappedValue == option ? .white : AppColors.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(selection.wrappedValue == option ? AppColors.primary : AppColors.surfaceSecondary)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
     
     // MARK: - 下部設定セクション（呼び方 + 共有設定）
     private var bottomSettingsSection: some View {
@@ -450,18 +701,21 @@ struct OshiProfileEditView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Color(hex: "F59E0B"))
                         .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color(hex: "FEF3C7")))
+                        .background(Circle().fill(Color(hex: "F59E0B").opacity(0.15)))
                     
                     Text("あなたへの呼び方")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(hex: "374151"))
+                        .foregroundColor(AppColors.textPrimary)
                     
                     Spacer()
                     
                     TextField("例: あなた、きみ", text: $userCallingName)
                         .font(.system(size: 14))
+                        .foregroundColor(AppColors.textPrimary)
+                        .tint(AppColors.primary)
+                        .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 120)
+                        .frame(minWidth: 120)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
@@ -475,15 +729,15 @@ struct OshiProfileEditView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Color(hex: "10B981"))
                         .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color(hex: "D1FAE5")))
+                        .background(Circle().fill(AppColors.success.opacity(0.15)))
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("みんなに公開")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(hex: "374151"))
+                            .foregroundColor(AppColors.textPrimary)
                         Text("他のユーザーからも投稿が見えます")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "9CA3AF"))
+                            .foregroundColor(AppColors.textTertiary)
                     }
                     
                     Spacer()
@@ -510,16 +764,20 @@ struct OshiProfileEditView: View {
             
             Text(title)
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(Color(hex: "1F2937"))
+                .foregroundColor(AppColors.textPrimary)
         }
         .padding(.leading, 4)
     }
     
     // MARK: - カード背景
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(Color.white)
-            .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(AppColors.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(AppColors.borderLight.opacity(0.6), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.05), radius: 10, y: 4)
     }
     
     // MARK: - テキスト追加ヘルパー
@@ -577,10 +835,16 @@ struct OshiProfileEditView: View {
             var updatedOshi = oshi
             updatedOshi.name = name
             updatedOshi.gender = gender
+            updatedOshi.appearanceDescription = appearanceDescription
+            updatedOshi.backgroundStory = backgroundStory
             updatedOshi.personalityText = personalityText
             updatedOshi.speechCharacteristics = speechCharacteristics
             updatedOshi.userCallingName = userCallingName
             updatedOshi.speechStyleText = speechStyleText
+            updatedOshi.relationshipStyle = emptyToNil(relationshipStyle)
+            updatedOshi.replyLengthPreference = emptyToNil(replyLengthPreference)
+            updatedOshi.memoryMemo = emptyToNil(memoryMemo)
+            updatedOshi.replyFrequencyPreference = emptyToNil(replyFrequencyPreference)
             updatedOshi.isPublic = isPublic
             
             if let image = avatarImage {
@@ -598,7 +862,7 @@ struct OshiProfileEditView: View {
             if isPreset {
                 await viewModel.updatePresetOshi(updatedOshi)
             } else {
-                await viewModel.updateOshi(updatedOshi)
+                viewModel.updateOshi(updatedOshi)
             }
             
             await MainActor.run {
@@ -618,6 +882,11 @@ struct OshiProfileEditView: View {
                 }
             }
         }
+    }
+
+    private func emptyToNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
